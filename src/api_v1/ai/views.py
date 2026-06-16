@@ -9,7 +9,7 @@ from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from core.utils.ai_context import build_report_context
-from .schemas import AutoVerdictRequest, ChatRequest, TextResponse
+from .schemas import AutoVerdictRequest, ChatRequest, ProviderCatalogResponse, TextResponse
 
 router = APIRouter()
 
@@ -31,6 +31,13 @@ def _raise_ai_http_error(exc: Exception) -> None:
         status_code = status.HTTP_400_BAD_REQUEST if "Unsupported AI provider" in str(exc) else status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     raise exc
+
+
+@router.get("/providers", response_model=list[ProviderCatalogResponse])
+async def list_supported_providers(
+    container: Container = Depends(get_di_container),
+):
+    return container.list_supported_ai_providers_use_case().execute()
 
 
 @router.post("/meta/ad-accounts/{ad_account_id}/auto-verdict", response_model=TextResponse)

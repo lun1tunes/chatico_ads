@@ -27,6 +27,7 @@ class FakeContainer:
         self.list_meta_ad_accounts_use_case = Mock()
         self.generate_meta_report_use_case = Mock()
         self.generate_auto_verdict_use_case = Mock()
+        self.list_supported_ai_providers_use_case = Mock()
         self.ask_dashboard_use_case = Mock()
 
 
@@ -92,6 +93,25 @@ async def test_meta_routes(async_client):
 @pytest.mark.api
 async def test_dashboard_and_ai_routes_map_errors(async_client):
     container = FakeContainer()
+    container.list_supported_ai_providers_use_case.return_value = SimpleNamespace(
+        execute=Mock(
+            return_value=[
+                {
+                    "key": "anthropic",
+                    "label": "Anthropic",
+                    "default_model": "claude-sonnet-4-6",
+                    "presets": [
+                        {
+                            "value": "claude-sonnet-4-6",
+                            "label": "Server default (claude-sonnet-4-6)",
+                            "is_default": True,
+                        }
+                    ],
+                    "supports_custom_model": True,
+                }
+            ]
+        )
+    )
     container.generate_meta_report_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(side_effect=MetaAdAccountNotFoundError("Meta ad account not found")),
     )
@@ -107,6 +127,10 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     report_response = await async_client.get("/api/v1/dashboard/meta/ad-accounts/act_1/report")
     assert report_response.status_code == 404
     assert report_response.json()["detail"] == "Meta ad account not found"
+
+    providers_response = await async_client.get("/api/v1/ai/providers")
+    assert providers_response.status_code == 200
+    assert providers_response.json()[0]["default_model"] == "claude-sonnet-4-6"
 
     auto_verdict_response = await async_client.post(
         "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",

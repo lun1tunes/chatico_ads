@@ -17,7 +17,7 @@ def test_build_authorization_url_includes_config_id():
         client_id="app-id",
         client_secret="app-secret",
         redirect_uri="http://localhost/callback",
-        oauth_scopes=["ads_read", "ads_management"],
+        oauth_scopes=["ads_read"],
         oauth_config_id="config-123",
     )
 
@@ -26,7 +26,7 @@ def test_build_authorization_url_includes_config_id():
     assert "client_id=app-id" in url
     assert "state=signed-state" in url
     assert "config_id=config-123" in url
-    assert "ads_read%2Cads_management" in url
+    assert "scope=ads_read" in url
 
 
 @pytest.mark.unit

@@ -33,7 +33,7 @@ class FakeMetaClient:
 
     async def exchange_for_long_lived_token(self, *, access_token: str) -> dict[str, object]:
         assert access_token == "short-lived-token"
-        return {"access_token": "long-lived-token", "expires_in": 7200, "scope": ["ads_read", "ads_management"]}
+        return {"access_token": "long-lived-token", "expires_in": 7200, "scope": ["ads_read"]}
 
     async def get_me(self, *, access_token: str) -> dict[str, object]:
         assert access_token == "long-lived-token"
@@ -99,7 +99,7 @@ async def test_handle_meta_oauth_callback_persists_connection_and_accounts(db_se
     assert connection is not None
     assert connection.meta_user_name == "Meta Owner"
     assert encryption_service.decrypt(connection.access_token_encrypted) == "long-lived-token"
-    assert connection.scopes == "ads_read,ads_management"
+    assert connection.scopes == "ads_read"
     assert len(connection.ad_accounts) == 2
 
     ad_accounts = await ListMetaAdAccountsUseCase(session=db_session).execute(user_id="user-1")

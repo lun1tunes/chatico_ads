@@ -13,6 +13,10 @@ def _csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _default_meta_oauth_scopes() -> list[str]:
+    return ["ads_read"]
+
+
 class AuthSettings(BaseModel):
     secret_key: str
     algorithm: str = "HS256"
@@ -39,7 +43,7 @@ class MetaSettings(BaseModel):
     app_secret: str
     graph_version: str = "v24.0"
     oauth_redirect_uri: str
-    oauth_scopes: list[str] = Field(default_factory=lambda: ["ads_read", "ads_management", "business_management"])
+    oauth_scopes: list[str] = Field(default_factory=_default_meta_oauth_scopes)
     oauth_config_id: str | None = None
     exchange_long_lived_token: bool = True
 
@@ -50,7 +54,7 @@ class MetaSettings(BaseModel):
             return [str(item).strip() for item in value if str(item).strip()]
         if isinstance(value, str):
             return _csv(value)
-        return ["ads_read", "ads_management", "business_management"]
+        return _default_meta_oauth_scopes()
 
     @model_validator(mode="after")
     def validate_values(self) -> Self:
@@ -107,9 +111,7 @@ class AppSettings(BaseSettings):
     meta_app_secret: str = Field(validation_alias="META_APP_SECRET")
     meta_graph_version: str = "v24.0"
     meta_oauth_redirect_uri: str = Field(validation_alias="META_OAUTH_REDIRECT_URI")
-    meta_oauth_scopes: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["ads_read", "ads_management", "business_management"]
-    )
+    meta_oauth_scopes: Annotated[list[str], NoDecode] = Field(default_factory=_default_meta_oauth_scopes)
     meta_oauth_config_id: str | None = None
     meta_exchange_long_lived_token: bool = True
     internal_anthropic_api_key: str = Field(validation_alias="INTERNAL_ANTHROPIC_API_KEY")
@@ -139,7 +141,7 @@ class AppSettings(BaseSettings):
             return [str(item).strip() for item in value if str(item).strip()]
         if isinstance(value, str):
             return _csv(value)
-        return ["ads_read", "ads_management", "business_management"]
+        return _default_meta_oauth_scopes()
 
     @model_validator(mode="after")
     def validate_values(self) -> Self:

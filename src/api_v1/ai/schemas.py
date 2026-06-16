@@ -22,5 +22,19 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
 
 
+class ProviderModelPresetResponse(BaseModel):
+    value: str
+    label: str
+    is_default: bool = False
+
+
+class ProviderCatalogResponse(BaseModel):
+    key: str
+    label: str
+    default_model: str
+    presets: list[ProviderModelPresetResponse]
+    supports_custom_model: bool = True
+
+
 class TextResponse(BaseModel):
     text: str

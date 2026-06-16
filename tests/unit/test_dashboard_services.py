@@ -146,6 +146,11 @@ class FakeMetaReportClient:
         ]
 
 
+class FixedDateRangeService:
+    def build_periods(self, *, days: int, now=None):
+        return DateRangeService().build_periods(days=days, now=datetime(2026, 6, 15, tzinfo=timezone.utc))
+
+
 @pytest.mark.unit
 @pytest.mark.service
 async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_session):
@@ -158,7 +163,7 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
             meta_user_id="meta-user-1",
             meta_user_name="Meta Owner",
             access_token_encrypted=encryption_service.encrypt("meta-token"),
-            scopes="ads_read,ads_management",
+            scopes="ads_read",
         )
     )
     db_session.add(
@@ -177,7 +182,7 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
 
     use_case = GenerateMetaReportUseCase(
         session=db_session,
-        date_range_service=DateRangeService(),
+        date_range_service=FixedDateRangeService(),
         report_service=MetaReportService(
             meta_client=FakeMetaReportClient(),
             encryption_service=encryption_service,

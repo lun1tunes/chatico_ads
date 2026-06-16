@@ -50,6 +50,47 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
     assert anthropic.calls[0]["api_key"] == "test-anthropic-key"
     assert "Reply in language code 'kz'" in anthropic.calls[0]["system_prompt"]
     assert openai.calls[0]["model"] == "gpt-5-mini"
+    assert service.list_supported_providers() == [
+        {
+            "key": "anthropic",
+            "label": "Anthropic",
+            "default_model": "claude-sonnet-4-6",
+            "presets": [
+                {
+                    "value": "claude-sonnet-4-6",
+                    "label": "Server default (claude-sonnet-4-6)",
+                    "is_default": True,
+                }
+            ],
+            "supports_custom_model": True,
+        },
+        {
+            "key": "openai",
+            "label": "OpenAI",
+            "default_model": "gpt-5-mini",
+            "presets": [
+                {
+                    "value": "gpt-5-mini",
+                    "label": "Server default (gpt-5-mini)",
+                    "is_default": True,
+                }
+            ],
+            "supports_custom_model": True,
+        },
+        {
+            "key": "gemini",
+            "label": "Gemini",
+            "default_model": "gemini-3.5-flash",
+            "presets": [
+                {
+                    "value": "gemini-3.5-flash",
+                    "label": "Server default (gemini-3.5-flash)",
+                    "is_default": True,
+                }
+            ],
+            "supports_custom_model": True,
+        },
+    ]
 
     with pytest.raises(LLMProxyError, match="Unsupported AI provider"):
         await service.chat(

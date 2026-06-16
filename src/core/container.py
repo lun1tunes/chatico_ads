@@ -12,7 +12,12 @@ from .services.llm_proxy_service import LLMProxyService
 from .services.meta_report_service import MetaReportService
 from .services.meta_state_service import MetaOAuthStateService
 from .use_cases.auth import LoginUserUseCase, LogoutUserUseCase, RefreshSessionUseCase, RegisterUserUseCase
-from .use_cases.dashboard import AskDashboardUseCase, GenerateAutoVerdictUseCase, GenerateMetaReportUseCase
+from .use_cases.dashboard import (
+    AskDashboardUseCase,
+    GenerateAutoVerdictUseCase,
+    GenerateMetaReportUseCase,
+    ListSupportedAIProvidersUseCase,
+)
 from .use_cases.meta import BuildMetaOAuthUrlUseCase, HandleMetaOAuthCallbackUseCase, ListMetaAdAccountsUseCase
 
 
@@ -73,6 +78,10 @@ class Container(containers.DeclarativeContainer):
     )
     generate_auto_verdict_use_case = providers.Factory(
         GenerateAutoVerdictUseCase,
+        llm_proxy_service=llm_proxy_service,
+    )
+    list_supported_ai_providers_use_case = providers.Factory(
+        ListSupportedAIProvidersUseCase,
         llm_proxy_service=llm_proxy_service,
     )
     ask_dashboard_use_case = providers.Factory(

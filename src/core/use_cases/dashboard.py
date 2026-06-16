@@ -30,6 +30,14 @@ class GenerateAutoVerdictUseCase:
         return await self.llm_proxy_service.generate_auto_verdict(report_context=report_context, language=language)
 
 
+class ListSupportedAIProvidersUseCase:
+    def __init__(self, *, llm_proxy_service) -> None:
+        self.llm_proxy_service = llm_proxy_service
+
+    def execute(self) -> list[dict[str, object]]:
+        return self.llm_proxy_service.list_supported_providers()
+
+
 class AskDashboardUseCase:
     def __init__(self, *, llm_proxy_service) -> None:
         self.llm_proxy_service = llm_proxy_service

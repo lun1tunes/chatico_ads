@@ -9,7 +9,13 @@ from ..config import settings
 
 class DatabaseHelper:
     def __init__(self) -> None:
-        self.engine = create_async_engine(settings.database_url, echo=settings.debug, future=True)
+        self.engine = create_async_engine(
+            settings.database_url,
+            echo=settings.debug,
+            future=True,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+        )
         self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
 
     async def scoped_session_dependency(self) -> AsyncIterator[AsyncSession]:

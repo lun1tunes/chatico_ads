@@ -10,6 +10,49 @@ class LLMProxyService:
         self.openai_client = openai_client
         self.gemini_client = gemini_client
 
+    def list_supported_providers(self) -> list[dict[str, object]]:
+        return [
+            {
+                "key": "anthropic",
+                "label": "Anthropic",
+                "default_model": settings.llm.anthropic_model,
+                "presets": [
+                    {
+                        "value": settings.llm.anthropic_model,
+                        "label": f"Server default ({settings.llm.anthropic_model})",
+                        "is_default": True,
+                    }
+                ],
+                "supports_custom_model": True,
+            },
+            {
+                "key": "openai",
+                "label": "OpenAI",
+                "default_model": settings.llm.openai_default_model,
+                "presets": [
+                    {
+                        "value": settings.llm.openai_default_model,
+                        "label": f"Server default ({settings.llm.openai_default_model})",
+                        "is_default": True,
+                    }
+                ],
+                "supports_custom_model": True,
+            },
+            {
+                "key": "gemini",
+                "label": "Gemini",
+                "default_model": settings.llm.gemini_default_model,
+                "presets": [
+                    {
+                        "value": settings.llm.gemini_default_model,
+                        "label": f"Server default ({settings.llm.gemini_default_model})",
+                        "is_default": True,
+                    }
+                ],
+                "supports_custom_model": True,
+            },
+        ]
+
     async def generate_auto_verdict(self, *, report_context: str, language: str) -> str:
         prompt = (
             f"You are a paid social analyst. Reply in language code '{language}'. "

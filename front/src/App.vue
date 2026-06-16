@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 type Locale = 'ru' | 'kz' | 'en'
 type AuthMode = 'login' | 'register'
@@ -97,9 +97,39 @@ interface ChatMessage {
   content: string
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+interface ProviderModelPreset {
+  value: string
+  label: string
+  is_default: boolean
+}
+
+interface AIProviderCatalog {
+  key: AIProvider
+  label: string
+  default_model: string
+  presets: ProviderModelPreset[]
+  supports_custom_model: boolean
+}
+
+function normalizeBasePath(value?: string): string {
+  if (!value || value.trim() === '' || value.trim() === '/') {
+    return '/'
+  }
+
+  const trimmed = value.trim()
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return withLeadingSlash.endsWith('/') ? withLeadingSlash : `${withLeadingSlash}/`
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value
+}
+
+const APP_BASE_PATH = normalizeBasePath(import.meta.env.BASE_URL)
+const API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}${APP_BASE_PATH}api/v1`)
 const STORAGE_TOKEN_KEY = 'chatico.access_token'
 const STORAGE_LOCALE_KEY = 'chatico.locale'
+const CUSTOM_MODEL_OPTION = '__custom__'
 const metricOrder: MetricKey[] = [
   'spend',
   'reach',
@@ -149,6 +179,12 @@ const translations = {
     aiChatHint: 'Подключите ключ клиента. Запросы идут через сервер, ключ не попадает в браузерные вызовы к провайдеру.',
     apiKey: 'API ключ клиента',
     model: 'Модель',
+    modelDefaultOption: 'Серверный default',
+    modelCustom: 'Своя модель',
+    modelCustomOption: 'Указать вручную',
+    modelCustomPlaceholder: 'Например: claude-sonnet-4-6',
+    modelDefaultHint: 'Сейчас будет использована модель',
+    modelCustomHint: 'Если нужен другой model id, укажите его точно как у провайдера. Пустое поле вернёт server default.',
     provider: 'Провайдер',
     askPlaceholder: 'Спросить по кампаниям, креативам или CPA...',
     send: 'Отправить',
@@ -211,6 +247,12 @@ const translations = {
     aiChatHint: 'Клиент кілтін енгізіңіз. Сұраулар сервер арқылы өтеді, кілт провайдерге браузерден тікелей кетпейді.',
     apiKey: 'Клиент API кілті',
     model: 'Модель',
+    modelDefaultOption: 'Серверлік default',
+    modelCustom: 'Өз моделі',
+    modelCustomOption: 'Қолмен енгізу',
+    modelCustomPlaceholder: 'Мысалы: claude-sonnet-4-6',
+    modelDefaultHint: 'Қазір мына модель қолданылады',
+    modelCustomHint: 'Егер басқа model id керек болса, оны провайдердегі дәл атауымен енгізіңіз. Бос өріс server default-қа қайтарады.',
     provider: 'Провайдер',
     askPlaceholder: 'Кампания, креатив немесе CPA туралы сұраңыз...',
     send: 'Жіберу',
@@ -273,6 +315,12 @@ const translations = {
     aiChatHint: 'Paste the client key. Requests still go through the server so the browser never calls the provider directly.',
     apiKey: 'Client API key',
     model: 'Model',
+    modelDefaultOption: 'Server default',
+    modelCustom: 'Custom model',
+    modelCustomOption: 'Enter manually',
+    modelCustomPlaceholder: 'Example: claude-sonnet-4-6',
+    modelDefaultHint: 'The chat will use',
+    modelCustomHint: 'If you need a different model id, enter it exactly as the provider expects. Leaving it blank falls back to the server default.',
     provider: 'Provider',
     askPlaceholder: 'Ask about campaigns, creatives, or CPA...',
     send: 'Send',
@@ -301,6 +349,30 @@ const translations = {
   },
 } as const
 
+const fallbackProviderCatalog: AIProviderCatalog[] = [
+  {
+    key: 'anthropic',
+    label: 'Anthropic',
+    default_model: 'claude-sonnet-4-6',
+    presets: [{ value: 'claude-sonnet-4-6', label: 'Server default (claude-sonnet-4-6)', is_default: true }],
+    supports_custom_model: true,
+  },
+  {
+    key: 'openai',
+    label: 'OpenAI',
+    default_model: 'gpt-5-mini',
+    presets: [{ value: 'gpt-5-mini', label: 'Server default (gpt-5-mini)', is_default: true }],
+    supports_custom_model: true,
+  },
+  {
+    key: 'gemini',
+    label: 'Gemini',
+    default_model: 'gemini-3.5-flash',
+    presets: [{ value: 'gemini-3.5-flash', label: 'Server default (gemini-3.5-flash)', is_default: true }],
+    supports_custom_model: true,
+  },
+]
+
 const authMode = ref<AuthMode>('login')
 const locale = ref<Locale>((localStorage.getItem(STORAGE_LOCALE_KEY) as Locale) || 'kz')
 const registerLocale = ref<Locale>(locale.value)
@@ -327,11 +399,38 @@ const chatMessages = ref<ChatMessage[]>([])
 const chatDraft = ref('')
 const chatError = ref('')
 const provider = ref<AIProvider>('anthropic')
+const providerCatalog = ref<AIProviderCatalog[]>(fallbackProviderCatalog)
 const clientApiKey = ref('')
 const customModel = ref('')
+const selectedModelPreset = ref(
+  fallbackProviderCatalog.find((providerOption) => providerOption.key === provider.value)?.default_model ?? '',
+)
 
 const copy = computed(() => translations[locale.value])
 const isAuthenticated = computed(() => user.value !== null)
+const activeProviderConfig = computed(() => {
+  return providerCatalog.value.find((providerOption) => providerOption.key === provider.value) ?? null
+})
+const availableModelPresets = computed(() => {
+  return activeProviderConfig.value?.presets ?? []
+})
+const isCustomModelSelected = computed(() => selectedModelPreset.value === CUSTOM_MODEL_OPTION)
+const resolvedModel = computed(() => {
+  if (isCustomModelSelected.value) {
+    return customModel.value.trim() || null
+  }
+  return selectedModelPreset.value || activeProviderConfig.value?.default_model || null
+})
+const modelSelectionHint = computed(() => {
+  const activeProvider = activeProviderConfig.value
+  if (!activeProvider) {
+    return ''
+  }
+  if (isCustomModelSelected.value) {
+    return `${copy.value.modelCustomHint}`
+  }
+  return `${copy.value.modelDefaultHint}: ${resolvedModel.value || activeProvider.default_model}.`
+})
 const selectedAccount = computed(() => {
   return accounts.value.find((account) => account.external_id === selectedAccountId.value) ?? null
 })
@@ -358,6 +457,24 @@ const workspaceNotice = computed(() => {
     ? copy.value.oauthSuccess
     : `${copy.value.oauthError}${oauthStatus.value.message ? `: ${oauthStatus.value.message}` : ''}`
 })
+
+function presetLabel(preset: ProviderModelPreset) {
+  if (preset.is_default) {
+    return `${copy.value.modelDefaultOption} · ${preset.value}`
+  }
+  return preset.label
+}
+
+function applyProviderDefaultPreset() {
+  const activeProvider = activeProviderConfig.value
+  if (!activeProvider) {
+    selectedModelPreset.value = ''
+    return
+  }
+
+  const defaultPreset = activeProvider.presets.find((preset) => preset.is_default) ?? activeProvider.presets[0]
+  selectedModelPreset.value = defaultPreset?.value ?? activeProvider.default_model
+}
 
 function syncLocale(nextLocale: Locale) {
   locale.value = nextLocale
@@ -466,7 +583,7 @@ async function bootstrapSession() {
       status: statusParam,
       message: callbackUrl.searchParams.get('message') ?? '',
     }
-    window.history.replaceState({}, '', '/')
+    window.history.replaceState({}, '', APP_BASE_PATH)
   }
 
   try {
@@ -488,6 +605,22 @@ async function bootstrapSession() {
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
   } finally {
     bootLoading.value = false
+  }
+}
+
+async function loadProviderCatalog() {
+  try {
+    const payload = await apiRequest<AIProviderCatalog[]>('/ai/providers', {
+      auth: false,
+      retry: false,
+    })
+    if (payload.length > 0) {
+      providerCatalog.value = payload
+      applyProviderDefaultPreset()
+    }
+  } catch {
+    providerCatalog.value = fallbackProviderCatalog
+    applyProviderDefaultPreset()
   }
 }
 
@@ -652,7 +785,7 @@ async function sendQuestion(question?: string) {
         language: locale.value,
         provider: provider.value,
         api_key: clientApiKey.value.trim(),
-        model: customModel.value.trim() || null,
+        model: resolvedModel.value,
         messages: nextMessages,
       },
     })
@@ -766,8 +899,15 @@ function creativePreview(creative: Creative) {
   return creative.thumbnail_url || creative.image_url || ''
 }
 
+watch(provider, () => {
+  customModel.value = ''
+  applyProviderDefaultPreset()
+})
+
 onMounted(() => {
   syncLocale(locale.value)
+  applyProviderDefaultPreset()
+  void loadProviderCatalog()
   void bootstrapSession()
 })
 </script>
@@ -1129,17 +1269,30 @@ onMounted(() => {
             <label>
               <span>{{ copy.provider }}</span>
               <select v-model="provider">
-                <option value="anthropic">Anthropic</option>
-                <option value="openai">OpenAI</option>
-                <option value="gemini">Gemini</option>
+                <option v-for="providerOption in providerCatalog" :key="providerOption.key" :value="providerOption.key">
+                  {{ providerOption.label }}
+                </option>
               </select>
             </label>
 
             <label>
               <span>{{ copy.model }}</span>
-              <input v-model="customModel" type="text" placeholder="optional" />
+              <select v-model="selectedModelPreset">
+                <option v-for="preset in availableModelPresets" :key="preset.value" :value="preset.value">
+                  {{ presetLabel(preset) }}
+                </option>
+                <option v-if="activeProviderConfig?.supports_custom_model" :value="CUSTOM_MODEL_OPTION">
+                  {{ copy.modelCustomOption }}
+                </option>
+              </select>
             </label>
           </div>
+
+          <label v-if="isCustomModelSelected">
+            <span>{{ copy.modelCustom }}</span>
+            <input v-model.trim="customModel" type="text" :placeholder="copy.modelCustomPlaceholder" />
+          </label>
+          <p class="surface-note">{{ modelSelectionHint }}</p>
 
           <label>
             <span>{{ copy.apiKey }}</span>

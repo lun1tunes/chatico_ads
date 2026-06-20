@@ -132,6 +132,23 @@ class LogoutUserUseCase:
         await self.session.commit()
 
 
+class UpdateUserLocaleUseCase:
+    def __init__(self, *, session: AsyncSession) -> None:
+        self.session = session
+        self.user_repo = UserRepository(session)
+
+    async def execute(self, *, user_id: str, locale: str) -> User:
+        user = await self.user_repo.get_by_id(user_id)
+        if user is None:
+            raise AuthError("User not found")
+        if not user.is_active:
+            raise AuthError("User account is inactive")
+
+        user.locale = locale
+        await self.session.commit()
+        return user
+
+
 async def _issue_tokens(
     *,
     session: AsyncSession,

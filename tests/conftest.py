@@ -22,6 +22,7 @@ os.environ.setdefault("META_APP_SECRET", "test-meta-secret")
 os.environ.setdefault("META_OAUTH_REDIRECT_URI", "http://localhost:8000/api/v1/meta/oauth/callback")
 os.environ.setdefault("FIELD_ENCRYPTION_KEY", "1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0=")
 os.environ.setdefault("INTERNAL_ANTHROPIC_API_KEY", "test-anthropic-key")
+os.environ.setdefault("INTERNAL_GEMINI_API_KEY", "test-gemini-key")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 
 from main import app
@@ -32,6 +33,7 @@ from core.models.db_helper import db_helper
 from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
 from core.models.user import User
+from core.models.user_ai_provider_key import UserAIProviderKey
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -60,7 +62,7 @@ async def reset_state():
     app.dependency_overrides.clear()
 
     async with db_helper.session_factory() as session:
-        for model in (MetaAdAccount, MetaConnection, AuthSession, User):
+        for model in (UserAIProviderKey, MetaAdAccount, MetaConnection, AuthSession, User):
             await session.execute(delete(model))
         await session.commit()
 

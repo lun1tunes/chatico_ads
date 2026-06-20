@@ -7,7 +7,7 @@ from core.config import settings
 from core.container import Container
 from core.dependencies import get_current_user, get_db_session, get_di_container, get_client_ip
 from core.use_cases.auth import AuthError
-from .schemas import AuthResponse, LoginRequest, RegisterRequest, UserResponse
+from .schemas import AuthResponse, LoginRequest, RegisterRequest, UpdateLocaleRequest, UserResponse
 
 router = APIRouter()
 
@@ -115,3 +115,21 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def me(user=Depends(get_current_user)):
     return _serialize_user(user)
+
+
+@router.patch("/me/locale", response_model=UserResponse)
+async def update_locale(
+    payload: UpdateLocaleRequest,
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    container: Container = Depends(get_di_container),
+):
+    try:
+        updated_user = await container.update_user_locale_use_case(session=session).execute(
+            user_id=user.id,
+            locale=payload.locale,
+        )
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return _serialize_user(updated_user)

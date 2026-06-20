@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
+
+LocaleCode = Literal["ru", "kz", "en"]
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    locale: str = Field(default="ru", min_length=2, max_length=8)
+    locale: LocaleCode = "ru"
 
 
 class LoginRequest(BaseModel):
@@ -14,10 +18,14 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class UpdateLocaleRequest(BaseModel):
+    locale: LocaleCode
+
+
 class UserResponse(BaseModel):
     id: str
     email: EmailStr
-    locale: str
+    locale: LocaleCode
     is_active: bool
 
 

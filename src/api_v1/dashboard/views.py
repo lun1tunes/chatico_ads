@@ -15,6 +15,7 @@ router = APIRouter()
 async def get_meta_report(
     ad_account_id: str,
     days: int = Query(default=30, ge=1, le=365),
+    force_refresh: bool = Query(default=False),
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
@@ -24,6 +25,7 @@ async def get_meta_report(
             user_id=user.id,
             ad_account_id=ad_account_id,
             days=days,
+            force_refresh=force_refresh,
         )
     except MetaAdAccountNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

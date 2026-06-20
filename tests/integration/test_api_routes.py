@@ -28,6 +28,9 @@ class FakeContainer:
         self.generate_meta_report_use_case = Mock()
         self.generate_auto_verdict_use_case = Mock()
         self.list_supported_ai_providers_use_case = Mock()
+        self.list_saved_ai_provider_keys_use_case = Mock()
+        self.save_ai_provider_key_use_case = Mock()
+        self.delete_ai_provider_key_use_case = Mock()
         self.ask_dashboard_use_case = Mock()
 
 
@@ -97,13 +100,13 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
         execute=Mock(
             return_value=[
                 {
-                    "key": "anthropic",
-                    "label": "Anthropic",
-                    "default_model": "claude-sonnet-4-6",
+                    "key": "gemini",
+                    "label": "Gemini",
+                    "default_model": "gemini-3.5-flash",
                     "presets": [
                         {
-                            "value": "claude-sonnet-4-6",
-                            "label": "Server default (claude-sonnet-4-6)",
+                            "value": "gemini-3.5-flash",
+                            "label": "gemini-3.5-flash",
                             "is_default": True,
                         }
                     ],
@@ -116,6 +119,13 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
         execute=AsyncMock(side_effect=MetaAdAccountNotFoundError("Meta ad account not found")),
     )
     container.generate_auto_verdict_use_case.return_value = SimpleNamespace(execute=AsyncMock(return_value="ok"))
+    container.list_saved_ai_provider_keys_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=[{"provider": "gemini", "has_saved_key": True, "updated_at": "2026-06-18T07:20:00"}]),
+    )
+    container.save_ai_provider_key_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value={"provider": "gemini", "has_saved_key": True, "updated_at": "2026-06-18T07:21:00"}),
+    )
+    container.delete_ai_provider_key_use_case.return_value = SimpleNamespace(execute=AsyncMock(return_value=None))
     container.ask_dashboard_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(side_effect=LLMProxyError("Unsupported AI provider")),
     )
@@ -130,7 +140,21 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
 
     providers_response = await async_client.get("/api/v1/ai/providers")
     assert providers_response.status_code == 200
-    assert providers_response.json()[0]["default_model"] == "claude-sonnet-4-6"
+    assert providers_response.json()[0]["default_model"] == "gemini-3.5-flash"
+
+    provider_keys_response = await async_client.get("/api/v1/ai/provider-keys")
+    assert provider_keys_response.status_code == 200
+    assert provider_keys_response.json()[0]["provider"] == "gemini"
+
+    save_provider_key_response = await async_client.put(
+        "/api/v1/ai/provider-keys/gemini",
+        json={"api_key": "1234567890-client-key"},
+    )
+    assert save_provider_key_response.status_code == 200
+    assert save_provider_key_response.json()["provider"] == "gemini"
+
+    delete_provider_key_response = await async_client.delete("/api/v1/ai/provider-keys/gemini")
+    assert delete_provider_key_response.status_code == 204
 
     auto_verdict_response = await async_client.post(
         "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
@@ -166,12 +190,34 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
             }
         ),
     )
+    container.ask_dashboard_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value="internal-chat-ok"),
+    )
+
+    default_chat_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "kz",
+            "messages": [{"role": "user", "content": "test"}],
+        },
+    )
+    assert default_chat_response.status_code == 200
+    assert default_chat_response.json()["text"] == "internal-chat-ok"
+    default_chat_call = container.ask_dashboard_use_case.return_value.execute.await_args_list[0].kwargs
+    assert default_chat_call["use_client_credentials"] is False
+    assert default_chat_call["provider"] is None
+
+    container.ask_dashboard_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=LLMProxyError("Unsupported AI provider")),
+    )
 
     chat_response = await async_client.post(
         "/api/v1/ai/meta/ad-accounts/act_1/chat",
         json={
             "days": 30,
             "language": "kz",
+            "use_client_credentials": True,
             "provider": "unsupported",
             "api_key": "1234567890-client-key",
             "messages": [{"role": "user", "content": "test"}],
@@ -179,6 +225,58 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     )
     assert chat_response.status_code == 400
     assert chat_response.json()["detail"] == "Unsupported AI provider"
+
+    container.ask_dashboard_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=LLMProxyError("The last chat message must come from the user")),
+    )
+
+    invalid_chat_shape_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "kz",
+            "use_client_credentials": True,
+            "provider": "anthropic",
+            "api_key": "1234567890-client-key",
+            "messages": [{"role": "assistant", "content": "prefill"}],
+        },
+    )
+    assert invalid_chat_shape_response.status_code == 400
+    assert invalid_chat_shape_response.json()["detail"] == "The last chat message must come from the user"
+
+    container.ask_dashboard_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=LLMProxyError("Add an API key or save one for this provider")),
+    )
+
+    missing_provider_key_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "kz",
+            "use_client_credentials": True,
+            "provider": "gemini",
+            "messages": [{"role": "user", "content": "test"}],
+        },
+    )
+    assert missing_provider_key_response.status_code == 400
+    assert missing_provider_key_response.json()["detail"] == "Add an API key or save one for this provider"
+
+    container.ask_dashboard_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=LLMProxyError("Saved API key is unreadable, please save it again")),
+    )
+
+    unreadable_provider_key_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "kz",
+            "use_client_credentials": True,
+            "provider": "gemini",
+            "messages": [{"role": "user", "content": "test"}],
+        },
+    )
+    assert unreadable_provider_key_response.status_code == 400
+    assert unreadable_provider_key_response.json()["detail"] == "Saved API key is unreadable, please save it again"
 
 
 @pytest.mark.integration
@@ -196,3 +294,52 @@ async def test_dashboard_route_maps_meta_upstream_error(async_client):
     response = await async_client.get("/api/v1/dashboard/meta/ad-accounts/act_1/report")
     assert response.status_code == 502
     assert response.json()["detail"] == "Meta upstream failed"
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_maps_internal_ai_configuration_error(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value={
+                "account": {"name": "Main account", "account_id": "123"},
+                "periods": {
+                    "current": {"since": "2026-06-01", "until": "2026-06-30"},
+                    "previous": {"since": "2026-05-01", "until": "2026-05-31"},
+                },
+                "summary": {
+                    "primary_result_kind": "leads",
+                    "metrics": {
+                        "spend": {"current": 120.0, "previous": 100.0, "delta_pct": 20.0},
+                        "reach": {"current": 1000, "previous": 900, "delta_pct": 11.1},
+                        "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
+                        "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
+                        "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
+                        "cpm": {"current": 10.0, "previous": 9.0, "delta_pct": 11.1},
+                        "cpc": {"current": 1.0, "previous": 1.0, "delta_pct": 0.0},
+                        "results": {"current": 10, "previous": 8, "delta_pct": 25.0},
+                        "cost_per_result": {"current": 12.0, "previous": 12.5, "delta_pct": -4.0},
+                    },
+                    "active_campaigns": 1,
+                    "total_campaigns": 1,
+                },
+                "campaigns": [],
+            }
+        ),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=LLMProxyError("Internal AI summary is not configured")),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "ru"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "Короткий вывод появится после настройки серверного AI-ключа."

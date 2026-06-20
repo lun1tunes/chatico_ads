@@ -87,7 +87,9 @@ async def test_meta_graph_api_methods_share_common_get_transport():
     assert len(route.calls) == 10
     assert route.calls[0].request.url.params["code"] == "oauth-code"
     assert route.calls[6].request.url.params["level"] == "account"
+    assert "object_story_spec" in route.calls[8].request.url.params["fields"]
     assert route.calls[9].request.url.params["level"] == "ad"
+    await client.aclose()
 
 
 @pytest.mark.unit
@@ -101,3 +103,44 @@ async def test_meta_graph_api_raises_on_error():
 
     with pytest.raises(MetaGraphAPIError, match="Meta failure"):
         await client.get_me(access_token="bad-token")
+    await client.aclose()
+
+
+@pytest.mark.unit
+@pytest.mark.service
+@respx.mock
+async def test_meta_graph_api_follows_pagination_links():
+    client = MetaGraphAPIClient(graph_version="v24.0")
+    route = respx.route(
+        method="GET",
+        url__regex=re.compile(r"https://graph\.facebook\.com/v24\.0/act_1/campaigns(?:\?.*)?$"),
+    ).mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "data": [{"id": "cmp_1"}],
+                    "paging": {"next": "https://graph.facebook.com/v24.0/act_1/campaigns?after=cursor-1"},
+                },
+            ),
+            httpx.Response(200, json={"data": [{"id": "cmp_2"}]}),
+        ]
+    )
+
+    campaigns = await client.list_campaigns(account_id="act_1", access_token="token-1")
+
+    assert campaigns == [{"id": "cmp_1"}, {"id": "cmp_2"}]
+    assert len(route.calls) == 2
+    await client.aclose()
+
+
+@pytest.mark.unit
+@pytest.mark.service
+@respx.mock
+async def test_meta_graph_api_raises_on_transport_error():
+    client = MetaGraphAPIClient(graph_version="v24.0")
+    respx.get("https://graph.facebook.com/v24.0/me").mock(side_effect=httpx.ConnectTimeout("timed out"))
+
+    with pytest.raises(MetaGraphAPIError, match="Meta API request failed"):
+        await client.get_me(access_token="bad-token")
+    await client.aclose()

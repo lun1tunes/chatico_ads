@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
 
 from core.config import settings
 from core.models.base import Base
-from core.models import auth_session, meta_ad_account, meta_connection, user  # noqa: F401
+from core.models import auth_session, meta_ad_account, meta_connection, user, user_ai_provider_key  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

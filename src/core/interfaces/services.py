@@ -57,6 +57,10 @@ class IMetaGraphClient(Protocol):
     async def get_ad_insights(self, *, account_id: str, access_token: str, since: str, until: str) -> list[dict[str, Any]]: ...
 
 
+class IPublicCreativePreviewClient(Protocol):
+    async def resolve_instagram_permalink_preview(self, *, permalink_url: str) -> str | None: ...
+
+
 class ILLMClient(Protocol):
     async def generate(
         self,

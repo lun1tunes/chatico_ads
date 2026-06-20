@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from ..interfaces.services import IEncryptionService, IMetaGraphClient
+import asyncio
+from copy import deepcopy
+from time import monotonic
+from urllib.parse import parse_qs, urlsplit
+
+from ..interfaces.services import IEncryptionService, IMetaGraphClient, IPublicCreativePreviewClient
 from ..repositories.meta_ad_account import MetaAdAccountRepository
 from ..utils.reporting import build_metric, extract_primary_result, group_ads_by_campaign, to_float
 
@@ -13,12 +18,163 @@ class MetaAdAccountNotFoundError(MetaReportError):
     pass
 
 
+def _first_non_empty(*values: object) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _resolve_creative_image_url(creative: dict[str, object]) -> str | None:
+    object_story_spec = creative.get("object_story_spec")
+    story = object_story_spec if isinstance(object_story_spec, dict) else {}
+    video_data = story.get("video_data") if isinstance(story.get("video_data"), dict) else {}
+    link_data = story.get("link_data") if isinstance(story.get("link_data"), dict) else {}
+    photo_data = story.get("photo_data") if isinstance(story.get("photo_data"), dict) else {}
+    template_data = story.get("template_data") if isinstance(story.get("template_data"), dict) else {}
+
+    # Inference from Meta AdCreative docs: non-image creatives often surface a better preview through
+    # object_story_spec.* than through the generic thumbnail_url field.
+    return _first_non_empty(
+        creative.get("image_url"),
+        video_data.get("image_url"),
+        link_data.get("picture"),
+        photo_data.get("image_url"),
+        template_data.get("picture"),
+        creative.get("thumbnail_url"),
+    )
+
+
+def _looks_like_low_res_preview(url: str | None) -> bool:
+    if not url:
+        return False
+
+    stp_values = parse_qs(urlsplit(url).query).get("stp", [])
+    stp = stp_values[0] if stp_values else ""
+    low_res_tokens = ("p64x64", "p96x96", "p128x128")
+    return any(token in stp for token in low_res_tokens)
+
+
 class MetaReportService:
-    def __init__(self, *, meta_client: IMetaGraphClient, encryption_service: IEncryptionService) -> None:
+    def __init__(
+        self,
+        *,
+        meta_client: IMetaGraphClient,
+        encryption_service: IEncryptionService,
+        preview_client: IPublicCreativePreviewClient | None = None,
+        cache_ttl_seconds: int = 45,
+    ) -> None:
         self.meta_client = meta_client
         self.encryption_service = encryption_service
+        self.preview_client = preview_client
+        self.cache_ttl_seconds = max(0, int(cache_ttl_seconds))
+        self._cache: dict[str, tuple[float, dict[str, object]]] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     async def build_report(
+        self,
+        *,
+        account_repo: MetaAdAccountRepository,
+        user_id: str,
+        external_account_id: str,
+        periods: dict[str, dict[str, str]],
+        force_refresh: bool = False,
+    ) -> dict[str, object]:
+        cache_key = self._cache_key(
+            user_id=user_id,
+            external_account_id=external_account_id,
+            periods=periods,
+        )
+        lock = self._locks.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            if not force_refresh:
+                cached_report = self._get_cached_report(cache_key)
+                if cached_report is not None:
+                    return cached_report
+
+            report = await self._build_report_payload(
+                account_repo=account_repo,
+                user_id=user_id,
+                external_account_id=external_account_id,
+                periods=periods,
+            )
+            self._store_cached_report(cache_key, report)
+            return deepcopy(report)
+
+    def _cache_key(self, *, user_id: str, external_account_id: str, periods: dict[str, dict[str, str]]) -> str:
+        current = periods["current"]
+        previous = periods["previous"]
+        return ":".join(
+            [
+                user_id,
+                external_account_id,
+                current["since"],
+                current["until"],
+                previous["since"],
+                previous["until"],
+            ]
+        )
+
+    def _get_cached_report(self, cache_key: str) -> dict[str, object] | None:
+        if self.cache_ttl_seconds <= 0:
+            return None
+
+        cache_entry = self._cache.get(cache_key)
+        if cache_entry is None:
+            return None
+
+        expires_at, payload = cache_entry
+        if expires_at <= monotonic():
+            self._cache.pop(cache_key, None)
+            return None
+        return deepcopy(payload)
+
+    def _store_cached_report(self, cache_key: str, report: dict[str, object]) -> None:
+        if self.cache_ttl_seconds <= 0:
+            return
+        self._cache[cache_key] = (monotonic() + self.cache_ttl_seconds, deepcopy(report))
+
+    async def _resolve_creative_preview(self, creative: dict[str, object]) -> str | None:
+        preferred_url = _resolve_creative_image_url(creative)
+        if preferred_url and not _looks_like_low_res_preview(preferred_url):
+            return preferred_url
+
+        if self.preview_client is None:
+            return preferred_url
+
+        permalink_url = creative.get("instagram_permalink_url")
+        if isinstance(permalink_url, str) and permalink_url.strip():
+            fallback_url = await self.preview_client.resolve_instagram_permalink_preview(permalink_url=permalink_url)
+            if fallback_url:
+                return fallback_url
+
+        return preferred_url
+
+    async def _build_creative_payload(
+        self,
+        *,
+        ad: dict[str, object],
+        insight: dict[str, object],
+    ) -> dict[str, object]:
+        creative = ad.get("creative") or {}
+        ad_result_kind, ad_results = extract_primary_result(insight.get("actions"))
+        return {
+            "id": str(ad.get("id")),
+            "name": ad.get("name"),
+            "object_type": creative.get("object_type") or "ad",
+            "thumbnail_url": creative.get("thumbnail_url"),
+            "image_url": await self._resolve_creative_preview(creative),
+            "metrics": {
+                "spend": to_float(insight.get("spend")),
+                "impressions": int(to_float(insight.get("impressions"))),
+                "clicks": int(to_float(insight.get("clicks"))),
+                "ctr": to_float(insight.get("ctr")),
+                "results": ad_results,
+                "result_kind": ad_result_kind,
+            },
+        }
+
+    async def _build_report_payload(
         self,
         *,
         account_repo: MetaAdAccountRepository,
@@ -34,38 +190,49 @@ class MetaReportService:
         current = periods["current"]
         previous = periods["previous"]
 
-        account_info = await self.meta_client.get_ad_account(account_id=account.external_id, access_token=access_token)
-        campaigns = await self.meta_client.list_campaigns(account_id=account.external_id, access_token=access_token)
-        current_account_insights = await self.meta_client.get_account_insights(
-            account_id=account.external_id,
-            access_token=access_token,
-            since=current["since"],
-            until=current["until"],
-        )
-        previous_account_insights = await self.meta_client.get_account_insights(
-            account_id=account.external_id,
-            access_token=access_token,
-            since=previous["since"],
-            until=previous["until"],
-        )
-        current_campaign_insights = await self.meta_client.get_campaign_insights(
-            account_id=account.external_id,
-            access_token=access_token,
-            since=current["since"],
-            until=current["until"],
-        )
-        previous_campaign_insights = await self.meta_client.get_campaign_insights(
-            account_id=account.external_id,
-            access_token=access_token,
-            since=previous["since"],
-            until=previous["until"],
-        )
-        ads = await self.meta_client.list_ads(account_id=account.external_id, access_token=access_token)
-        ad_insights = await self.meta_client.get_ad_insights(
-            account_id=account.external_id,
-            access_token=access_token,
-            since=current["since"],
-            until=current["until"],
+        (
+            account_info,
+            campaigns,
+            current_account_insights,
+            previous_account_insights,
+            current_campaign_insights,
+            previous_campaign_insights,
+            ads,
+            ad_insights,
+        ) = await asyncio.gather(
+            self.meta_client.get_ad_account(account_id=account.external_id, access_token=access_token),
+            self.meta_client.list_campaigns(account_id=account.external_id, access_token=access_token),
+            self.meta_client.get_account_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=current["since"],
+                until=current["until"],
+            ),
+            self.meta_client.get_account_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=previous["since"],
+                until=previous["until"],
+            ),
+            self.meta_client.get_campaign_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=current["since"],
+                until=current["until"],
+            ),
+            self.meta_client.get_campaign_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=previous["since"],
+                until=previous["until"],
+            ),
+            self.meta_client.list_ads(account_id=account.external_id, access_token=access_token),
+            self.meta_client.get_ad_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=current["since"],
+                until=current["until"],
+            ),
         )
 
         current_campaign_map = {str(item.get("campaign_id")): item for item in current_campaign_insights}
@@ -134,29 +301,15 @@ class MetaReportService:
             previous_campaign_spend = to_float(previous_campaign.get("spend"))
             previous_campaign_clicks = int(to_float(previous_campaign.get("clicks")))
 
-            creatives = []
-            for ad in ads_by_campaign.get(campaign_id, []):
-                ad_id = str(ad.get("id"))
-                insight = ad_insight_map.get(ad_id, {})
-                ad_result_kind, ad_results = extract_primary_result(insight.get("actions"))
-                creative = ad.get("creative") or {}
-                creatives.append(
-                    {
-                        "id": ad_id,
-                        "name": ad.get("name"),
-                        "object_type": creative.get("object_type") or "ad",
-                        "thumbnail_url": creative.get("thumbnail_url"),
-                        "image_url": creative.get("image_url"),
-                        "metrics": {
-                            "spend": to_float(insight.get("spend")),
-                            "impressions": int(to_float(insight.get("impressions"))),
-                            "clicks": int(to_float(insight.get("clicks"))),
-                            "ctr": to_float(insight.get("ctr")),
-                            "results": ad_results,
-                            "result_kind": ad_result_kind,
-                        },
-                    }
+            creatives = await asyncio.gather(
+                *(
+                    self._build_creative_payload(
+                        ad=ad,
+                        insight=ad_insight_map.get(str(ad.get("id")), {}),
+                    )
+                    for ad in ads_by_campaign.get(campaign_id, [])
                 )
+            )
 
             creatives.sort(key=lambda item: float(item["metrics"]["spend"]), reverse=True)
             campaign_payload.append(

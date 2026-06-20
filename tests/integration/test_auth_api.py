@@ -48,6 +48,43 @@ async def test_register_refresh_me_and_logout_flow(async_client):
 
 @pytest.mark.integration
 @pytest.mark.api
+async def test_user_locale_can_be_updated_and_is_returned_by_me_and_refresh(async_client):
+    register_response = await async_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "locale-owner@example.com",
+            "password": "StrongPass123",
+            "locale": "ru",
+        },
+    )
+
+    assert register_response.status_code == 201
+    register_payload = register_response.json()
+    access_token = register_payload["access_token"]
+
+    update_response = await async_client.patch(
+        "/api/v1/auth/me/locale",
+        headers=_auth_header(access_token),
+        json={"locale": "kz"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["locale"] == "kz"
+
+    me_response = await async_client.get(
+        "/api/v1/auth/me",
+        headers=_auth_header(access_token),
+    )
+    assert me_response.status_code == 200
+    assert me_response.json()["locale"] == "kz"
+
+    refresh_response = await async_client.post("/api/v1/auth/refresh")
+    assert refresh_response.status_code == 200
+    refreshed_payload = refresh_response.json()
+    assert refreshed_payload["user"]["locale"] == "kz"
+
+
+@pytest.mark.integration
+@pytest.mark.api
 async def test_register_duplicate_and_invalid_login(async_client):
     payload = {
         "email": "duplicate@example.com",

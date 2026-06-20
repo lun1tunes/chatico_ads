@@ -12,15 +12,15 @@
 #   }
 #
 # Required app settings before deploy:
-#   FRONTEND_URL=https://lunitunes.com/chatico_ads
+#   FRONTEND_URL=https://lunitunestmb.com/chatico_ads
 #   VITE_APP_BASE_PATH=/chatico_ads/
 #   VITE_API_BASE_URL=/chatico_ads/api/v1
-#   META_OAUTH_REDIRECT_URI=https://lunitunes.com/chatico_ads/api/v1/meta/oauth/callback
-#   CORS_ALLOWED_ORIGINS=https://lunitunes.com
+#   META_OAUTH_REDIRECT_URI=https://lunitunestmb.com/chatico_ads/api/v1/meta/oauth/callback
+#   CORS_ALLOWED_ORIGINS=https://lunitunestmb.com
 #
 # If the live Nginx config still uses `server_name lunitunestmb.com`,
-# update the domain and certificate paths separately when switching to
-# `lunitunes.com`.
+# update the domain and certificate paths separately when switching away
+# from `lunitunestmb.com`.
 
 # Canonical trailing slash for the app root.
 location = /chatico_ads {

@@ -17,6 +17,21 @@ def _default_meta_oauth_scopes() -> list[str]:
     return ["ads_read"]
 
 
+def _normalize_optional_secret(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _looks_like_placeholder_secret(value: str | None) -> bool:
+    normalized = _normalize_optional_secret(value)
+    if normalized is None:
+        return True
+    lowered = normalized.lower()
+    return lowered.startswith("replace_with_") or lowered in {"changeme", "todo", "set_me"}
+
+
 class AuthSettings(BaseModel):
     secret_key: str
     algorithm: str = "HS256"
@@ -70,19 +85,84 @@ class MetaSettings(BaseModel):
 
 
 class LLMSettings(BaseModel):
-    anthropic_api_key: str
+    internal_anthropic_api_key: str | None = None
+    internal_gemini_api_key: str | None = None
+    internal_ai_provider: str | None = None
     anthropic_model: str = "claude-sonnet-4-6"
     anthropic_version: str = "2023-06-01"
     openai_default_model: str = "gpt-5-mini"
     gemini_default_model: str = "gemini-3.5-flash"
+    gemini_fallback_model: str = "gemini-3.1-flash-lite"
     max_tokens: int = 1200
+
+    @field_validator("internal_anthropic_api_key", "internal_gemini_api_key", mode="before")
+    @classmethod
+    def normalize_optional_keys(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        return _normalize_optional_secret(str(value))
+
+    @field_validator("internal_ai_provider", mode="before")
+    @classmethod
+    def normalize_internal_provider(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_values(self) -> Self:
-        if not self.anthropic_api_key.strip():
-            raise ValueError("INTERNAL_ANTHROPIC_API_KEY must be set")
+        if self.internal_ai_provider and self.internal_ai_provider not in {"anthropic", "gemini"}:
+            raise ValueError("INTERNAL_AI_PROVIDER must be either 'anthropic' or 'gemini'")
+        if not self.internal_anthropic_api_key and not self.internal_gemini_api_key:
+            raise ValueError("Set INTERNAL_GEMINI_API_KEY or INTERNAL_ANTHROPIC_API_KEY")
         self.max_tokens = max(256, int(self.max_tokens))
         return self
+
+    def _usable_internal_api_key_for_provider(self, provider: str) -> str | None:
+        if provider == "gemini":
+            return None if _looks_like_placeholder_secret(self.internal_gemini_api_key) else self.internal_gemini_api_key
+        if provider == "anthropic":
+            return None if _looks_like_placeholder_secret(self.internal_anthropic_api_key) else self.internal_anthropic_api_key
+        return None
+
+    def _available_internal_providers(self) -> list[str]:
+        providers: list[str] = []
+        for provider in ("gemini", "anthropic"):
+            if self._usable_internal_api_key_for_provider(provider):
+                providers.append(provider)
+        return providers
+
+    @property
+    def resolved_internal_provider(self) -> str:
+        if self.internal_ai_provider and self._usable_internal_api_key_for_provider(self.internal_ai_provider):
+            return self.internal_ai_provider
+        available_providers = self._available_internal_providers()
+        if available_providers:
+            return available_providers[0]
+        return self.internal_ai_provider or "gemini"
+
+    def resolve_internal_api_key(self) -> str:
+        return self._usable_internal_api_key_for_provider(self.resolved_internal_provider) or ""
+
+    def resolve_internal_model(self) -> str:
+        if self.resolved_internal_provider == "gemini":
+            return self.gemini_default_model
+        return self.anthropic_model
+
+    @property
+    def resolved_internal_chat_provider(self) -> str:
+        if self._usable_internal_api_key_for_provider("gemini"):
+            return "gemini"
+        return self.resolved_internal_provider
+
+    def resolve_internal_chat_api_key(self) -> str:
+        return self._usable_internal_api_key_for_provider(self.resolved_internal_chat_provider) or ""
+
+    def resolve_internal_chat_model(self) -> str:
+        if self.resolved_internal_chat_provider == "gemini":
+            return self.gemini_default_model
+        return self.resolve_internal_model()
 
 
 class AppSettings(BaseSettings):
@@ -100,6 +180,7 @@ class AppSettings(BaseSettings):
     debug: bool = False
     database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/chatico_ads"
     frontend_url: str = "http://localhost:4173"
+    meta_report_cache_ttl_seconds: int = 45
     jwt_secret_key: str = Field(validation_alias="JWT_SECRET_KEY")
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
@@ -114,11 +195,14 @@ class AppSettings(BaseSettings):
     meta_oauth_scopes: Annotated[list[str], NoDecode] = Field(default_factory=_default_meta_oauth_scopes)
     meta_oauth_config_id: str | None = None
     meta_exchange_long_lived_token: bool = True
-    internal_anthropic_api_key: str = Field(validation_alias="INTERNAL_ANTHROPIC_API_KEY")
+    internal_anthropic_api_key: str | None = Field(default=None, validation_alias="INTERNAL_ANTHROPIC_API_KEY")
+    internal_gemini_api_key: str | None = Field(default=None, validation_alias="INTERNAL_GEMINI_API_KEY")
+    internal_ai_provider: str | None = Field(default=None, validation_alias="INTERNAL_AI_PROVIDER")
     internal_anthropic_model: str = "claude-sonnet-4-6"
     anthropic_version: str = "2023-06-01"
     openai_default_model: str = "gpt-5-mini"
     gemini_default_model: str = "gemini-3.5-flash"
+    gemini_fallback_model: str = "gemini-3.1-flash-lite"
     llm_max_tokens: int = 1200
     cors_allowed_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:4173", "http://localhost:5173"],
@@ -145,6 +229,7 @@ class AppSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_values(self) -> Self:
+        self.meta_report_cache_ttl_seconds = max(0, int(self.meta_report_cache_ttl_seconds))
         if not self.field_encryption_key.strip():
             raise ValueError("FIELD_ENCRYPTION_KEY must be set")
         if not self.jwt_secret_key.strip():
@@ -155,8 +240,10 @@ class AppSettings(BaseSettings):
             raise ValueError("META_APP_SECRET must be set")
         if not self.meta_oauth_redirect_uri.strip():
             raise ValueError("META_OAUTH_REDIRECT_URI must be set")
-        if not self.internal_anthropic_api_key.strip():
-            raise ValueError("INTERNAL_ANTHROPIC_API_KEY must be set")
+        self.internal_anthropic_api_key = _normalize_optional_secret(self.internal_anthropic_api_key)
+        self.internal_gemini_api_key = _normalize_optional_secret(self.internal_gemini_api_key)
+        if not self.internal_anthropic_api_key and not self.internal_gemini_api_key:
+            raise ValueError("Set INTERNAL_GEMINI_API_KEY or INTERNAL_ANTHROPIC_API_KEY")
         return self
 
     @cached_property
@@ -186,11 +273,14 @@ class AppSettings(BaseSettings):
     @cached_property
     def llm(self) -> LLMSettings:
         return LLMSettings(
-            anthropic_api_key=self.internal_anthropic_api_key,
+            internal_anthropic_api_key=self.internal_anthropic_api_key,
+            internal_gemini_api_key=self.internal_gemini_api_key,
+            internal_ai_provider=self.internal_ai_provider,
             anthropic_model=self.internal_anthropic_model,
             anthropic_version=self.anthropic_version,
             openai_default_model=self.openai_default_model,
             gemini_default_model=self.gemini_default_model,
+            gemini_fallback_model=self.gemini_fallback_model,
             max_tokens=self.llm_max_tokens,
         )
 

@@ -25,7 +25,9 @@ class RegisterUserUseCase:
         self.user_repo = UserRepository(session)
         self.auth_session_repo = AuthSessionRepository(session)
 
-    async def execute(self, *, email: str, password: str, locale: str, user_agent: str | None, ip_address: str | None) -> dict[str, object]:
+    async def execute(
+        self, *, email: str, password: str, locale: str, user_agent: str | None, ip_address: str | None
+    ) -> dict[str, object]:
         normalized_email = email.lower().strip()
         if await self.user_repo.get_by_email(normalized_email):
             raise AuthError("A user with this email already exists")
@@ -57,7 +59,9 @@ class LoginUserUseCase:
         self.user_repo = UserRepository(session)
         self.auth_session_repo = AuthSessionRepository(session)
 
-    async def execute(self, *, email: str, password: str, user_agent: str | None, ip_address: str | None) -> dict[str, object]:
+    async def execute(
+        self, *, email: str, password: str, user_agent: str | None, ip_address: str | None
+    ) -> dict[str, object]:
         normalized_email = email.lower().strip()
         user = await self.user_repo.get_by_email(normalized_email)
         if user is None or not self.password_service.verify_password(password, user.password_hash):

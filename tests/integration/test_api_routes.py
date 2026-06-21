@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from core.dependencies import get_current_user, get_db_session, get_di_container
+from core.infrastructure.google_ads_api import GoogleAdsConfigurationError
 from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
@@ -25,6 +26,9 @@ class FakeContainer:
         self.build_meta_oauth_url_use_case = Mock()
         self.handle_meta_oauth_callback_use_case = Mock()
         self.list_meta_ad_accounts_use_case = Mock()
+        self.build_google_ads_oauth_url_use_case = Mock()
+        self.handle_google_ads_oauth_callback_use_case = Mock()
+        self.list_google_ads_customers_use_case = Mock()
         self.generate_meta_report_use_case = Mock()
         self.generate_auto_verdict_use_case = Mock()
         self.list_supported_ai_providers_use_case = Mock()
@@ -94,6 +98,121 @@ async def test_meta_routes(async_client):
 
 @pytest.mark.integration
 @pytest.mark.api
+async def test_google_ads_routes(async_client):
+    container = FakeContainer()
+    container.build_google_ads_oauth_url_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value={"authorization_url": "https://accounts.google.test/o/oauth2/v2/auth"}),
+    )
+    container.handle_google_ads_oauth_callback_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value={"user_id": "user-1", "connection_id": "google-conn-1", "customer_count": 2}),
+    )
+    container.list_google_ads_customers_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    id="google-customer-1",
+                    external_customer_id="1234567890",
+                    resource_name="customers/1234567890",
+                    descriptive_name="Primary MCC",
+                    currency_code="USD",
+                    time_zone="Europe/Paris",
+                    is_manager=True,
+                    is_directly_accessible=True,
+                    hierarchy_level=0,
+                    root_customer_id="1234567890",
+                    manager_customer_id=None,
+                    login_customer_id=None,
+                )
+            ]
+        ),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    start_response = await async_client.get("/api/v1/google-ads/oauth/start")
+    assert start_response.status_code == 200
+    assert start_response.json()["authorization_url"] == "https://accounts.google.test/o/oauth2/v2/auth"
+
+    callback_response = await async_client.get(
+        "/api/v1/google-ads/oauth/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+    )
+    assert callback_response.status_code == 307
+    assert callback_response.headers["location"].endswith("/connections?provider=google_ads&status=success")
+
+    customers_response = await async_client.get("/api/v1/google-ads/customers")
+    assert customers_response.status_code == 200
+    assert customers_response.json()[0]["external_customer_id"] == "1234567890"
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_google_ads_oauth_routes_handle_configuration_and_callback_errors(async_client):
+    container = FakeContainer()
+    container.build_google_ads_oauth_url_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=GoogleAdsConfigurationError("Google Ads OAuth is not configured")),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    start_response = await async_client.get("/api/v1/google-ads/oauth/start")
+    assert start_response.status_code == 503
+    assert start_response.json()["detail"] == "Google Ads OAuth is not configured"
+
+    denied_response = await async_client.get(
+        "/api/v1/google-ads/oauth/callback?error=access_denied&error_description=User%20denied%20access",
+        follow_redirects=False,
+    )
+    assert denied_response.status_code == 307
+    assert "provider=google_ads" in denied_response.headers["location"]
+    assert "status=error" in denied_response.headers["location"]
+    assert "User+denied+access" in denied_response.headers["location"]
+
+    missing_params_response = await async_client.get(
+        "/api/v1/google-ads/oauth/callback",
+        follow_redirects=False,
+    )
+    assert missing_params_response.status_code == 307
+    assert "Missing+Google+OAuth+callback+parameters" in missing_params_response.headers["location"]
+
+    container.handle_google_ads_oauth_callback_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=RuntimeError("low-level boom")),
+    )
+
+    callback_error_response = await async_client.get(
+        "/api/v1/google-ads/oauth/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+    )
+    assert callback_error_response.status_code == 307
+    assert "provider=google_ads" in callback_error_response.headers["location"]
+    assert "Google+Ads+connection+failed.+Please+try+again." in callback_error_response.headers["location"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_meta_oauth_callback_handles_denied_access(async_client):
+    container = FakeContainer()
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    denied_response = await async_client.get(
+        "/api/v1/meta/oauth/callback?error=access_denied&error_description=User%20denied%20access",
+        follow_redirects=False,
+    )
+    assert denied_response.status_code == 307
+    assert "provider=meta" in denied_response.headers["location"]
+    assert "status=error" in denied_response.headers["location"]
+    assert "User+denied+access" in denied_response.headers["location"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
 async def test_dashboard_and_ai_routes_map_errors(async_client):
     container = FakeContainer()
     container.list_supported_ai_providers_use_case.return_value = SimpleNamespace(
@@ -120,10 +239,14 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     )
     container.generate_auto_verdict_use_case.return_value = SimpleNamespace(execute=AsyncMock(return_value="ok"))
     container.list_saved_ai_provider_keys_use_case.return_value = SimpleNamespace(
-        execute=AsyncMock(return_value=[{"provider": "gemini", "has_saved_key": True, "updated_at": "2026-06-18T07:20:00"}]),
+        execute=AsyncMock(
+            return_value=[{"provider": "gemini", "has_saved_key": True, "updated_at": "2026-06-18T07:20:00"}]
+        ),
     )
     container.save_ai_provider_key_use_case.return_value = SimpleNamespace(
-        execute=AsyncMock(return_value={"provider": "gemini", "has_saved_key": True, "updated_at": "2026-06-18T07:21:00"}),
+        execute=AsyncMock(
+            return_value={"provider": "gemini", "has_saved_key": True, "updated_at": "2026-06-18T07:21:00"}
+        ),
     )
     container.delete_ai_provider_key_use_case.return_value = SimpleNamespace(execute=AsyncMock(return_value=None))
     container.ask_dashboard_use_case.return_value = SimpleNamespace(

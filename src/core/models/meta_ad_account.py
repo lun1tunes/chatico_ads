@@ -26,3 +26,4 @@ class MetaAdAccount(Base, StringIdMixin, TimestampMixin):
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     connection = relationship("MetaConnection", back_populates="ad_accounts")
+    report_snapshots = relationship("MetaReportSnapshot", back_populates="ad_account", cascade="all, delete-orphan")

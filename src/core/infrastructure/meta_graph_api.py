@@ -146,7 +146,9 @@ class MetaGraphAPIClient:
             params={"fields": "id,name,status,effective_status", "limit": 500, "access_token": access_token},
         )
 
-    async def get_account_insights(self, *, account_id: str, access_token: str, since: str, until: str) -> dict[str, object] | None:
+    async def get_account_insights(
+        self, *, account_id: str, access_token: str, since: str, until: str
+    ) -> dict[str, object] | None:
         data = await self._get(
             f"{account_id}/insights",
             params={
@@ -192,7 +194,9 @@ class MetaGraphAPIClient:
             },
         )
 
-    async def get_ad_insights(self, *, account_id: str, access_token: str, since: str, until: str) -> list[dict[str, object]]:
+    async def get_ad_insights(
+        self, *, account_id: str, access_token: str, since: str, until: str
+    ) -> list[dict[str, object]]:
         return await self._get_paginated(
             f"{account_id}/insights",
             params={

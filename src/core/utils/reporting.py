@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-
 RESULT_PRIORITY = (
     "onsite_conversion.messaging_conversation_started_7d",
     "lead",

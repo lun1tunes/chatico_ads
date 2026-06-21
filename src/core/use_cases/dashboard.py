@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..infrastructure.llm_clients import LLMProxyError
 from ..repositories.meta_ad_account import MetaAdAccountRepository
+from ..repositories.meta_report_snapshot import MetaReportSnapshotRepository
 from ..repositories.user_ai_provider_key import UserAIProviderKeyRepository
 from ..models.user_ai_provider_key import UserAIProviderKey
 from ..services.meta_report_service import MetaReportService
@@ -14,9 +15,11 @@ from ..utils.time import utcnow
 
 class GenerateMetaReportUseCase:
     def __init__(self, *, session: AsyncSession, date_range_service, report_service: MetaReportService) -> None:
+        self.session = session
         self.date_range_service = date_range_service
         self.report_service = report_service
         self.account_repo = MetaAdAccountRepository(session)
+        self.snapshot_repo = MetaReportSnapshotRepository(session)
 
     async def execute(
         self,
@@ -27,13 +30,17 @@ class GenerateMetaReportUseCase:
         force_refresh: bool = False,
     ) -> dict[str, object]:
         periods = self.date_range_service.build_periods(days=days)
-        return await self.report_service.build_report(
+        report = await self.report_service.build_report(
             account_repo=self.account_repo,
+            snapshot_repo=self.snapshot_repo,
             user_id=user_id,
             external_account_id=ad_account_id,
+            requested_days=days,
             periods=periods,
             force_refresh=force_refresh,
         )
+        await self.session.commit()
+        return report
 
 
 class GenerateAutoVerdictUseCase:

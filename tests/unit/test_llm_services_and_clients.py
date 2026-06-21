@@ -75,7 +75,7 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
                     "value": "gemini-3.1-flash-lite",
                     "label": "gemini-3.1-flash-lite",
                     "is_default": False,
-                }
+                },
             ],
             "supports_custom_model": True,
         },
@@ -249,15 +249,7 @@ async def test_gemini_client_payload_shape():
     route = respx.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent").mock(
         return_value=httpx.Response(
             200,
-            json={
-                "candidates": [
-                    {
-                        "content": {
-                            "parts": [{"text": "gemini ok"}]
-                        }
-                    }
-                ]
-            },
+            json={"candidates": [{"content": {"parts": [{"text": "gemini ok"}]}}]},
         )
     )
 
@@ -285,7 +277,9 @@ async def test_gemini_client_retries_and_falls_back_to_flash_lite(monkeypatch):
 
     monkeypatch.setattr("core.infrastructure.llm_clients.asyncio.sleep", _noop_sleep)
 
-    primary_route = respx.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent").mock(
+    primary_route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent"
+    ).mock(
         side_effect=[
             httpx.Response(503, json={"error": {"message": "This model is currently experiencing high demand."}}),
             httpx.Response(503, json={"error": {"message": "This model is currently experiencing high demand."}}),

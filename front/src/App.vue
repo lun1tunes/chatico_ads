@@ -5,6 +5,7 @@ type Locale = 'ru' | 'kz' | 'en'
 type AuthMode = 'login' | 'register'
 type AIProvider = 'anthropic' | 'openai' | 'gemini'
 type AppView = 'app' | 'privacy' | 'dataDeletion'
+type OAuthProvider = 'meta' | 'google_ads'
 type MetricKey =
   | 'spend'
   | 'reach'
@@ -37,6 +38,21 @@ interface MetaAccount {
   currency: string | null
   timezone_name: string | null
   account_status: number | null
+}
+
+interface GoogleAdsCustomer {
+  id: string
+  external_customer_id: string
+  resource_name: string
+  descriptive_name: string
+  currency_code: string | null
+  time_zone: string | null
+  is_manager: boolean
+  is_directly_accessible: boolean
+  hierarchy_level: number
+  root_customer_id: string | null
+  manager_customer_id: string | null
+  login_customer_id: string | null
 }
 
 interface MetricValue {
@@ -125,6 +141,12 @@ interface PrivacySection {
   bullets?: readonly string[]
 }
 
+interface OAuthStatus {
+  provider: OAuthProvider
+  status: 'success' | 'error'
+  message: string
+}
+
 function normalizeBasePath(value?: string): string {
   if (!value || value.trim() === '' || value.trim() === '/') {
     return '/'
@@ -146,7 +168,9 @@ const LEGACY_STORAGE_LOCALE_KEY = 'chatico.locale'
 const STORAGE_LOCALE_OVERRIDE_KEY = 'chatico.locale_override'
 const DEFAULT_LOCALE: Locale = 'ru'
 const CUSTOM_MODEL_OPTION = '__custom__'
-const PRIVACY_CONTACT_EMAIL = 'support@lunitunestmb.com'
+const PRIVACY_CONTACT_EMAIL = 'support@chatico.cc'
+const PRIVACY_SERVICE_OPERATOR = 'Chatico Ads'
+const PRIVACY_SERVICE_URL = 'https://ads.chatico.cc'
 const metricOrder: MetricKey[] = [
   'spend',
   'reach',
@@ -189,65 +213,70 @@ const privacyContent = {
     dataDeletionLabel: 'Удаление данных',
     privacyTitle: 'Как Chatico Ads обрабатывает данные Meta и данные пользователя',
     privacyLead:
-      'Эта страница описывает, какие данные сервис получает, зачем они нужны, как они защищаются и как пользователь может запросить удаление данных. Документ подготовлен для публичного использования и подходит для размещения в Meta App Review.',
+      `Эта политика описывает, какие данные собирает сервис, зачем они используются, кому могут передаваться и как запросить удаление. Официальный адрес сервиса: ${PRIVACY_SERVICE_URL}. Документ предназначен для публичного доступа и соответствует требованиям Meta App Review.`,
     privacyUpdatedLabel: 'Обновлено',
-    privacyUpdatedOn: '18 июня 2026',
+    privacyUpdatedOn: '20 июня 2026',
     privacyMetaScopeLabel: 'Разрешение Meta',
     privacySections: [
       {
         id: 'overview',
         title: '1. Что делает сервис',
         paragraphs: [
-          'Chatico Ads помогает владельцу бизнеса подключить рекламный кабинет Meta и видеть рекламную статистику в одном интерфейсе.',
-          'Сервис не публикует контент, не отправляет сообщения от имени пользователя и не изменяет рекламные кампании без отдельного разрешения.',
+          `${PRIVACY_SERVICE_OPERATOR} помогает владельцу бизнеса подключить рекламный кабинет Meta и просматривать рекламную статистику в одном интерфейсе.`,
+          'Сервис работает в режиме только чтения: не публикует контент, не отправляет сообщения от имени пользователя и не изменяет рекламные кампании.',
+          `Оператор сервиса: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}). Контакт по вопросам данных: ${PRIVACY_CONTACT_EMAIL}.`,
         ],
       },
       {
         id: 'data-collected',
         title: '2. Какие данные мы получаем',
         bullets: [
-          'данные пользователя сервиса: email, язык интерфейса и токены сессии',
-          'данные Meta, доступные по разрешению ads_read: рекламные аккаунты, кампании, метрики, сведения о креативах и превью медиа',
-          'если пользователь запускает AI-чат, его вопрос, выбранный AI-провайдер и ответ модели',
+          'данные аккаунта сервиса: email, язык интерфейса, данные для входа и токены сессии',
+          'Meta Platform Data по разрешению ads_read: Meta user ID и имя профиля, рекламные аккаунты (ID, название, валюта, часовой пояс, статус), кампании, объявления, креативы, превью медиа и метрики эффективности (spend, impressions, clicks, reach и др.)',
+          'кешированные снимки отчётов, сформированные из Meta-данных, хранятся на сервере до истечения срока или удаления',
+          'технические данные: IP-адрес, сведения о браузере и запросе, серверные логи — для безопасности, диагностики и предотвращения злоупотреблений',
+          'по явному выбору пользователя для AI-функций: текст вопроса, выбранный AI-провайдер, ответ модели; при сохранении — API-ключ провайдера в зашифрованном виде',
         ],
       },
       {
         id: 'data-use',
         title: '3. Зачем мы используем данные',
         bullets: [
-          'для аутентификации и изоляции данных по пользователям',
-          'для загрузки, кеширования и отображения статистики Meta',
-          'для формирования AI-сводки и AI-ответов по явному запросу пользователя',
-          'для мониторинга ошибок, безопасности и предотвращения злоупотреблений',
+          'для регистрации, входа и изоляции данных между пользователями',
+          'для подключения Meta, загрузки, кеширования и отображения рекламной статистики',
+          'для формирования AI-сводки и AI-ответов только по явному запросу пользователя',
+          'для обеспечения безопасности, мониторинга ошибок и стабильной работы сервиса',
         ],
       },
       {
         id: 'meta-permissions',
         title: '4. Какие Meta permissions использует приложение',
         paragraphs: [
-          'Приложение использует только разрешение ads_read.',
-          'Это разрешение нужно исключительно для чтения рекламных данных. Приложение не запрашивает права на публикацию, редактирование рекламы или управление страницами.',
+          'Приложение запрашивает только разрешение ads_read.',
+          'Оно используется исключительно для чтения рекламных данных и построения отчётов. Приложение не запрашивает ads_management, business_management, права на публикацию, редактирование рекламы или управление страницами.',
         ],
       },
       {
         id: 'storage-security',
         title: '5. Хранение, передача и защита данных',
         bullets: [
-          'Meta access tokens хранятся на сервере в зашифрованном виде',
-          'данные не продаются и не передаются третьим лицам для маркетинга',
-          'AI-провайдер получает только тот контекст и вопрос, которые нужны для ответа на запрос пользователя',
-          'данные хранятся только столько, сколько это нужно для работы сервиса, соблюдения закона или до запроса на удаление',
+          'Meta access tokens и пользовательские API-ключи AI-провайдеров хранятся на сервере в зашифрованном виде',
+          'данные не продаются и не передаются третьим лицам для их собственного маркетинга или рекламы',
+          'для AI-функций мы можем передавать выбранному процессору (например, Google Gemini или Anthropic) только вопрос пользователя и агрегированный контекст отчёта; Meta access tokens и полные сырые выгрузки Meta не передаются',
+          'отчёты кешируются кратковременно в памяти и могут сохраняться как снимки в базе данных до истечения срока хранения или удаления по запросу',
+          'данные хранятся только столько, сколько нужно для работы сервиса, соблюдения закона, срока действия токенов или снимков, либо до выполнения запроса на удаление',
         ],
       },
       {
         id: 'data-deletion',
         title: '6. Как запросить удаление данных',
         paragraphs: [
-          `Чтобы запросить удаление данных, напишите на ${PRIVACY_CONTACT_EMAIL} с темой "Data deletion request" и укажите email аккаунта, связанный с сервисом. Если известен Meta ad account ID, его тоже лучше приложить.`,
+          'Вы можете прекратить доступ приложения к Meta в настройках Facebook: Settings & Privacy → Settings → Apps and Websites → выберите приложение → Remove.',
+          `Чтобы удалить данные, сохранённые в ${PRIVACY_SERVICE_OPERATOR}, напишите на ${PRIVACY_CONTACT_EMAIL} с темой "Data deletion request". Укажите email аккаунта сервиса; если известен Meta ad account ID — приложите его.`,
         ],
         bullets: [
           'мы подтвердим получение запроса',
-          'удалим связанные токены, подключения и сохранённые данные, если закон не требует их временно сохранить',
+          'удалим аккаунт сервиса, токены, Meta-подключения, записи рекламных аккаунтов, снимки отчётов и сохранённые AI-ключи, если закон не требует временно сохранить часть данных',
           'сообщим, когда удаление завершено',
         ],
       },
@@ -256,15 +285,15 @@ const privacyContent = {
         title: '7. Права пользователя',
         bullets: [
           'запросить доступ к данным, исправление или удаление',
-          'отключить Meta connection и прекратить дальнейшую синхронизацию',
-          'не использовать AI-функции и не передавать свой API-ключ провайдера',
+          'отозвать доступ Meta через настройки Facebook или запросить удаление данных у нас',
+          'не использовать AI-функции и не сохранять свой API-ключ провайдера',
         ],
       },
       {
         id: 'contact',
         title: '8. Контакты',
         paragraphs: [
-          `По вопросам privacy, Meta data usage или удаления данных свяжитесь с нами: ${PRIVACY_CONTACT_EMAIL}.`,
+          `По вопросам конфиденциальности, использования Meta Platform Data и удаления данных: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
         ],
       },
     ],
@@ -275,65 +304,70 @@ const privacyContent = {
     dataDeletionLabel: 'Деректерді жою',
     privacyTitle: 'Chatico Ads Meta және пайдаланушы деректерін қалай өңдейді',
     privacyLead:
-      'Бұл бетте сервис қандай деректерді алатыны, олар не үшін қолданылатыны, қалай қорғалатыны және пайдаланушы деректерді жоюды қалай сұрай алатыны түсіндіріледі. Құжат Meta App Review үшін жария түрде қолдануға жарайды.',
+      `Бұл саясат сервис қандай деректерді жинайтынын, не үшін пайдаланатынын, кімге берілетінін және оларды қалай жоюға болатынын түсіндіреді. Сервистің ресми мекенжайы: ${PRIVACY_SERVICE_URL}. Құжат жария қолдануға жарайды және Meta App Review талаптарына сәйкес.`,
     privacyUpdatedLabel: 'Жаңартылды',
-    privacyUpdatedOn: '2026 жылғы 18 маусым',
+    privacyUpdatedOn: '2026 жылғы 20 маусым',
     privacyMetaScopeLabel: 'Meta рұқсаты',
     privacySections: [
       {
         id: 'overview',
         title: '1. Сервис не істейді',
         paragraphs: [
-          'Chatico Ads бизнес иесіне Meta жарнама кабинетін қосып, барлық жарнама статистикасын бір интерфейсте көруге көмектеседі.',
-          'Сервис пайдаланушы атынан контент жарияламайды, хабарлама жібермейді және жарнамалық кампанияларды жеке рұқсатсыз өзгертпейді.',
+          `${PRIVACY_SERVICE_OPERATOR} бизнес иесіне Meta жарнама кабинетін қосып, жарнама статистикасын бір интерфейсте көруге көмектеседі.`,
+          'Сервис тек оқу режимінде жұмыс істейді: пайдаланушы атынан контент жарияламайды, хабарлама жібермейді және жарнамалық кампанияларды өзгертпейді.',
+          `Сервис операторы: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}). Деректер бойынша байланыс: ${PRIVACY_CONTACT_EMAIL}.`,
         ],
       },
       {
         id: 'data-collected',
         title: '2. Қандай деректер жиналады',
         bullets: [
-          'пайдаланушы деректері: email, интерфейс тілі және сессия токендері',
-          'ads_read рұқсаты арқылы қолжетімді Meta деректері: жарнама аккаунттары, кампаниялар, метрикалар, креативтер және медиа-превью',
-          'егер пайдаланушы AI-чатты қолданса, оның сұрағы, таңдалған AI-провайдер және модель жауабы',
+          'сервис аккаунты деректері: email, интерфейс тілі, кіру деректері және сессия токендері',
+          'ads_read рұқсаты арқылы Meta Platform Data: Meta user ID және профиль аты, жарнама аккаунттары (ID, атау, валюта, уақыт белдеуі, статус), кампаниялар, жарнамалар, креативтер, медиа-превью және тиімділік метрикалары (spend, impressions, clicks, reach және т.б.)',
+          'Meta деректерінен құрылған кештеулі есеп снимоктары серверде мерзімі біткенше немесе жойылғанша сақталады',
+          'техникалық деректер: IP-мекенжай, браузер/сұрау деректері, сервер логтары — қауіпсіздік, диагностика және теріс пайдалануды болдырмау үшін',
+          'AI-функцияларды пайдаланушы таңдағанда: сұрақ мәтіні, таңдалған AI-провайдер, модель жауабы; сақталса — провайдер API-килті шифрланған түрде',
         ],
       },
       {
         id: 'data-use',
         title: '3. Деректер не үшін қолданылады',
         bullets: [
-          'пайдаланушыны аутентификациялау және деректерді оқшаулау үшін',
-          'Meta статистикасын жүктеу, кэштеу және көрсету үшін',
-          'пайдаланушы сұраған кезде AI-қорытынды мен AI-жауап беру үшін',
-          'қауіпсіздік, қателерді бақылау және теріс пайдалануды болдырмау үшін',
+          'тіркелу, кіру және пайдаланушылар арасында деректерді оқшаулау үшін',
+          'Meta қосу, жарнама статистикасын жүктеу, кэштеу және көрсету үшін',
+          'пайдаланушы нақты сұрағанда AI-қорытынды мен AI-жауап беру үшін',
+          'қауіпсіздік, қателерді бақылау және сервистің тұрақты жұмысы үшін',
         ],
       },
       {
         id: 'meta-permissions',
         title: '4. Қандай Meta permission қолданылады',
         paragraphs: [
-          'Қолданба тек ads_read рұқсатын пайдаланады.',
-          'Бұл рұқсат тек жарнама деректерін оқу үшін керек. Қолданба жариялау, жарнаманы өзгерту немесе беттерді басқару құқықтарын сұрамайды.',
+          'Қолданба тек ads_read рұқсатын сұрайды.',
+          'Ол тек жарнама деректерін оқу және есеп құру үшін қолданылады. Қолданба ads_management, business_management, жариялау, жарнаманы өзгерту немесе беттерді басқару рұқсаттарын сұрамайды.',
         ],
       },
       {
         id: 'storage-security',
         title: '5. Сақтау, беру және қорғау',
         bullets: [
-          'Meta access token-дері серверде шифрланған түрде сақталады',
-          'деректер сатылмайды және маркетинг үшін үшінші тараптарға берілмейді',
-          'AI-провайдер пайдаланушы сұрағына жауап беру үшін қажет контекст пен сұрақты ғана алады',
-          'деректер сервис жұмысына, заң талаптарына немесе жою сұрауына дейін ғана сақталады',
+          'Meta access token-дері және пайдаланушы AI API-килттері серверде шифрланған түрде сақталады',
+          'деректер сатылмайды және үшінші тараптардың өз маркетинг/жарнама мақсаттарына берілмейді',
+          'AI-функциялар үшін таңдалған процессорға (мысалы, Google Gemini немесе Anthropic) тек пайдаланушы сұрағы мен агрегатталған есеп контексті берілуі мүмкін; Meta access token-дері мен толық шикі Meta деректері берілмейді',
+          'есептер қысқа уақытқа жадта кэштеледі және дерекқорда снимок ретінде мерзімге дейін сақталуы мүмкін',
+          'деректер сервис жұмысына, заң талаптарына, токен/снимок мерзіміне немесе жою сұрауына дейін ғана сақталады',
         ],
       },
       {
         id: 'data-deletion',
         title: '6. Деректерді жоюды қалай сұрауға болады',
         paragraphs: [
-          `Деректерді жоюды сұрау үшін ${PRIVACY_CONTACT_EMAIL} адресіне "Data deletion request" тақырыбымен хат жіберіп, сервиске байланысты email-ді көрсетіңіз. Егер Meta ad account ID белгілі болса, оны да қосыңыз.`,
+          'Meta-ға қолданба доступын Facebook баптауларынан өшіруге болады: Settings & Privacy → Settings → Apps and Websites → қолданбаны таңдаңыз → Remove.',
+          `${PRIVACY_SERVICE_OPERATOR} сақтаған деректерді жою үшін ${PRIVACY_CONTACT_EMAIL} адресіне "Data deletion request" тақырыбымен хат жіберіңіз. Сервис email-ін көрсетіңіз; Meta ad account ID белгілі болса, қосыңыз.`,
         ],
         bullets: [
           'сұраудың алынғанын растаймыз',
-          'токендерді, байланыстарды және сақталған деректерді жоямыз, егер заң уақытша сақтауды талап етпесе',
+          'сервис аккаунты, токендер, Meta байланыстары, жарнама аккаунттары, есеп снимоктары және AI-килттер жойылады; заң уақытша сақтау талап етпесе',
           'жою аяқталған соң хабарлаймыз',
         ],
       },
@@ -342,15 +376,15 @@ const privacyContent = {
         title: '7. Пайдаланушы құқықтары',
         bullets: [
           'деректерге қол жеткізуді, түзетуді немесе жоюды сұрау',
-          'Meta connection-ды өшіру және әрі қарайғы синхрондауды тоқтату',
-          'AI-функцияларды қолданбау және өз AI кілтін бермеу',
+          'Facebook баптаулары арқылы Meta доступын кері алу немесе бізден деректерді жоюды сұрау',
+          'AI-функцияларды қолданбау және провайдер API-килтін сақтамау',
         ],
       },
       {
         id: 'contact',
         title: '8. Байланыс',
         paragraphs: [
-          `Құпиялылық, Meta деректері немесе жою сұрауы бойынша бізге жазыңыз: ${PRIVACY_CONTACT_EMAIL}.`,
+          `Құпиялылық, Meta Platform Data және деректерді жою бойынша: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
         ],
       },
     ],
@@ -359,84 +393,89 @@ const privacyContent = {
     privacyPolicy: 'Privacy Policy',
     backToApp: 'Back to App',
     dataDeletionLabel: 'Data Deletion',
-    privacyTitle: 'How Chatico Ads handles Meta data and user data',
+    privacyTitle: 'Privacy Policy — Chatico Ads',
     privacyLead:
-      'This page explains what data the service receives, why it is used, how it is protected, and how a user can request deletion. The document is suitable for a public Meta App Review URL.',
+      `This Privacy Policy explains what data Chatico Ads collects, why we use it, which third parties may process it, and how you can request deletion. The official production URL is ${PRIVACY_SERVICE_URL}. This document is published for public access and is intended to meet Meta App Review requirements.`,
     privacyUpdatedLabel: 'Last updated',
-    privacyUpdatedOn: 'June 18, 2026',
+    privacyUpdatedOn: 'June 20, 2026',
     privacyMetaScopeLabel: 'Meta permission',
     privacySections: [
       {
         id: 'overview',
         title: '1. What the service does',
         paragraphs: [
-          'Chatico Ads helps a business owner connect a Meta ad account and review advertising performance in one interface.',
-          'The service does not publish content, send messages on behalf of the user, or modify advertising campaigns without separate authorization.',
+          `${PRIVACY_SERVICE_OPERATOR} helps business owners connect a Meta ad account and review advertising performance in one dashboard.`,
+          'The service is read-only: it does not publish content, send messages on behalf of users, or modify advertising campaigns.',
+          `Service operator: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}). Data protection contact: ${PRIVACY_CONTACT_EMAIL}.`,
         ],
       },
       {
         id: 'data-collected',
-        title: '2. What data we receive',
+        title: '2. What data we collect',
         bullets: [
-          'service user data: email, interface language, and session tokens',
-          'Meta data available through ads_read: ad accounts, campaigns, performance metrics, creatives, and media previews',
-          'if the user runs AI chat, the user question, selected AI provider, and model response',
+          'account data you provide to Chatico Ads: email address, interface language, login credentials, and session tokens',
+          'Meta Platform Data obtained through the ads_read permission: Meta user ID and profile name, ad account metadata (ID, name, currency, timezone, status), campaigns, ads, creatives, media preview URLs, and performance metrics such as spend, impressions, clicks, and reach',
+          'cached report snapshots derived from Meta data, stored on our servers until they expire or are deleted',
+          'technical data collected automatically: IP address, browser and request metadata, and server logs for security, troubleshooting, and abuse prevention',
+          'when you choose to use AI features: your question, selected AI provider, model response, and—if you save it—your provider API key in encrypted form',
         ],
       },
       {
         id: 'data-use',
-        title: '3. Why we use the data',
+        title: '3. How and why we use data',
         bullets: [
-          'to authenticate users and isolate their data',
-          'to load, cache, and display Meta advertising statistics',
-          'to generate AI summaries and AI answers when the user explicitly requests them',
-          'to monitor errors, secure the service, and prevent abuse',
+          'to register and authenticate users and keep each customer\'s data isolated',
+          'to connect Meta accounts, fetch advertising statistics, cache reports, and display dashboards',
+          'to generate AI summaries and chat answers only when you explicitly request them',
+          'to operate the service securely, monitor errors, and prevent abuse',
         ],
       },
       {
         id: 'meta-permissions',
         title: '4. Meta permissions used by the app',
         paragraphs: [
-          'The app uses only the ads_read permission.',
-          'This permission is used strictly for reading advertising data. The app does not request publishing, ad editing, or page management permissions.',
+          'The app requests only the ads_read permission.',
+          'It is used solely to read advertising data and build reports. The app does not request ads_management, business_management, publishing, ad editing, or page management permissions.',
         ],
       },
       {
         id: 'storage-security',
         title: '5. Storage, sharing, and security',
         bullets: [
-          'Meta access tokens are stored on the server in encrypted form',
-          'data is not sold or shared with third parties for marketing purposes',
-          'an AI provider receives only the context and question required to answer a user request',
-          'data is kept only as long as needed for service operation, legal compliance, or until a deletion request is fulfilled',
+          'Meta access tokens and user-provided AI provider API keys are stored on our servers in encrypted form',
+          'we do not sell data and do not share it with third parties for their own marketing or advertising',
+          'for AI features, we may send your question and an aggregated report summary to the processor you select (for example, Google Gemini or Anthropic); we do not send Meta access tokens or full raw Meta exports',
+          'reports are cached briefly in memory and may also be stored as time-limited snapshots in our database',
+          'we retain data only as long as needed to operate the service, comply with law, honor token or snapshot expiry, or until a valid deletion request is completed',
         ],
       },
       {
         id: 'data-deletion',
-        title: '6. How to request data deletion',
+        title: '6. How to request deletion of your data',
         paragraphs: [
-          `To request deletion, email ${PRIVACY_CONTACT_EMAIL} with the subject "Data deletion request" and include the email address associated with the service. If you know the Meta ad account ID, include that as well.`,
+          'To revoke the app\'s access to Meta, go to Facebook settings: Settings & Privacy → Settings → Apps and Websites → select the app → Remove.',
+          `To delete data stored by ${PRIVACY_SERVICE_OPERATOR}, email ${PRIVACY_CONTACT_EMAIL} with the subject line "Data deletion request". Include the email address linked to your Chatico Ads account. If you know your Meta ad account ID, include it as well.`,
         ],
         bullets: [
-          'we will confirm that the request was received',
-          'we will remove related tokens, connections, and stored data unless temporary retention is legally required',
+          'we will confirm receipt of your request',
+          'we will delete your service account, tokens, Meta connections, ad account records, report snapshots, and saved AI keys unless we are legally required to retain specific data temporarily',
           'we will notify you when deletion is complete',
         ],
       },
       {
         id: 'rights',
-        title: '7. User rights',
+        title: '7. Your choices and rights',
         bullets: [
-          'request access, correction, or deletion of data',
-          'disconnect the Meta connection and stop future syncing',
-          'stop using AI features and avoid providing an AI provider key',
+          'request access to, correction of, or deletion of your data',
+          'revoke Meta access through Facebook settings or ask us to delete stored data',
+          'avoid AI features and choose not to store a provider API key',
         ],
       },
       {
         id: 'contact',
         title: '8. Contact',
         paragraphs: [
-          `For privacy, Meta data usage, or deletion questions, contact us at ${PRIVACY_CONTACT_EMAIL}.`,
+          `For privacy questions, Meta Platform Data usage, or deletion requests, contact ${PRIVACY_CONTACT_EMAIL}. Operator: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
         ],
       },
     ],
@@ -461,7 +500,14 @@ const translations = {
     authHint: 'У каждого пользователя изолированные кабинеты, refresh-сессия хранится на сервере.',
     workspace: 'Рабочая панель',
     connectMeta: 'Подключить Meta',
+    connectGoogle: 'Подключить Google Ads',
     accounts: 'Кабинеты',
+    googleAds: 'Google Ads',
+    googleAccountsEmpty: 'Google Ads пока не подключён.',
+    directAccess: 'Прямой доступ',
+    viaManager: 'Через MCC',
+    managerAccount: 'MCC',
+    clientAccount: 'Клиент',
     campaigns: 'Кампании',
     days: 'Период',
     dayOptions: { 7: '7 дней', 30: '30 дней', 90: '90 дней' },
@@ -475,8 +521,9 @@ const translations = {
     periodCompare: 'Сравнение периода',
     campaignFocus: 'Выбранная кампания',
     creativeFocus: 'Креативы',
-    aiVerdict: 'Короткий вывод',
+    aiVerdict: 'ИИ анализ',
     aiVerdictHint: 'После загрузки данных сервис показывает короткий вывод: что работает, что проседает и что стоит сделать дальше.',
+    aiVerdictInfoLabel: 'Что это',
     showVerdictDetails: 'Подробнее',
     hideVerdictDetails: 'Скрыть детали',
     aiChat: 'AI-чат по данным',
@@ -503,12 +550,14 @@ const translations = {
     send: 'Отправить',
     loading: 'Загружаем рабочую панель...',
     loadingReport: 'Собираем Meta-отчёт...',
-    loadingVerdict: 'Готовим короткий вывод...',
+    loadingVerdict: 'Готовим ИИ-анализ...',
     loadingChat: 'Готовим ответ...',
     emptyCampaigns: 'Кампании не найдены для выбранного периода.',
     emptyCreatives: 'Meta не вернула превью креативов по этой кампании.',
     oauthSuccess: 'Meta успешно подключена. Данные кабинета уже доступны.',
     oauthError: 'Подключение Meta завершилось ошибкой.',
+    googleOauthSuccess: 'Google Ads успешно подключён. Аккаунты синхронизированы.',
+    googleOauthError: 'Подключение Google Ads завершилось ошибкой.',
     chatKeyHint: 'Можно использовать ключ Anthropic, OpenAI или Gemini.',
     savedKeyHint: 'Ключ для выбранного провайдера уже сохранён на сервере и будет использоваться автоматически.',
     apiKeySavedNotice: 'Ключ сохранён и теперь будет использоваться автоматически.',
@@ -551,7 +600,14 @@ const translations = {
     authHint: 'Әр қолданушы тек өз кабинеттерін көреді, refresh-сессия серверде сақталады.',
     workspace: 'Жұмыс панелі',
     connectMeta: 'Meta қосу',
+    connectGoogle: 'Google Ads қосу',
     accounts: 'Кабинеттер',
+    googleAds: 'Google Ads',
+    googleAccountsEmpty: 'Google Ads әлі қосылмаған.',
+    directAccess: 'Тікелей қолжетім',
+    viaManager: 'MCC арқылы',
+    managerAccount: 'MCC',
+    clientAccount: 'Клиент',
     campaigns: 'Кампаниялар',
     days: 'Кезең',
     dayOptions: { 7: '7 күн', 30: '30 күн', 90: '90 күн' },
@@ -565,8 +621,9 @@ const translations = {
     periodCompare: 'Кезеңді салыстыру',
     campaignFocus: 'Таңдалған кампания',
     creativeFocus: 'Креативтер',
-    aiVerdict: 'Қысқа қорытынды',
+    aiVerdict: 'AI талдау',
     aiVerdictHint: 'Деректер жүктелгеннен кейін сервис не жұмыс істеп тұрғанын, не әлсірегенін және келесі қадамды қысқа түрде көрсетеді.',
+    aiVerdictInfoLabel: 'Бұл не',
     showVerdictDetails: 'Толығырақ',
     hideVerdictDetails: 'Жасыру',
     aiChat: 'Дерекпен AI-чат',
@@ -593,12 +650,14 @@ const translations = {
     send: 'Жіберу',
     loading: 'Жұмыс панелі жүктеліп жатыр...',
     loadingReport: 'Meta есебі жиналып жатыр...',
-    loadingVerdict: 'Қысқа қорытынды дайындалып жатыр...',
+    loadingVerdict: 'AI талдау дайындалып жатыр...',
     loadingChat: 'Жауап дайындалып жатыр...',
     emptyCampaigns: 'Таңдалған кезең бойынша кампания табылмады.',
     emptyCreatives: 'Бұл кампания үшін Meta креатив превьюін қайтармады.',
     oauthSuccess: 'Meta сәтті қосылды. Кабинет деректері дайын.',
     oauthError: 'Meta қосу кезінде қате болды.',
+    googleOauthSuccess: 'Google Ads сәтті қосылды. Аккаунттар синхрондалды.',
+    googleOauthError: 'Google Ads қосу кезінде қате болды.',
     chatKeyHint: 'Anthropic, OpenAI немесе Gemini кілтін қолдануға болады.',
     savedKeyHint: 'Таңдалған провайдер кілті серверде сақталған және автоматты түрде қолданылады.',
     apiKeySavedNotice: 'Кілт сақталды және енді автоматты түрде қолданылады.',
@@ -641,7 +700,14 @@ const translations = {
     authHint: 'Each user sees only their own ad accounts, and refresh sessions stay on the server.',
     workspace: 'Workspace',
     connectMeta: 'Connect Meta',
+    connectGoogle: 'Connect Google Ads',
     accounts: 'Accounts',
+    googleAds: 'Google Ads',
+    googleAccountsEmpty: 'Google Ads is not connected yet.',
+    directAccess: 'Direct access',
+    viaManager: 'Via MCC',
+    managerAccount: 'MCC',
+    clientAccount: 'Client',
     campaigns: 'Campaigns',
     days: 'Range',
     dayOptions: { 7: '7 days', 30: '30 days', 90: '90 days' },
@@ -655,8 +721,9 @@ const translations = {
     periodCompare: 'Period comparison',
     campaignFocus: 'Selected campaign',
     creativeFocus: 'Creatives',
-    aiVerdict: 'Quick summary',
+    aiVerdict: 'AI analysis',
     aiVerdictHint: 'After the data loads, the app shows a short summary of what is working, what is slipping, and what to do next.',
+    aiVerdictInfoLabel: 'What is this',
     showVerdictDetails: 'Show details',
     hideVerdictDetails: 'Hide details',
     aiChat: 'AI chat with data',
@@ -683,12 +750,14 @@ const translations = {
     send: 'Send',
     loading: 'Loading workspace...',
     loadingReport: 'Building Meta report...',
-    loadingVerdict: 'Preparing the quick summary...',
+    loadingVerdict: 'Preparing AI analysis...',
     loadingChat: 'Preparing the answer...',
     emptyCampaigns: 'No campaigns were returned for this period.',
     emptyCreatives: 'Meta did not return creative previews for this campaign.',
     oauthSuccess: 'Meta connected successfully. Account data is ready.',
     oauthError: 'Meta connection failed.',
+    googleOauthSuccess: 'Google Ads connected successfully. Accounts are synced.',
+    googleOauthError: 'Google Ads connection failed.',
     chatKeyHint: 'You can use an Anthropic, OpenAI, or Gemini key.',
     savedKeyHint: 'A key for the selected provider is already stored on the server and will be used automatically.',
     apiKeySavedNotice: 'The key has been saved and will now be used automatically.',
@@ -749,19 +818,22 @@ const registerLocale = ref<Locale>(locale.value)
 const accessToken = ref(localStorage.getItem(STORAGE_TOKEN_KEY) ?? '')
 const user = ref<User | null>(null)
 const currentView = ref<AppView>(resolveCurrentView(window.location.pathname))
-const oauthStatus = ref<{ status: 'success' | 'error'; message: string } | null>(null)
+const oauthStatus = ref<OAuthStatus | null>(null)
 const authForm = ref({ email: '', password: '' })
 const authError = ref('')
 const pageError = ref('')
 const authLoading = ref(false)
 const bootLoading = ref(true)
 const metaConnecting = ref(false)
+const googleConnecting = ref(false)
 const accountsLoading = ref(false)
+const googleAccountsLoading = ref(false)
 const reportLoading = ref(false)
 const verdictLoading = ref(false)
 const chatLoading = ref(false)
 const reportDays = ref(30)
 const accounts = ref<MetaAccount[]>([])
+const googleAccounts = ref<GoogleAdsCustomer[]>([])
 const selectedAccountId = ref('')
 const report = ref<DashboardReport | null>(null)
 const selectedCampaignId = ref('')
@@ -840,15 +912,12 @@ const canSendChat = computed(() => {
   }
   return canUseSavedProviderKey.value || Boolean(clientApiKey.value.trim())
 })
-const autoVerdictBlocks = computed(() => splitMarkdownBlocks(autoVerdict.value))
+const autoVerdictSections = computed(() => splitAutoVerdict(autoVerdict.value))
 const autoVerdictSummary = computed(() => {
-  return autoVerdictBlocks.value[0] ?? autoVerdict.value.trim() ?? ''
+  return autoVerdictSections.value.summary || autoVerdict.value.trim() || ''
 })
 const autoVerdictDetails = computed(() => {
-  if (autoVerdictBlocks.value.length <= 1) {
-    return ''
-  }
-  return autoVerdictBlocks.value.slice(1).join('\n\n')
+  return autoVerdictSections.value.details
 })
 const hasAutoVerdictDetails = computed(() => Boolean(autoVerdictDetails.value))
 const selectedAccount = computed(() => {
@@ -873,9 +942,11 @@ const workspaceNotice = computed(() => {
   if (!oauthStatus.value) {
     return ''
   }
+  const successMessage = oauthStatus.value.provider === 'google_ads' ? copy.value.googleOauthSuccess : copy.value.oauthSuccess
+  const errorMessage = oauthStatus.value.provider === 'google_ads' ? copy.value.googleOauthError : copy.value.oauthError
   return oauthStatus.value.status === 'success'
-    ? copy.value.oauthSuccess
-    : `${copy.value.oauthError}${oauthStatus.value.message ? `: ${oauthStatus.value.message}` : ''}`
+    ? successMessage
+    : `${errorMessage}${oauthStatus.value.message ? `: ${oauthStatus.value.message}` : ''}`
 })
 const policySections = computed<readonly PrivacySection[]>(() => copy.value.privacySections)
 
@@ -1117,6 +1188,50 @@ function splitMarkdownBlocks(value: string) {
     .filter(Boolean)
 }
 
+function splitAutoVerdict(value: string) {
+  const normalized = value.replace(/\r\n/g, '\n').trim()
+  if (!normalized) {
+    return { summary: '', details: '' }
+  }
+
+  const blocks = splitMarkdownBlocks(normalized)
+  if (blocks.length > 1) {
+    return {
+      summary: blocks[0],
+      details: blocks.slice(1).join('\n\n'),
+    }
+  }
+
+  const lines = normalized.split('\n')
+  const listLinePattern = /^([-*+]\s+|\d+\.\s+)/
+  const headingPattern = /^#{1,6}\s+/
+
+  const listStartIndex = lines.findIndex((line, index) => index > 0 && listLinePattern.test(line.trim()))
+  if (listStartIndex > 0) {
+    return {
+      summary: lines.slice(0, listStartIndex).join('\n').trim(),
+      details: lines.slice(listStartIndex).join('\n').trim(),
+    }
+  }
+
+  const headingStartIndex = lines.findIndex((line, index) => index > 0 && headingPattern.test(line.trim()))
+  if (headingStartIndex > 0) {
+    return {
+      summary: lines.slice(0, headingStartIndex).join('\n').trim(),
+      details: lines.slice(headingStartIndex).join('\n').trim(),
+    }
+  }
+
+  if (lines.length > 1 && listLinePattern.test(lines[0].trim())) {
+    return {
+      summary: lines[0].trim(),
+      details: lines.slice(1).join('\n').trim(),
+    }
+  }
+
+  return { summary: normalized, details: '' }
+}
+
 function resetAutoVerdict() {
   autoVerdict.value = ''
   autoVerdictExpanded.value = false
@@ -1247,6 +1362,7 @@ function resetSession() {
   accessToken.value = ''
   user.value = null
   accounts.value = []
+  googleAccounts.value = []
   report.value = null
   selectedAccountId.value = ''
   selectedCampaignId.value = ''
@@ -1260,6 +1376,8 @@ function resetSession() {
   providerKeyError.value = ''
   providerKeyNotice.value = ''
   reportContextKey.value = ''
+  googleConnecting.value = false
+  googleAccountsLoading.value = false
   localStorage.removeItem(STORAGE_TOKEN_KEY)
   applyLocale(resolveInitialLocale(), { persist: false })
 }
@@ -1359,8 +1477,9 @@ async function bootstrapSession() {
   const callbackUrl = new URL(window.location.href)
   const providerParam = callbackUrl.searchParams.get('provider')
   const statusParam = callbackUrl.searchParams.get('status')
-  if (providerParam === 'meta' && (statusParam === 'success' || statusParam === 'error')) {
+  if ((providerParam === 'meta' || providerParam === 'google_ads') && (statusParam === 'success' || statusParam === 'error')) {
     oauthStatus.value = {
+      provider: providerParam as OAuthProvider,
       status: statusParam,
       message: callbackUrl.searchParams.get('message') ?? '',
     }
@@ -1382,7 +1501,7 @@ async function bootstrapSession() {
       user.value = await apiRequest<User>('/auth/me')
       applyAuthenticatedLocale(user.value.locale)
     }
-    await Promise.all([loadAccounts(), loadSavedProviderKeys()])
+    await Promise.all([loadAccounts(), loadGoogleAccounts(), loadSavedProviderKeys()])
   } catch (error) {
     resetSession()
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
@@ -1446,7 +1565,7 @@ async function submitAuth() {
     persistAuth(result)
     authForm.value.password = ''
     pageError.value = ''
-    await Promise.all([loadAccounts(), loadSavedProviderKeys()])
+    await Promise.all([loadAccounts(), loadGoogleAccounts(), loadSavedProviderKeys()])
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Unexpected error'
   } finally {
@@ -1496,6 +1615,24 @@ async function loadAccounts() {
   }
 }
 
+async function loadGoogleAccounts() {
+  if (!user.value) {
+    googleAccounts.value = []
+    return
+  }
+
+  googleAccountsLoading.value = true
+
+  try {
+    const payload = await apiRequest<GoogleAdsCustomer[]>('/google-ads/customers')
+    googleAccounts.value = payload
+  } catch (error) {
+    pageError.value = error instanceof Error ? error.message : 'Unexpected error'
+  } finally {
+    googleAccountsLoading.value = false
+  }
+}
+
 async function connectMeta() {
   metaConnecting.value = true
   pageError.value = ''
@@ -1505,6 +1642,19 @@ async function connectMeta() {
     window.location.href = payload.authorization_url
   } catch (error) {
     metaConnecting.value = false
+    pageError.value = error instanceof Error ? error.message : 'Unexpected error'
+  }
+}
+
+async function connectGoogle() {
+  googleConnecting.value = true
+  pageError.value = ''
+
+  try {
+    const payload = await apiRequest<{ authorization_url: string }>('/google-ads/oauth/start')
+    window.location.href = payload.authorization_url
+  } catch (error) {
+    googleConnecting.value = false
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
   }
 }
@@ -1746,6 +1896,20 @@ function formatCompactNumber(value: number | null | undefined) {
   }).format(value)
 }
 
+function formatGoogleCustomerId(customerId: string) {
+  const normalized = customerId.replace(/\D/g, '')
+  if (normalized.length !== 10) {
+    return customerId
+  }
+  return `${normalized.slice(0, 3)}-${normalized.slice(3, 6)}-${normalized.slice(6)}`
+}
+
+function formatGoogleCustomerLabel(customer: GoogleAdsCustomer) {
+  const accountKind = customer.is_manager ? copy.value.managerAccount : copy.value.clientAccount
+  const accessKind = customer.is_directly_accessible ? copy.value.directAccess : copy.value.viaManager
+  return `${accountKind} · ${accessKind} · ${formatGoogleCustomerId(customer.external_customer_id)}`
+}
+
 function formatDelta(delta: number | null | undefined) {
   if (delta === null || delta === undefined) {
     return '—'
@@ -1962,7 +2126,7 @@ watch(currentView, (view) => {
 
     <main v-else-if="!isAuthenticated" class="auth-stage">
       <section class="auth-intro">
-        <p class="eyebrow">Meta Marketing API + AI proxy</p>
+        <p class="eyebrow">Meta + Google Ads + AI proxy</p>
         <h2>{{ copy.authTitle }}</h2>
         <p class="auth-copy">{{ copy.authBody }}</p>
 
@@ -1977,7 +2141,7 @@ watch(currentView, (view) => {
           </div>
           <div>
             <span>{{ copy.aiVerdict }}</span>
-            <strong>Claude</strong>
+            <strong>Gemini Flash</strong>
           </div>
         </div>
       </section>
@@ -2064,6 +2228,23 @@ watch(currentView, (view) => {
           </button>
         </section>
 
+        <section class="rail-section">
+          <div class="section-head">
+            <span>{{ copy.googleAds }}</span>
+            <button type="button" class="rail-link" :disabled="googleConnecting" @click="connectGoogle">
+              {{ copy.connectGoogle }}
+            </button>
+          </div>
+
+          <div v-if="googleAccountsLoading" class="empty-note">{{ copy.loading }}</div>
+          <div v-else-if="googleAccounts.length === 0" class="empty-note">{{ copy.googleAccountsEmpty }}</div>
+
+          <div v-for="customer in googleAccounts" :key="customer.id" class="account-item account-item-static">
+            <span>{{ customer.descriptive_name }}</span>
+            <small>{{ formatGoogleCustomerLabel(customer) }}</small>
+          </div>
+        </section>
+
         <section class="rail-section" v-if="accounts.length > 0">
           <div class="section-head">
             <span>{{ copy.days }}</span>
@@ -2115,9 +2296,14 @@ watch(currentView, (view) => {
           <p class="eyebrow">{{ copy.connectMeta }}</p>
           <h2>{{ copy.noAccountsTitle }}</h2>
           <p>{{ copy.noAccountsBody }}</p>
-          <button type="button" class="primary-button" :disabled="metaConnecting" @click="connectMeta">
-            {{ copy.connectMeta }}
-          </button>
+          <div class="empty-surface-actions">
+            <button type="button" class="primary-button" :disabled="metaConnecting" @click="connectMeta">
+              {{ copy.connectMeta }}
+            </button>
+            <button type="button" class="ghost-button" :disabled="googleConnecting" @click="connectGoogle">
+              {{ copy.connectGoogle }}
+            </button>
+          </div>
         </section>
 
         <template v-else>
@@ -2250,9 +2436,21 @@ watch(currentView, (view) => {
       <aside class="rail rail-right">
         <section class="ai-surface verdict-surface">
           <div class="section-head">
-            <span>{{ copy.aiVerdict }}</span>
+            <div class="verdict-title">
+              <span>{{ copy.aiVerdict }}</span>
+              <div class="info-tooltip">
+                <button
+                  type="button"
+                  class="info-tooltip-trigger"
+                  :aria-label="copy.aiVerdictInfoLabel"
+                  aria-describedby="ai-verdict-tooltip"
+                >
+                  i
+                </button>
+                <span id="ai-verdict-tooltip" class="info-tooltip-panel" role="tooltip">{{ copy.aiVerdictHint }}</span>
+              </div>
+            </div>
           </div>
-          <p class="surface-note">{{ copy.aiVerdictHint }}</p>
           <p v-if="verdictLoading" class="empty-note">{{ copy.loadingVerdict }}</p>
           <div v-else class="verdict-body">
             <div

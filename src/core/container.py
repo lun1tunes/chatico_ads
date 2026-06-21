@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dependency_injector import containers, providers
 
+from .infrastructure.google_ads_api import GoogleAdsAPIClient
 from .infrastructure.llm_clients import AnthropicClient, GeminiClient, OpenAIClient
 from .infrastructure.meta_graph_api import MetaGraphAPIClient
 from .infrastructure.public_media_preview import PublicCreativePreviewClient
@@ -10,6 +11,7 @@ from .security.encryption_service import EncryptionService
 from .security.jwt_service import JWTService
 from .security.password_service import PasswordService
 from .services.date_range_service import DateRangeService
+from .services.google_ads_state_service import GoogleAdsOAuthStateService
 from .services.llm_proxy_service import LLMProxyService
 from .services.meta_report_service import MetaReportService
 from .services.meta_state_service import MetaOAuthStateService
@@ -24,6 +26,11 @@ from .use_cases.dashboard import (
     ListSupportedAIProvidersUseCase,
     SaveAIProviderKeyUseCase,
 )
+from .use_cases.google_ads import (
+    BuildGoogleAdsOAuthUrlUseCase,
+    HandleGoogleAdsOAuthCallbackUseCase,
+    ListGoogleAdsCustomersUseCase,
+)
 from .use_cases.meta import BuildMetaOAuthUrlUseCase, HandleMetaOAuthCallbackUseCase, ListMetaAdAccountsUseCase
 
 
@@ -32,9 +39,11 @@ class Container(containers.DeclarativeContainer):
     encryption_service = providers.Singleton(EncryptionService)
     jwt_service = providers.Singleton(JWTService)
     meta_state_service = providers.Singleton(MetaOAuthStateService)
+    google_ads_state_service = providers.Singleton(GoogleAdsOAuthStateService)
     date_range_service = providers.Singleton(DateRangeService)
 
     meta_client = providers.Singleton(MetaGraphAPIClient)
+    google_ads_client = providers.Singleton(GoogleAdsAPIClient)
     creative_preview_client = providers.Singleton(PublicCreativePreviewClient)
     anthropic_client = providers.Singleton(AnthropicClient)
     openai_client = providers.Singleton(OpenAIClient)
@@ -52,6 +61,7 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
         preview_client=creative_preview_client,
         cache_ttl_seconds=settings.meta_report_cache_ttl_seconds,
+        snapshot_cache_ttl_seconds=settings.meta_report_snapshot_ttl_seconds,
     )
 
     register_user_use_case = providers.Factory(
@@ -80,6 +90,18 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
     )
     list_meta_ad_accounts_use_case = providers.Factory(ListMetaAdAccountsUseCase)
+    build_google_ads_oauth_url_use_case = providers.Factory(
+        BuildGoogleAdsOAuthUrlUseCase,
+        state_service=google_ads_state_service,
+        google_ads_client=google_ads_client,
+    )
+    handle_google_ads_oauth_callback_use_case = providers.Factory(
+        HandleGoogleAdsOAuthCallbackUseCase,
+        state_service=google_ads_state_service,
+        google_ads_client=google_ads_client,
+        encryption_service=encryption_service,
+    )
+    list_google_ads_customers_use_case = providers.Factory(ListGoogleAdsCustomersUseCase)
 
     generate_meta_report_use_case = providers.Factory(
         GenerateMetaReportUseCase,

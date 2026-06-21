@@ -132,7 +132,9 @@ async def auto_verdict(
             days=payload.days,
         )
         context = build_report_context(report)
-        text = await container.generate_auto_verdict_use_case().execute(report_context=context, language=payload.language)
+        text = await container.generate_auto_verdict_use_case().execute(
+            report_context=context, language=payload.language
+        )
         return TextResponse(text=text)
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, LLMProxyError) and str(exc) == "Internal AI summary is not configured":

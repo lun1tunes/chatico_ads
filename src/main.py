@@ -18,6 +18,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await get_container().creative_preview_client().aclose()
+        await get_container().google_ads_client().aclose()
         await get_container().meta_client().aclose()
         await db_helper.engine.dispose()
 

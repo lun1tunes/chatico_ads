@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from urllib.parse import urlparse
 from typing import Annotated, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -17,6 +18,10 @@ def _default_meta_oauth_scopes() -> list[str]:
     return ["ads_read"]
 
 
+def _default_google_oauth_scopes() -> list[str]:
+    return ["https://www.googleapis.com/auth/adwords"]
+
+
 def _normalize_optional_secret(value: str | None) -> str | None:
     if value is None:
         return None
@@ -30,6 +35,11 @@ def _looks_like_placeholder_secret(value: str | None) -> bool:
         return True
     lowered = normalized.lower()
     return lowered.startswith("replace_with_") or lowered in {"changeme", "todo", "set_me"}
+
+
+def _is_absolute_http_url(value: str) -> bool:
+    parsed = urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 class AuthSettings(BaseModel):
@@ -79,6 +89,8 @@ class MetaSettings(BaseModel):
             raise ValueError("META_APP_SECRET must be set")
         if not self.oauth_redirect_uri.strip():
             raise ValueError("META_OAUTH_REDIRECT_URI must be set")
+        if not _is_absolute_http_url(self.oauth_redirect_uri):
+            raise ValueError("META_OAUTH_REDIRECT_URI must be an absolute http(s) URL")
         if not self.graph_version.startswith("v"):
             self.graph_version = f"v{self.graph_version}"
         return self
@@ -121,9 +133,15 @@ class LLMSettings(BaseModel):
 
     def _usable_internal_api_key_for_provider(self, provider: str) -> str | None:
         if provider == "gemini":
-            return None if _looks_like_placeholder_secret(self.internal_gemini_api_key) else self.internal_gemini_api_key
+            return (
+                None if _looks_like_placeholder_secret(self.internal_gemini_api_key) else self.internal_gemini_api_key
+            )
         if provider == "anthropic":
-            return None if _looks_like_placeholder_secret(self.internal_anthropic_api_key) else self.internal_anthropic_api_key
+            return (
+                None
+                if _looks_like_placeholder_secret(self.internal_anthropic_api_key)
+                else self.internal_anthropic_api_key
+            )
         return None
 
     def _available_internal_providers(self) -> list[str]:
@@ -165,6 +183,57 @@ class LLMSettings(BaseModel):
         return self.resolve_internal_model()
 
 
+class GoogleAdsSettings(BaseModel):
+    developer_token: str | None = None
+    api_version: str = "v22"
+    oauth_client_id: str | None = None
+    oauth_client_secret: str | None = None
+    oauth_redirect_uri: str | None = None
+    oauth_scopes: list[str] = Field(default_factory=_default_google_oauth_scopes)
+    oauth_access_type: str = "offline"
+    oauth_include_granted_scopes: bool = True
+    oauth_prompt: str | None = "consent"
+
+    @field_validator(
+        "developer_token", "oauth_client_id", "oauth_client_secret", "oauth_redirect_uri", "oauth_prompt", mode="before"
+    )
+    @classmethod
+    def normalize_optional_strings(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        return _normalize_optional_secret(str(value))
+
+    @field_validator("oauth_scopes", mode="before")
+    @classmethod
+    def normalize_scopes(cls, value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return _csv(value)
+        return _default_google_oauth_scopes()
+
+    @model_validator(mode="after")
+    def validate_values(self) -> Self:
+        if not self.api_version.startswith("v"):
+            self.api_version = f"v{self.api_version}"
+        self.oauth_access_type = (self.oauth_access_type or "offline").strip().lower() or "offline"
+        if self.oauth_access_type not in {"offline", "online"}:
+            self.oauth_access_type = "offline"
+        if self.oauth_redirect_uri and not _is_absolute_http_url(self.oauth_redirect_uri):
+            raise ValueError("GOOGLE_OAUTH_REDIRECT_URI must be an absolute http(s) URL")
+        return self
+
+    @property
+    def is_configured(self) -> bool:
+        values = (
+            self.developer_token,
+            self.oauth_client_id,
+            self.oauth_client_secret,
+            self.oauth_redirect_uri,
+        )
+        return all(not _looks_like_placeholder_secret(value) for value in values)
+
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -181,6 +250,7 @@ class AppSettings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/chatico_ads"
     frontend_url: str = "http://localhost:4173"
     meta_report_cache_ttl_seconds: int = 45
+    meta_report_snapshot_ttl_seconds: int = 2_592_000
     jwt_secret_key: str = Field(validation_alias="JWT_SECRET_KEY")
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
@@ -195,6 +265,15 @@ class AppSettings(BaseSettings):
     meta_oauth_scopes: Annotated[list[str], NoDecode] = Field(default_factory=_default_meta_oauth_scopes)
     meta_oauth_config_id: str | None = None
     meta_exchange_long_lived_token: bool = True
+    google_ads_developer_token: str | None = Field(default=None, validation_alias="GOOGLE_ADS_DEVELOPER_TOKEN")
+    google_ads_api_version: str = "v22"
+    google_oauth_client_id: str | None = Field(default=None, validation_alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str | None = Field(default=None, validation_alias="GOOGLE_OAUTH_CLIENT_SECRET")
+    google_oauth_redirect_uri: str | None = Field(default=None, validation_alias="GOOGLE_OAUTH_REDIRECT_URI")
+    google_oauth_scopes: Annotated[list[str], NoDecode] = Field(default_factory=_default_google_oauth_scopes)
+    google_oauth_access_type: str = "offline"
+    google_oauth_include_granted_scopes: bool = True
+    google_oauth_prompt: str | None = "consent"
     internal_anthropic_api_key: str | None = Field(default=None, validation_alias="INTERNAL_ANTHROPIC_API_KEY")
     internal_gemini_api_key: str | None = Field(default=None, validation_alias="INTERNAL_GEMINI_API_KEY")
     internal_ai_provider: str | None = Field(default=None, validation_alias="INTERNAL_AI_PROVIDER")
@@ -227,9 +306,19 @@ class AppSettings(BaseSettings):
             return _csv(value)
         return _default_meta_oauth_scopes()
 
+    @field_validator("google_oauth_scopes", mode="before")
+    @classmethod
+    def normalize_google_scopes(cls, value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return _csv(value)
+        return _default_google_oauth_scopes()
+
     @model_validator(mode="after")
     def validate_values(self) -> Self:
         self.meta_report_cache_ttl_seconds = max(0, int(self.meta_report_cache_ttl_seconds))
+        self.meta_report_snapshot_ttl_seconds = max(0, int(self.meta_report_snapshot_ttl_seconds))
         if not self.field_encryption_key.strip():
             raise ValueError("FIELD_ENCRYPTION_KEY must be set")
         if not self.jwt_secret_key.strip():
@@ -240,6 +329,8 @@ class AppSettings(BaseSettings):
             raise ValueError("META_APP_SECRET must be set")
         if not self.meta_oauth_redirect_uri.strip():
             raise ValueError("META_OAUTH_REDIRECT_URI must be set")
+        if not _is_absolute_http_url(self.frontend_url):
+            raise ValueError("FRONTEND_URL must be an absolute http(s) URL")
         self.internal_anthropic_api_key = _normalize_optional_secret(self.internal_anthropic_api_key)
         self.internal_gemini_api_key = _normalize_optional_secret(self.internal_gemini_api_key)
         if not self.internal_anthropic_api_key and not self.internal_gemini_api_key:
@@ -268,6 +359,20 @@ class AppSettings(BaseSettings):
             oauth_scopes=self.meta_oauth_scopes,
             oauth_config_id=self.meta_oauth_config_id,
             exchange_long_lived_token=self.meta_exchange_long_lived_token,
+        )
+
+    @cached_property
+    def google_ads(self) -> GoogleAdsSettings:
+        return GoogleAdsSettings(
+            developer_token=self.google_ads_developer_token,
+            api_version=self.google_ads_api_version,
+            oauth_client_id=self.google_oauth_client_id,
+            oauth_client_secret=self.google_oauth_client_secret,
+            oauth_redirect_uri=self.google_oauth_redirect_uri,
+            oauth_scopes=self.google_oauth_scopes,
+            oauth_access_type=self.google_oauth_access_type,
+            oauth_include_granted_scopes=self.google_oauth_include_granted_scopes,
+            oauth_prompt=self.google_oauth_prompt,
         )
 
     @cached_property

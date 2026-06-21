@@ -26,7 +26,7 @@ class LLMProxyService:
                         "value": settings.llm.gemini_fallback_model,
                         "label": settings.llm.gemini_fallback_model,
                         "is_default": False,
-                    }
+                    },
                 ],
                 "supports_custom_model": True,
             },
@@ -151,11 +151,14 @@ class LLMProxyService:
         normalized = self.normalize_provider(provider)
         client = self._client_for_provider(normalized)
 
-        selected_model = model or {
-            "anthropic": settings.llm.anthropic_model,
-            "openai": settings.llm.openai_default_model,
-            "gemini": settings.llm.gemini_default_model,
-        }[normalized]
+        selected_model = (
+            model
+            or {
+                "anthropic": settings.llm.anthropic_model,
+                "openai": settings.llm.openai_default_model,
+                "gemini": settings.llm.gemini_default_model,
+            }[normalized]
+        )
         normalized_messages = self._normalize_messages(provider=normalized, messages=messages)
 
         return await client.generate(

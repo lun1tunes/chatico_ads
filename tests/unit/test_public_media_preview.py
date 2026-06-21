@@ -21,7 +21,7 @@ async def test_public_creative_preview_client_extracts_og_image_and_caches(monke
 
         def read(self) -> bytes:
             return (
-                '<html><head>'
+                "<html><head>"
                 '<meta property="og:image" content="https://cdninstagram.test/image.jpg?foo=1&amp;bar=2">'
                 "</head></html>"
             ).encode()

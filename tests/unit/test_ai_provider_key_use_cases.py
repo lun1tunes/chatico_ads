@@ -4,6 +4,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from core.infrastructure.llm_clients import LLMProxyError
+from core.models.db_helper import db_helper
 from core.models.user import User
 from core.repositories.user_ai_provider_key import UserAIProviderKeyRepository
 from core.security.encryption_service import EncryptionService
@@ -72,7 +73,9 @@ async def test_save_list_and_delete_ai_provider_key_use_cases(db_session):
         llm_proxy_service=llm_proxy_service,
     ).execute(user_id="user-1", provider="gemini")
 
-    assert await repository.get_by_user_and_provider(user_id="user-1", provider="gemini") is None
+    async with db_helper.session_factory() as verification_session:
+        fresh_repository = UserAIProviderKeyRepository(verification_session)
+        assert await fresh_repository.get_by_user_and_provider(user_id="user-1", provider="gemini") is None
 
 
 @pytest.mark.unit
@@ -130,7 +133,9 @@ async def test_ask_dashboard_use_case_uses_saved_provider_key_when_request_key_m
         messages=[{"role": "user", "content": "What changed?"}],
     )
 
-    credential = await UserAIProviderKeyRepository(db_session).get_by_user_and_provider(user_id="user-1", provider="gemini")
+    credential = await UserAIProviderKeyRepository(db_session).get_by_user_and_provider(
+        user_id="user-1", provider="gemini"
+    )
 
     assert text == "chat-ok"
     assert llm_proxy_service.calls[0]["api_key"] == "saved-gemini-key-123"

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from datetime import date, timedelta
 from time import monotonic
 from urllib.parse import parse_qs, urlsplit
 
 from ..interfaces.services import IEncryptionService, IMetaGraphClient, IPublicCreativePreviewClient
+from ..models.meta_ad_account import MetaAdAccount
 from ..repositories.meta_ad_account import MetaAdAccountRepository
+from ..repositories.meta_report_snapshot import MetaReportSnapshotRepository
+from ..utils.time import utcnow
 from ..utils.reporting import build_metric, extract_primary_result, group_ads_by_campaign, to_float
 
 
@@ -63,11 +67,13 @@ class MetaReportService:
         encryption_service: IEncryptionService,
         preview_client: IPublicCreativePreviewClient | None = None,
         cache_ttl_seconds: int = 45,
+        snapshot_cache_ttl_seconds: int = 300,
     ) -> None:
         self.meta_client = meta_client
         self.encryption_service = encryption_service
         self.preview_client = preview_client
         self.cache_ttl_seconds = max(0, int(cache_ttl_seconds))
+        self.snapshot_cache_ttl_seconds = max(0, int(snapshot_cache_ttl_seconds))
         self._cache: dict[str, tuple[float, dict[str, object]]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
@@ -75,16 +81,18 @@ class MetaReportService:
         self,
         *,
         account_repo: MetaAdAccountRepository,
+        snapshot_repo: MetaReportSnapshotRepository,
         user_id: str,
         external_account_id: str,
+        requested_days: int,
         periods: dict[str, dict[str, str]],
         force_refresh: bool = False,
     ) -> dict[str, object]:
-        cache_key = self._cache_key(
-            user_id=user_id,
-            external_account_id=external_account_id,
-            periods=periods,
-        )
+        account = await account_repo.get_for_user(user_id=user_id, external_id=external_account_id)
+        if account is None:
+            raise MetaAdAccountNotFoundError("Meta ad account not found")
+
+        cache_key = self._cache_key(meta_ad_account_id=account.id, requested_days=requested_days)
         lock = self._locks.setdefault(cache_key, asyncio.Lock())
         async with lock:
             if not force_refresh:
@@ -92,27 +100,48 @@ class MetaReportService:
                 if cached_report is not None:
                     return cached_report
 
+                snapshot = await snapshot_repo.get_latest_by_account_and_requested_days(
+                    meta_ad_account_id=account.id,
+                    requested_days=requested_days,
+                    now=utcnow(),
+                )
+                if snapshot is not None:
+                    self._store_cached_report(cache_key, snapshot.payload)
+                    return deepcopy(snapshot.payload)
+
+            current_since, current_until, previous_since, previous_until = self._parse_period_dates(periods)
             report = await self._build_report_payload(
-                account_repo=account_repo,
-                user_id=user_id,
-                external_account_id=external_account_id,
+                account=account,
                 periods=periods,
             )
+            fetched_at = utcnow()
+            account.last_synced_at = fetched_at
+            if self.snapshot_cache_ttl_seconds > 0:
+                await snapshot_repo.upsert_snapshot(
+                    meta_ad_account_id=account.id,
+                    requested_days=requested_days,
+                    current_since=current_since,
+                    current_until=current_until,
+                    previous_since=previous_since,
+                    previous_until=previous_until,
+                    payload=report,
+                    source_fetched_at=fetched_at,
+                    expires_at=fetched_at + timedelta(seconds=self.snapshot_cache_ttl_seconds),
+                )
             self._store_cached_report(cache_key, report)
             return deepcopy(report)
 
-    def _cache_key(self, *, user_id: str, external_account_id: str, periods: dict[str, dict[str, str]]) -> str:
+    def _cache_key(self, *, meta_ad_account_id: str, requested_days: int) -> str:
+        return f"{meta_ad_account_id}:{requested_days}"
+
+    def _parse_period_dates(self, periods: dict[str, dict[str, str]]) -> tuple[date, date, date, date]:
         current = periods["current"]
         previous = periods["previous"]
-        return ":".join(
-            [
-                user_id,
-                external_account_id,
-                current["since"],
-                current["until"],
-                previous["since"],
-                previous["until"],
-            ]
+        return (
+            date.fromisoformat(current["since"]),
+            date.fromisoformat(current["until"]),
+            date.fromisoformat(previous["since"]),
+            date.fromisoformat(previous["until"]),
         )
 
     def _get_cached_report(self, cache_key: str) -> dict[str, object] | None:
@@ -177,15 +206,9 @@ class MetaReportService:
     async def _build_report_payload(
         self,
         *,
-        account_repo: MetaAdAccountRepository,
-        user_id: str,
-        external_account_id: str,
+        account: MetaAdAccount,
         periods: dict[str, dict[str, str]],
     ) -> dict[str, object]:
-        account = await account_repo.get_for_user(user_id=user_id, external_id=external_account_id)
-        if account is None:
-            raise MetaAdAccountNotFoundError("Meta ad account not found")
-
         access_token = self.encryption_service.decrypt(account.connection.access_token_encrypted)
         current = periods["current"]
         previous = periods["previous"]
@@ -284,7 +307,13 @@ class MetaReportService:
                 "results": build_metric(current_result_count, previous_result_count),
                 "cost_per_result": build_metric(current_cpr, previous_cpr),
             },
-            "active_campaigns": len([item for item in campaigns if item.get("effective_status") == "ACTIVE" or item.get("status") == "ACTIVE"]),
+            "active_campaigns": len(
+                [
+                    item
+                    for item in campaigns
+                    if item.get("effective_status") == "ACTIVE" or item.get("status") == "ACTIVE"
+                ]
+            ),
             "total_campaigns": len(campaigns),
         }
 
@@ -329,8 +358,12 @@ class MetaReportService:
                             int(to_float(previous_campaign.get("impressions"))),
                         ),
                         "clicks": build_metric(campaign_clicks, previous_campaign_clicks),
-                        "ctr": build_metric(to_float(current_campaign.get("ctr")), to_float(previous_campaign.get("ctr"))),
-                        "cpm": build_metric(to_float(current_campaign.get("cpm")), to_float(previous_campaign.get("cpm"))),
+                        "ctr": build_metric(
+                            to_float(current_campaign.get("ctr")), to_float(previous_campaign.get("ctr"))
+                        ),
+                        "cpm": build_metric(
+                            to_float(current_campaign.get("cpm")), to_float(previous_campaign.get("cpm"))
+                        ),
                         "cpc": build_metric(
                             (campaign_spend / campaign_clicks) if campaign_clicks else None,
                             (previous_campaign_spend / previous_campaign_clicks) if previous_campaign_clicks else None,

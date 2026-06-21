@@ -9,20 +9,23 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
 
-
 TEST_DB_PATH = Path(__file__).resolve().parent / "test.db"
 
-os.environ.setdefault("ENVIRONMENT", "test")
-os.environ.setdefault("DEBUG", "false")
-os.environ.setdefault("PORT", "8000")
-os.environ.setdefault("FRONTEND_URL", "http://localhost:4173")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-with-at-least-thirty-two-bytes")
-os.environ.setdefault("META_APP_ID", "test-meta-app")
-os.environ.setdefault("META_APP_SECRET", "test-meta-secret")
-os.environ.setdefault("META_OAUTH_REDIRECT_URI", "http://localhost:8000/api/v1/meta/oauth/callback")
-os.environ.setdefault("FIELD_ENCRYPTION_KEY", "1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0=")
-os.environ.setdefault("INTERNAL_ANTHROPIC_API_KEY", "test-anthropic-key")
-os.environ.setdefault("INTERNAL_GEMINI_API_KEY", "test-gemini-key")
+os.environ["ENVIRONMENT"] = "test"
+os.environ["DEBUG"] = "false"
+os.environ["PORT"] = "8000"
+os.environ["FRONTEND_URL"] = "http://localhost:4173"
+os.environ["JWT_SECRET_KEY"] = "test-secret-key-with-at-least-thirty-two-bytes"
+os.environ["META_APP_ID"] = "test-meta-app"
+os.environ["META_APP_SECRET"] = "test-meta-secret"
+os.environ["META_OAUTH_REDIRECT_URI"] = "http://localhost:8000/api/v1/meta/oauth/callback"
+os.environ["GOOGLE_ADS_DEVELOPER_TOKEN"] = "test-google-developer-token"
+os.environ["GOOGLE_OAUTH_CLIENT_ID"] = "test-google-client-id"
+os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = "test-google-client-secret"
+os.environ["GOOGLE_OAUTH_REDIRECT_URI"] = "http://localhost:8000/api/v1/google-ads/oauth/callback"
+os.environ["FIELD_ENCRYPTION_KEY"] = "1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0="
+os.environ["INTERNAL_ANTHROPIC_API_KEY"] = "test-anthropic-key"
+os.environ["INTERNAL_GEMINI_API_KEY"] = "test-gemini-key"
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 
 from main import app
@@ -30,8 +33,11 @@ from core.container import reset_container
 from core.models.auth_session import AuthSession
 from core.models.base import Base
 from core.models.db_helper import db_helper
+from core.models.google_ads_connection import GoogleAdsConnection
+from core.models.google_ads_customer import GoogleAdsCustomer
 from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
+from core.models.meta_report_snapshot import MetaReportSnapshot
 from core.models.user import User
 from core.models.user_ai_provider_key import UserAIProviderKey
 
@@ -62,7 +68,16 @@ async def reset_state():
     app.dependency_overrides.clear()
 
     async with db_helper.session_factory() as session:
-        for model in (UserAIProviderKey, MetaAdAccount, MetaConnection, AuthSession, User):
+        for model in (
+            UserAIProviderKey,
+            MetaReportSnapshot,
+            MetaAdAccount,
+            MetaConnection,
+            GoogleAdsCustomer,
+            GoogleAdsConnection,
+            AuthSession,
+            User,
+        ):
             await session.execute(delete(model))
         await session.commit()
 

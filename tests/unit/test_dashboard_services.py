@@ -1,10 +1,13 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import select
 
 from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
+from core.models.db_helper import db_helper
+from core.models.meta_report_snapshot import MetaReportSnapshot
 from core.models.user import User
 from core.security.encryption_service import EncryptionService
 from core.services.date_range_service import DateRangeService
@@ -161,16 +164,16 @@ class FakeMetaReportClient:
                 "campaign_id": "cmp_1",
                 "creative": {
                     "object_type": "VIDEO",
-                    "thumbnail_url": (
-                        "https://cdn.test/creative-low.jpg?stp=c0.5000x0.5000f_dst-emg0_p64x64_q75_tt6"
-                    ),
+                    "thumbnail_url": ("https://cdn.test/creative-low.jpg?stp=c0.5000x0.5000f_dst-emg0_p64x64_q75_tt6"),
                     "image_url": None,
                     "instagram_permalink_url": "https://www.instagram.com/p/test-low-res/",
                 },
             },
         ]
 
-    async def get_ad_insights(self, *, account_id: str, access_token: str, since: str, until: str) -> list[dict[str, object]]:
+    async def get_ad_insights(
+        self, *, account_id: str, access_token: str, since: str, until: str
+    ) -> list[dict[str, object]]:
         self.ad_insight_calls += 1
         return [
             {
@@ -209,8 +212,11 @@ class FakeMetaReportClient:
 
 
 class FixedDateRangeService:
+    def __init__(self, *, anchor: datetime | None = None) -> None:
+        self.anchor = anchor or datetime(2026, 6, 15, tzinfo=timezone.utc)
+
     def build_periods(self, *, days: int, now=None):
-        return DateRangeService().build_periods(days=days, now=datetime(2026, 6, 15, tzinfo=timezone.utc))
+        return DateRangeService().build_periods(days=days, now=self.anchor)
 
 
 class FakePreviewClient:
@@ -279,6 +285,10 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     assert report["campaigns"][1]["creatives"][0]["image_url"] == "https://cdn.test/creative-share-hq.jpg"
     assert report["campaigns"][0]["metrics"]["cost_per_result"]["current"] == 10.0
     assert preview_client.calls == ["https://www.instagram.com/p/test-low-res/"]
+    async with db_helper.session_factory() as verification_session:
+        stored_account = await verification_session.get(MetaAdAccount, "acc-1")
+        assert stored_account is not None
+        assert stored_account.last_synced_at is not None
 
     context = build_report_context(report)
     assert "acct|Main account|111|USD|Asia/Almaty" in context
@@ -347,6 +357,172 @@ async def test_generate_meta_report_use_case_reuses_cached_payload_and_supports_
         "https://www.instagram.com/p/test-low-res/",
         "https://www.instagram.com/p/test-low-res/",
     ]
+
+
+@pytest.mark.unit
+@pytest.mark.service
+async def test_generate_meta_report_use_case_reuses_latest_db_snapshot_until_force_refresh(db_session):
+    encryption_service = EncryptionService()
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"))
+    db_session.add(
+        MetaConnection(
+            id="conn-1",
+            user_id="user-1",
+            meta_user_id="meta-user-1",
+            meta_user_name="Meta Owner",
+            access_token_encrypted=encryption_service.encrypt("meta-token"),
+            scopes="ads_read",
+        )
+    )
+    db_session.add(
+        MetaAdAccount(
+            id="acc-1",
+            connection_id="conn-1",
+            external_id="act_1",
+            account_id="111",
+            name="Main account",
+            currency="USD",
+            timezone_name="Asia/Almaty",
+            account_status=1,
+        )
+    )
+    await db_session.commit()
+
+    fake_client = FakeMetaReportClient()
+    preview_client = FakePreviewClient()
+
+    first_use_case = GenerateMetaReportUseCase(
+        session=db_session,
+        date_range_service=FixedDateRangeService(anchor=datetime(2026, 6, 15, tzinfo=timezone.utc)),
+        report_service=MetaReportService(
+            meta_client=fake_client,
+            encryption_service=encryption_service,
+            preview_client=preview_client,
+            cache_ttl_seconds=0,
+            snapshot_cache_ttl_seconds=300,
+        ),
+    )
+    first_report = await first_use_case.execute(user_id="user-1", ad_account_id="act_1", days=30)
+
+    second_use_case = GenerateMetaReportUseCase(
+        session=db_session,
+        date_range_service=FixedDateRangeService(anchor=datetime(2026, 6, 16, tzinfo=timezone.utc)),
+        report_service=MetaReportService(
+            meta_client=fake_client,
+            encryption_service=encryption_service,
+            preview_client=preview_client,
+            cache_ttl_seconds=0,
+            snapshot_cache_ttl_seconds=300,
+        ),
+    )
+    second_report = await second_use_case.execute(user_id="user-1", ad_account_id="act_1", days=30)
+
+    assert second_report == first_report
+    assert second_report["periods"] == first_report["periods"]
+    assert fake_client.account_info_calls == 1
+    assert fake_client.campaign_list_calls == 1
+    assert fake_client.account_insight_calls == 2
+    assert fake_client.campaign_insight_calls == 2
+    assert fake_client.ads_calls == 1
+    assert fake_client.ad_insight_calls == 1
+    assert preview_client.calls == ["https://www.instagram.com/p/test-low-res/"]
+
+    refreshed_report = await second_use_case.execute(
+        user_id="user-1",
+        ad_account_id="act_1",
+        days=30,
+        force_refresh=True,
+    )
+
+    assert refreshed_report["periods"]["current"]["until"] == "2026-06-16"
+    assert preview_client.calls == [
+        "https://www.instagram.com/p/test-low-res/",
+        "https://www.instagram.com/p/test-low-res/",
+    ]
+
+    snapshots = list((await db_session.execute(select(MetaReportSnapshot))).scalars().all())
+    assert len(snapshots) == 2
+    assert all(snapshot.requested_days == 30 for snapshot in snapshots)
+    latest_snapshot = max(snapshots, key=lambda snapshot: snapshot.source_fetched_at)
+    assert latest_snapshot.payload["periods"]["current"]["until"] == "2026-06-16"
+
+
+@pytest.mark.unit
+@pytest.mark.service
+async def test_generate_meta_report_use_case_ignores_expired_db_snapshot(db_session):
+    encryption_service = EncryptionService()
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"))
+    db_session.add(
+        MetaConnection(
+            id="conn-1",
+            user_id="user-1",
+            meta_user_id="meta-user-1",
+            meta_user_name="Meta Owner",
+            access_token_encrypted=encryption_service.encrypt("meta-token"),
+            scopes="ads_read",
+        )
+    )
+    db_session.add(
+        MetaAdAccount(
+            id="acc-1",
+            connection_id="conn-1",
+            external_id="act_1",
+            account_id="111",
+            name="Main account",
+            currency="USD",
+            timezone_name="Asia/Almaty",
+            account_status=1,
+        )
+    )
+    await db_session.commit()
+
+    fake_client = FakeMetaReportClient()
+    preview_client = FakePreviewClient()
+
+    first_use_case = GenerateMetaReportUseCase(
+        session=db_session,
+        date_range_service=FixedDateRangeService(anchor=datetime(2026, 6, 15, tzinfo=timezone.utc)),
+        report_service=MetaReportService(
+            meta_client=fake_client,
+            encryption_service=encryption_service,
+            preview_client=preview_client,
+            cache_ttl_seconds=0,
+            snapshot_cache_ttl_seconds=300,
+        ),
+    )
+    first_report = await first_use_case.execute(user_id="user-1", ad_account_id="act_1", days=30)
+
+    stored_snapshot = (await db_session.execute(select(MetaReportSnapshot))).scalar_one()
+    stored_snapshot.expires_at = stored_snapshot.expires_at - timedelta(days=365)
+    await db_session.commit()
+
+    second_use_case = GenerateMetaReportUseCase(
+        session=db_session,
+        date_range_service=FixedDateRangeService(anchor=datetime(2026, 6, 16, tzinfo=timezone.utc)),
+        report_service=MetaReportService(
+            meta_client=fake_client,
+            encryption_service=encryption_service,
+            preview_client=preview_client,
+            cache_ttl_seconds=0,
+            snapshot_cache_ttl_seconds=300,
+        ),
+    )
+    second_report = await second_use_case.execute(user_id="user-1", ad_account_id="act_1", days=30)
+
+    assert first_report["periods"]["current"]["until"] == "2026-06-15"
+    assert second_report["periods"]["current"]["until"] == "2026-06-16"
+    assert fake_client.account_info_calls == 2
+    assert fake_client.campaign_list_calls == 2
+    assert fake_client.account_insight_calls == 4
+    assert fake_client.campaign_insight_calls == 4
+    assert fake_client.ads_calls == 2
+    assert fake_client.ad_insight_calls == 2
+    assert fake_client.account_info_calls == 2
+    assert fake_client.campaign_list_calls == 2
+    assert fake_client.account_insight_calls == 4
+    assert fake_client.campaign_insight_calls == 4
+    assert fake_client.ads_calls == 2
+    assert fake_client.ad_insight_calls == 2
 
 
 @pytest.mark.unit

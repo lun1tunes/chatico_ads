@@ -9,6 +9,7 @@ from core.dependencies import get_current_user, get_db_session, get_di_container
 from core.infrastructure.google_ads_api import GoogleAdsConfigurationError
 from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
+from core.use_cases.meta_data_deletion import MetaDataDeletionUseCaseError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from main import app
 
@@ -25,6 +26,8 @@ class FakeContainer:
     def __init__(self) -> None:
         self.build_meta_oauth_url_use_case = Mock()
         self.handle_meta_oauth_callback_use_case = Mock()
+        self.handle_meta_data_deletion_callback_use_case = Mock()
+        self.get_meta_data_deletion_status_use_case = Mock()
         self.list_meta_ad_accounts_use_case = Mock()
         self.build_google_ads_oauth_url_use_case = Mock()
         self.handle_google_ads_oauth_callback_use_case = Mock()
@@ -94,6 +97,51 @@ async def test_meta_routes(async_client):
     accounts_response = await async_client.get("/api/v1/meta/ad-accounts")
     assert accounts_response.status_code == 200
     assert accounts_response.json()[0]["external_id"] == "act_1"
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_meta_data_deletion_routes(async_client):
+    container = FakeContainer()
+    container.handle_meta_data_deletion_callback_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value={
+                "url": "https://app.test/api/v1/meta/data-deletion/status/request-1",
+                "confirmation_code": "request-1",
+            }
+        ),
+    )
+    container.get_meta_data_deletion_status_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value=SimpleNamespace(
+                id="request-1",
+                status="completed",
+                detail="Deleted matching application data",
+                deleted_users_count=1,
+                created_at="2026-06-21T18:35:00",
+                completed_at="2026-06-21T18:36:00",
+            )
+        )
+    )
+
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    callback_response = await async_client.post(
+        "/api/v1/meta/data-deletion/callback",
+        data={"signed_request": "test-signed-request"},
+    )
+    assert callback_response.status_code == 200
+    assert callback_response.json() == {
+        "url": "https://app.test/api/v1/meta/data-deletion/status/request-1",
+        "confirmation_code": "request-1",
+    }
+
+    status_response = await async_client.get("/api/v1/meta/data-deletion/status/request-1")
+    assert status_response.status_code == 200
+    assert status_response.json()["confirmation_code"] == "request-1"
+    assert status_response.json()["status"] == "completed"
+    assert status_response.json()["deleted_users_count"] == 1
 
 
 @pytest.mark.integration
@@ -209,6 +257,32 @@ async def test_meta_oauth_callback_handles_denied_access(async_client):
     assert "provider=meta" in denied_response.headers["location"]
     assert "status=error" in denied_response.headers["location"]
     assert "User+denied+access" in denied_response.headers["location"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_meta_data_deletion_routes_map_errors(async_client):
+    container = FakeContainer()
+    container.handle_meta_data_deletion_callback_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=MetaDataDeletionUseCaseError("Meta signed_request signature is invalid")),
+    )
+    container.get_meta_data_deletion_status_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=None),
+    )
+
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    callback_response = await async_client.post(
+        "/api/v1/meta/data-deletion/callback",
+        data={"signed_request": "broken"},
+    )
+    assert callback_response.status_code == 400
+    assert callback_response.json()["detail"] == "Meta signed_request signature is invalid"
+
+    status_response = await async_client.get("/api/v1/meta/data-deletion/status/missing-request")
+    assert status_response.status_code == 404
+    assert status_response.json()["detail"] == "Data deletion request not found"
 
 
 @pytest.mark.integration

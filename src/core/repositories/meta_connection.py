@@ -28,3 +28,12 @@ class MetaConnectionRepository(BaseRepository[MetaConnection]):
             .order_by(MetaConnection.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def list_by_meta_user_id(self, *, meta_user_id: str) -> list[MetaConnection]:
+        result = await self.session.execute(
+            select(MetaConnection)
+            .where(MetaConnection.meta_user_id == meta_user_id)
+            .options(selectinload(MetaConnection.user))
+            .order_by(MetaConnection.created_at.desc())
+        )
+        return list(result.scalars().all())

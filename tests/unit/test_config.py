@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.config import GoogleAdsSettings, LLMSettings, MetaSettings
+from core.config import AppSettings, GoogleAdsSettings, LLMSettings, MetaSettings
 
 
 @pytest.mark.unit
@@ -67,4 +67,19 @@ def test_google_ads_settings_require_absolute_http_redirect_uri():
             oauth_client_id="google-client-id",
             oauth_client_secret="google-client-secret",
             oauth_redirect_uri="google-ads/callback",
+        )
+
+
+@pytest.mark.unit
+def test_app_settings_require_absolute_public_app_url():
+    with pytest.raises(ValueError, match="PUBLIC_APP_URL"):
+        AppSettings(
+            jwt_secret_key="test-secret-key-with-at-least-thirty-two-bytes",
+            meta_app_id="meta-app-id",
+            meta_app_secret="meta-app-secret",
+            meta_oauth_redirect_uri="http://localhost:8000/api/v1/meta/oauth/callback",
+            frontend_url="http://localhost:4173",
+            public_app_url="/relative",
+            field_encryption_key="1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0=",
+            internal_gemini_api_key="test-gemini-key",
         )

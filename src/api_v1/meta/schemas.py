@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -15,3 +17,17 @@ class MetaAdAccountResponse(BaseModel):
     currency: str | None = None
     timezone_name: str | None = None
     account_status: int | None = None
+
+
+class MetaDataDeletionCallbackResponse(BaseModel):
+    url: str
+    confirmation_code: str
+
+
+class MetaDataDeletionStatusResponse(BaseModel):
+    confirmation_code: str
+    status: str
+    detail: str
+    deleted_users_count: int
+    requested_at: datetime
+    completed_at: datetime | None = None

@@ -170,7 +170,7 @@ const DEFAULT_LOCALE: Locale = 'ru'
 const CUSTOM_MODEL_OPTION = '__custom__'
 const PRIVACY_CONTACT_EMAIL = 'support@chatico.cc'
 const PRIVACY_SERVICE_OPERATOR = 'Chatico Ads'
-const PRIVACY_SERVICE_URL = 'https://ads.chatico.cc'
+const PRIVACY_SERVICE_URL = trimTrailingSlash(`${window.location.origin}${APP_BASE_PATH}`)
 const metricOrder: MetricKey[] = [
   'spend',
   'reach',
@@ -273,6 +273,7 @@ const privacyContent = {
         paragraphs: [
           'Вы можете прекратить доступ приложения к Meta в настройках Facebook: Settings & Privacy → Settings → Apps and Websites → выберите приложение → Remove.',
           `Чтобы удалить данные, сохранённые в ${PRIVACY_SERVICE_OPERATOR}, напишите на ${PRIVACY_CONTACT_EMAIL} с темой "Data deletion request". Укажите email аккаунта сервиса; если известен Meta ad account ID — приложите его.`,
+          'Для запросов, инициированных через Meta Platform, приложение также поддерживает автоматический серверный callback удаления данных.',
         ],
         bullets: [
           'мы подтвердим получение запроса',
@@ -364,6 +365,7 @@ const privacyContent = {
         paragraphs: [
           'Meta-ға қолданба доступын Facebook баптауларынан өшіруге болады: Settings & Privacy → Settings → Apps and Websites → қолданбаны таңдаңыз → Remove.',
           `${PRIVACY_SERVICE_OPERATOR} сақтаған деректерді жою үшін ${PRIVACY_CONTACT_EMAIL} адресіне "Data deletion request" тақырыбымен хат жіберіңіз. Сервис email-ін көрсетіңіз; Meta ad account ID белгілі болса, қосыңыз.`,
+          'Meta Platform арқылы басталған сұраулар үшін қолданба деректерді жоюға арналған автоматты серверлік callback-ты да қолдайды.',
         ],
         bullets: [
           'сұраудың алынғанын растаймыз',
@@ -455,6 +457,7 @@ const privacyContent = {
         paragraphs: [
           'To revoke the app\'s access to Meta, go to Facebook settings: Settings & Privacy → Settings → Apps and Websites → select the app → Remove.',
           `To delete data stored by ${PRIVACY_SERVICE_OPERATOR}, email ${PRIVACY_CONTACT_EMAIL} with the subject line "Data deletion request". Include the email address linked to your Chatico Ads account. If you know your Meta ad account ID, include it as well.`,
+          'For deletion requests initiated through Meta Platform, the app also supports an automated server-side data deletion callback.',
         ],
         bullets: [
           'we will confirm receipt of your request',

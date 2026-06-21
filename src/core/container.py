@@ -14,6 +14,7 @@ from .services.date_range_service import DateRangeService
 from .services.google_ads_state_service import GoogleAdsOAuthStateService
 from .services.llm_proxy_service import LLMProxyService
 from .services.meta_report_service import MetaReportService
+from .services.meta_signed_request_service import MetaSignedRequestService
 from .services.meta_state_service import MetaOAuthStateService
 from .use_cases.auth import LoginUserUseCase, LogoutUserUseCase, RefreshSessionUseCase, RegisterUserUseCase
 from .use_cases.auth import UpdateUserLocaleUseCase
@@ -31,6 +32,7 @@ from .use_cases.google_ads import (
     HandleGoogleAdsOAuthCallbackUseCase,
     ListGoogleAdsCustomersUseCase,
 )
+from .use_cases.meta_data_deletion import GetMetaDataDeletionStatusUseCase, HandleMetaDataDeletionCallbackUseCase
 from .use_cases.meta import BuildMetaOAuthUrlUseCase, HandleMetaOAuthCallbackUseCase, ListMetaAdAccountsUseCase
 
 
@@ -39,6 +41,7 @@ class Container(containers.DeclarativeContainer):
     encryption_service = providers.Singleton(EncryptionService)
     jwt_service = providers.Singleton(JWTService)
     meta_state_service = providers.Singleton(MetaOAuthStateService)
+    meta_signed_request_service = providers.Singleton(MetaSignedRequestService)
     google_ads_state_service = providers.Singleton(GoogleAdsOAuthStateService)
     date_range_service = providers.Singleton(DateRangeService)
 
@@ -90,6 +93,11 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
     )
     list_meta_ad_accounts_use_case = providers.Factory(ListMetaAdAccountsUseCase)
+    handle_meta_data_deletion_callback_use_case = providers.Factory(
+        HandleMetaDataDeletionCallbackUseCase,
+        signed_request_service=meta_signed_request_service,
+    )
+    get_meta_data_deletion_status_use_case = providers.Factory(GetMetaDataDeletionStatusUseCase)
     build_google_ads_oauth_url_use_case = providers.Factory(
         BuildGoogleAdsOAuthUrlUseCase,
         state_service=google_ads_state_service,

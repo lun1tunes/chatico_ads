@@ -3,6 +3,7 @@ from .google_ads_customer import GoogleAdsCustomer
 from .auth_session import AuthSession
 from .meta_ad_account import MetaAdAccount
 from .meta_connection import MetaConnection
+from .meta_data_deletion_request import MetaDataDeletionRequest
 from .meta_report_snapshot import MetaReportSnapshot
 from .user import User
 from .user_ai_provider_key import UserAIProviderKey
@@ -13,6 +14,7 @@ __all__ = [
     "GoogleAdsCustomer",
     "MetaAdAccount",
     "MetaConnection",
+    "MetaDataDeletionRequest",
     "MetaReportSnapshot",
     "User",
     "UserAIProviderKey",

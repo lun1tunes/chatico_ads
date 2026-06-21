@@ -249,6 +249,7 @@ class AppSettings(BaseSettings):
     debug: bool = False
     database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/chatico_ads"
     frontend_url: str = "http://localhost:4173"
+    public_app_url: str = "http://localhost:8000"
     meta_report_cache_ttl_seconds: int = 45
     meta_report_snapshot_ttl_seconds: int = 2_592_000
     jwt_secret_key: str = Field(validation_alias="JWT_SECRET_KEY")
@@ -331,6 +332,8 @@ class AppSettings(BaseSettings):
             raise ValueError("META_OAUTH_REDIRECT_URI must be set")
         if not _is_absolute_http_url(self.frontend_url):
             raise ValueError("FRONTEND_URL must be an absolute http(s) URL")
+        if not _is_absolute_http_url(self.public_app_url):
+            raise ValueError("PUBLIC_APP_URL must be an absolute http(s) URL")
         self.internal_anthropic_api_key = _normalize_optional_secret(self.internal_anthropic_api_key)
         self.internal_gemini_api_key = _normalize_optional_secret(self.internal_gemini_api_key)
         if not self.internal_anthropic_api_key and not self.internal_gemini_api_key:

@@ -15,6 +15,7 @@ os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "false"
 os.environ["PORT"] = "8000"
 os.environ["FRONTEND_URL"] = "http://localhost:4173"
+os.environ["PUBLIC_APP_URL"] = "http://localhost:8000"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-with-at-least-thirty-two-bytes"
 os.environ["META_APP_ID"] = "test-meta-app"
 os.environ["META_APP_SECRET"] = "test-meta-secret"
@@ -37,6 +38,7 @@ from core.models.google_ads_connection import GoogleAdsConnection
 from core.models.google_ads_customer import GoogleAdsCustomer
 from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
+from core.models.meta_data_deletion_request import MetaDataDeletionRequest
 from core.models.meta_report_snapshot import MetaReportSnapshot
 from core.models.user import User
 from core.models.user_ai_provider_key import UserAIProviderKey
@@ -70,6 +72,7 @@ async def reset_state():
     async with db_helper.session_factory() as session:
         for model in (
             UserAIProviderKey,
+            MetaDataDeletionRequest,
             MetaReportSnapshot,
             MetaAdAccount,
             MetaConnection,

@@ -163,7 +163,8 @@ function trimTrailingSlash(value: string): string {
 
 const APP_BASE_PATH = normalizeBasePath(import.meta.env.BASE_URL)
 const API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}${APP_BASE_PATH}api/v1`)
-const STORAGE_TOKEN_KEY = 'chatico.access_token'
+const STORAGE_TOKEN_KEY = 'chatico_ads.access_token'
+const LEGACY_STORAGE_TOKEN_KEY = 'chatico.access_token'
 const LEGACY_STORAGE_LOCALE_KEY = 'chatico.locale'
 const STORAGE_LOCALE_OVERRIDE_KEY = 'chatico.locale_override'
 const DEFAULT_LOCALE: Locale = 'ru'
@@ -815,10 +816,26 @@ const fallbackProviderCatalog: AIProviderCatalog[] = [
   },
 ]
 
+function readStoredAccessToken(): string {
+  const currentToken = localStorage.getItem(STORAGE_TOKEN_KEY)
+  if (currentToken) {
+    return currentToken
+  }
+
+  const legacyToken = localStorage.getItem(LEGACY_STORAGE_TOKEN_KEY)
+  if (!legacyToken) {
+    return ''
+  }
+
+  localStorage.setItem(STORAGE_TOKEN_KEY, legacyToken)
+  localStorage.removeItem(LEGACY_STORAGE_TOKEN_KEY)
+  return legacyToken
+}
+
 const authMode = ref<AuthMode>('login')
 const locale = ref<Locale>(resolveInitialLocale())
 const registerLocale = ref<Locale>(locale.value)
-const accessToken = ref(localStorage.getItem(STORAGE_TOKEN_KEY) ?? '')
+const accessToken = ref(readStoredAccessToken())
 const user = ref<User | null>(null)
 const currentView = ref<AppView>(resolveCurrentView(window.location.pathname))
 const oauthStatus = ref<OAuthStatus | null>(null)
@@ -1382,6 +1399,7 @@ function resetSession() {
   googleConnecting.value = false
   googleAccountsLoading.value = false
   localStorage.removeItem(STORAGE_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_STORAGE_TOKEN_KEY)
   applyLocale(resolveInitialLocale(), { persist: false })
 }
 
@@ -1476,6 +1494,11 @@ async function apiRequest<T>(
 async function bootstrapSession() {
   bootLoading.value = true
   document.documentElement.lang = locale.value
+  accounts.value = []
+  googleAccounts.value = []
+  report.value = null
+  selectedAccountId.value = ''
+  selectedCampaignId.value = ''
 
   const callbackUrl = new URL(window.location.href)
   const providerParam = callbackUrl.searchParams.get('provider')
@@ -1551,6 +1574,15 @@ async function loadSavedProviderKeys() {
 async function submitAuth() {
   authLoading.value = true
   authError.value = ''
+  user.value = null
+  accessToken.value = ''
+  accounts.value = []
+  googleAccounts.value = []
+  report.value = null
+  selectedAccountId.value = ''
+  selectedCampaignId.value = ''
+  localStorage.removeItem(STORAGE_TOKEN_KEY)
+  localStorage.removeItem(LEGACY_STORAGE_TOKEN_KEY)
 
   try {
     const endpoint = authMode.value === 'register' ? '/auth/register' : '/auth/login'

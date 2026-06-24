@@ -11,8 +11,29 @@ from .schemas import AuthResponse, LoginRequest, RegisterRequest, UpdateLocaleRe
 
 router = APIRouter()
 
+_LEGACY_REFRESH_COOKIE_NAME = "refresh_token"
+
+
+def _refresh_cookie_clearance_targets() -> set[tuple[str, str]]:
+    current_name = settings.auth.refresh_cookie_name
+    current_path = settings.auth.refresh_cookie_path
+    targets = {(current_name, current_path), (current_name, "/")}
+
+    if current_path == "/":
+        targets.add((_LEGACY_REFRESH_COOKIE_NAME, "/"))
+    else:
+        targets.add((_LEGACY_REFRESH_COOKIE_NAME, current_path))
+
+    return targets
+
+
+def _purge_refresh_cookies(response: Response) -> None:
+    for cookie_name, cookie_path in _refresh_cookie_clearance_targets():
+        response.delete_cookie(key=cookie_name, path=cookie_path)
+
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    _purge_refresh_cookies(response)
     response.set_cookie(
         key=settings.auth.refresh_cookie_name,
         value=refresh_token,
@@ -20,12 +41,12 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
         secure=settings.auth.refresh_cookie_secure,
         samesite=settings.auth.refresh_cookie_samesite,
         max_age=settings.auth.refresh_token_days * 24 * 60 * 60,
-        path="/",
+        path=settings.auth.refresh_cookie_path,
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key=settings.auth.refresh_cookie_name, path="/")
+    _purge_refresh_cookies(response)
 
 
 def _serialize_user(user) -> UserResponse:

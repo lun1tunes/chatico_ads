@@ -7,12 +7,15 @@ import pytest
 from core.repositories.meta_connection import MetaConnectionRepository
 from core.security.encryption_service import EncryptionService
 from core.use_cases.meta import BuildMetaOAuthUrlUseCase, HandleMetaOAuthCallbackUseCase, ListMetaAdAccountsUseCase
+from core.models.meta_ad_account import MetaAdAccount
+from core.models.meta_connection import MetaConnection
 from core.models.user import User
 
 
 class FakeStateService:
-    def __init__(self) -> None:
+    def __init__(self, *, user_id: str = "user-1") -> None:
         self.created_for: str | None = None
+        self.user_id = user_id
 
     def create_state_token(self, *, user_id: str) -> str:
         self.created_for = user_id
@@ -20,10 +23,12 @@ class FakeStateService:
 
     def decode_state_token(self, state: str) -> dict[str, str]:
         assert state == "signed-state-token"
-        return {"sub": "user-1"}
+        return {"sub": self.user_id}
 
 
 class FakeMetaClient:
+    def __init__(self, *, ad_accounts: list[dict[str, object]] | None = None) -> None:
+        self.ad_accounts = ad_accounts
     def build_authorization_url(self, *, state: str) -> str:
         return f"https://facebook.test/oauth?state={state}"
 
@@ -41,6 +46,8 @@ class FakeMetaClient:
 
     async def list_ad_accounts(self, *, access_token: str) -> list[dict[str, object]]:
         assert access_token == "long-lived-token"
+        if self.ad_accounts is not None:
+            return self.ad_accounts
         return [
             {
                 "id": "act_1",
@@ -105,3 +112,89 @@ async def test_handle_meta_oauth_callback_persists_connection_and_accounts(db_se
     ad_accounts = await ListMetaAdAccountsUseCase(session=db_session).execute(user_id="user-1")
     assert [account.external_id for account in ad_accounts] == ["act_2", "act_1"]
     assert ad_accounts[0].currency == "KZT"
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_list_meta_ad_accounts_use_case_isolates_users(db_session):
+    db_session.add_all(
+        [
+            User(id="user-a", email="a@example.com", password_hash="hash", locale="en"),
+            User(id="user-b", email="b@example.com", password_hash="hash", locale="en"),
+            MetaConnection(
+                id="conn-a",
+                user_id="user-a",
+                meta_user_id="meta-a",
+                meta_user_name="Meta A",
+                access_token_encrypted="token-a",
+            ),
+            MetaConnection(
+                id="conn-b",
+                user_id="user-b",
+                meta_user_id="meta-b",
+                meta_user_name="Meta B",
+                access_token_encrypted="token-b",
+            ),
+            MetaAdAccount(
+                id="acc-a",
+                connection_id="conn-a",
+                external_id="act_a",
+                account_id="111",
+                name="Account A",
+            ),
+            MetaAdAccount(
+                id="acc-b",
+                connection_id="conn-b",
+                external_id="act_b",
+                account_id="222",
+                name="Account B",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    use_case = ListMetaAdAccountsUseCase(session=db_session)
+
+    user_a_accounts = await use_case.execute(user_id="user-a")
+    user_b_accounts = await use_case.execute(user_id="user-b")
+
+    assert [account.external_id for account in user_a_accounts] == ["act_a"]
+    assert [account.external_id for account in user_b_accounts] == ["act_b"]
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_handle_meta_oauth_callback_removes_stale_ad_accounts(db_session):
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"))
+    await db_session.commit()
+
+    encryption_service = EncryptionService()
+    first_use_case = HandleMetaOAuthCallbackUseCase(
+        session=db_session,
+        state_service=FakeStateService(user_id="user-1"),
+        meta_client=FakeMetaClient(),
+        encryption_service=encryption_service,
+    )
+    await first_use_case.execute(code="code-1", state="signed-state-token")
+
+    second_use_case = HandleMetaOAuthCallbackUseCase(
+        session=db_session,
+        state_service=FakeStateService(user_id="user-1"),
+        meta_client=FakeMetaClient(
+            ad_accounts=[
+                {
+                    "id": "act_1",
+                    "account_id": "111",
+                    "name": "Main account",
+                    "currency": "USD",
+                    "timezone_name": "Asia/Almaty",
+                    "account_status": 1,
+                }
+            ]
+        ),
+        encryption_service=encryption_service,
+    )
+    await second_use_case.execute(code="code-1", state="signed-state-token")
+
+    ad_accounts = await ListMetaAdAccountsUseCase(session=db_session).execute(user_id="user-1")
+    assert [account.external_id for account in ad_accounts] == ["act_1"]

@@ -92,7 +92,11 @@ class MetaReportService:
         if account is None:
             raise MetaAdAccountNotFoundError("Meta ad account not found")
 
-        cache_key = self._cache_key(meta_ad_account_id=account.id, requested_days=requested_days)
+        cache_key = self._cache_key(
+            user_id=user_id,
+            meta_ad_account_id=account.id,
+            requested_days=requested_days,
+        )
         lock = self._locks.setdefault(cache_key, asyncio.Lock())
         async with lock:
             if not force_refresh:
@@ -131,8 +135,8 @@ class MetaReportService:
             self._store_cached_report(cache_key, report)
             return deepcopy(report)
 
-    def _cache_key(self, *, meta_ad_account_id: str, requested_days: int) -> str:
-        return f"{meta_ad_account_id}:{requested_days}"
+    def _cache_key(self, *, user_id: str, meta_ad_account_id: str, requested_days: int) -> str:
+        return f"{user_id}:{meta_ad_account_id}:{requested_days}"
 
     def _parse_period_dates(self, periods: dict[str, dict[str, str]]) -> tuple[date, date, date, date]:
         current = periods["current"]

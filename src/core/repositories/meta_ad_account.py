@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -31,3 +31,6 @@ class MetaAdAccountRepository(BaseRepository[MetaAdAccount]):
             .options(selectinload(MetaAdAccount.connection))
         )
         return result.scalar_one_or_none()
+
+    async def delete(self, entity: MetaAdAccount) -> None:
+        await self.session.execute(delete(MetaAdAccount).where(MetaAdAccount.id == entity.id))

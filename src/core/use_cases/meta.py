@@ -74,9 +74,11 @@ class HandleMetaOAuthCallbackUseCase:
             connection.access_token_expires_at = (utcnow() + timedelta(seconds=int(expires_in))) if expires_in else None
             existing_by_external = {account.external_id: account for account in connection.ad_accounts}
         remote_accounts = await self.meta_client.list_ad_accounts(access_token=access_token)
+        seen_external_ids: set[str] = set()
 
         for remote in remote_accounts:
             external_id = str(remote.get("id"))
+            seen_external_ids.add(external_id)
             account = existing_by_external.get(external_id)
             if account is None:
                 account = MetaAdAccount(
@@ -98,6 +100,10 @@ class HandleMetaOAuthCallbackUseCase:
                 account.timezone_name = remote.get("timezone_name")
                 account.account_status = remote.get("account_status")
                 account.last_synced_at = utcnow()
+
+        for external_id, account in existing_by_external.items():
+            if external_id not in seen_external_ids:
+                await self.ad_account_repo.delete(account)
 
         await self.session.commit()
         return {"user_id": user_id, "connection_id": connection.id}

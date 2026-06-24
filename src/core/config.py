@@ -29,6 +29,11 @@ def _normalize_optional_secret(value: str | None) -> str | None:
     return normalized or None
 
 
+def _cookie_path_from_url(url: str) -> str:
+    path = urlparse(url.strip()).path.rstrip("/")
+    return path if path else "/"
+
+
 def _looks_like_placeholder_secret(value: str | None) -> bool:
     normalized = _normalize_optional_secret(value)
     if normalized is None:
@@ -47,7 +52,8 @@ class AuthSettings(BaseModel):
     algorithm: str = "HS256"
     access_token_minutes: int = 15
     refresh_token_days: int = 30
-    refresh_cookie_name: str = "refresh_token"
+    refresh_cookie_name: str = "chatico_ads_refresh_token"
+    refresh_cookie_path: str = "/"
     refresh_cookie_secure: bool = False
     refresh_cookie_samesite: str = "lax"
 
@@ -60,6 +66,10 @@ class AuthSettings(BaseModel):
         self.refresh_cookie_samesite = self.refresh_cookie_samesite.lower()
         if self.refresh_cookie_samesite not in {"lax", "strict", "none"}:
             self.refresh_cookie_samesite = "lax"
+        cookie_path = self.refresh_cookie_path.strip() or "/"
+        if not cookie_path.startswith("/"):
+            cookie_path = f"/{cookie_path}"
+        self.refresh_cookie_path = cookie_path.rstrip("/") or "/"
         return self
 
 
@@ -256,7 +266,8 @@ class AppSettings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 15
     refresh_token_days: int = 30
-    refresh_cookie_name: str = "refresh_token"
+    refresh_cookie_name: str = "chatico_ads_refresh_token"
+    refresh_cookie_path: str | None = None
     refresh_cookie_secure: bool = False
     refresh_cookie_samesite: str = "lax"
     meta_app_id: str = Field(validation_alias="META_APP_ID")
@@ -342,12 +353,16 @@ class AppSettings(BaseSettings):
 
     @cached_property
     def auth(self) -> AuthSettings:
+        cookie_path = self.refresh_cookie_path.strip() if self.refresh_cookie_path else ""
+        if not cookie_path:
+            cookie_path = _cookie_path_from_url(self.frontend_url)
         return AuthSettings(
             secret_key=self.jwt_secret_key,
             algorithm=self.jwt_algorithm,
             access_token_minutes=self.access_token_minutes,
             refresh_token_days=self.refresh_token_days,
             refresh_cookie_name=self.refresh_cookie_name,
+            refresh_cookie_path=cookie_path,
             refresh_cookie_secure=self.refresh_cookie_secure,
             refresh_cookie_samesite=self.refresh_cookie_samesite,
         )

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from core.config import settings
+
 
 def _auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
@@ -23,7 +25,9 @@ async def test_register_refresh_me_and_logout_flow(async_client):
     register_payload = register_response.json()
     assert register_payload["user"]["email"] == "owner@example.com"
     assert register_payload["user"]["locale"] == "kz"
-    assert "refresh_token=" in register_response.headers["set-cookie"]
+    assert "refresh_token=" in register_response.headers["set-cookie"] or (
+        f"{settings.auth.refresh_cookie_name}=" in register_response.headers["set-cookie"]
+    )
 
     me_response = await async_client.get(
         "/api/v1/auth/me",
@@ -40,7 +44,8 @@ async def test_register_refresh_me_and_logout_flow(async_client):
 
     logout_response = await async_client.post("/api/v1/auth/logout")
     assert logout_response.status_code == 204
-    assert "refresh_token=" in logout_response.headers.get("set-cookie", "").lower()
+    logout_cookie = logout_response.headers.get("set-cookie", "").lower()
+    assert "refresh_token=" in logout_cookie or f"{settings.auth.refresh_cookie_name.lower()}=" in logout_cookie
 
     refresh_after_logout = await async_client.post("/api/v1/auth/refresh")
     assert refresh_after_logout.status_code == 401

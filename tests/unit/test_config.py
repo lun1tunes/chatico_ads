@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.config import AppSettings, GoogleAdsSettings, LLMSettings, MetaSettings
+from core.config import AppSettings, AuthSettings, GoogleAdsSettings, LLMSettings, MetaSettings
 
 
 @pytest.mark.unit
@@ -83,3 +83,32 @@ def test_app_settings_require_absolute_public_app_url():
             field_encryption_key="1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0=",
             internal_gemini_api_key="test-gemini-key",
         )
+
+
+@pytest.mark.unit
+def test_auth_settings_normalize_refresh_cookie_path():
+    settings = AuthSettings(
+        secret_key="test-secret-key-with-at-least-thirty-two-bytes",
+        refresh_cookie_path="chatico_ads",
+    )
+
+    assert settings.refresh_cookie_path == "/chatico_ads"
+
+
+@pytest.mark.unit
+def test_app_settings_derive_refresh_cookie_path_from_frontend_url(monkeypatch):
+    monkeypatch.delenv("REFRESH_COOKIE_PATH", raising=False)
+    settings = AppSettings(
+        jwt_secret_key="test-secret-key-with-at-least-thirty-two-bytes",
+        meta_app_id="meta-app-id",
+        meta_app_secret="meta-app-secret",
+        meta_oauth_redirect_uri="http://localhost:8000/api/v1/meta/oauth/callback",
+        frontend_url="https://lunitunestmb.com/chatico_ads",
+        public_app_url="https://lunitunestmb.com/chatico_ads",
+        refresh_cookie_name="chatico_ads_refresh_token",
+        field_encryption_key="1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0=",
+        internal_gemini_api_key="test-gemini-key",
+    )
+
+    assert settings.auth.refresh_cookie_path == "/chatico_ads"
+    assert settings.auth.refresh_cookie_name == "chatico_ads_refresh_token"

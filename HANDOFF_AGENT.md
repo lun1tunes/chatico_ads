@@ -8,12 +8,13 @@
 
 - Путь к репозиторию на исходном VPS: `/home/lun1z/chatico_ads`
 - Текущая ветка: `main`
-- Текущий `HEAD` на момент handoff: `51dcf24`
-- Последний commit в `HEAD`: `Update environment configuration and enhance authentication flow`
+- Текущий `HEAD` на момент handoff: `783ba28`
+- Последний commit в `HEAD`: `Implement Google Ads report generation and disconnection features. Added API endpoints for generating Google Ads reports and disconnecting Google Ads connections. Enhanced frontend components to support Google Ads disconnection flow, including user confirmation and success notifications. Updated tests to cover new functionalities and ensure proper integration with existing features.`
 - Фактический backend stack: FastAPI, SQLAlchemy async, PostgreSQL, Alembic, dependency-injector
 - Фактический frontend stack: Vue 3, TypeScript, Vite, статический Nginx-контейнер
 - Фактическая infra: Docker Compose с сервисами `api`, `front`, `postgres`
 - В текущем коде нет Redis, Celery, worker/beat контейнеров
+- Google Ads теперь реализован не только на уровне OAuth: в коде есть сохранение credentials, синхронизация customer tree, dashboard-отчёты, AI summary/chat и disconnect flow
 
 Важное расхождение:
 
@@ -27,66 +28,54 @@
 
 Проверка backend на исходном VPS:
 
-- `poetry run pytest` прошёл
-- Результат: `65 passed in 5.97s`
-- Покрытие: `88.12%`
+- `poetry run pytest -q` прошёл
+- Результат: `66 passed in 5.37s`
+- Покрытие: `87.53%`
 
 Проверка frontend на исходном VPS:
 
 - На хосте нет `npm`
 - Docker установлен и рабочий: `Docker version 26.1.5+dfsg1`
-- `npm ci` сейчас падает, потому что `front/package-lock.json` не синхронизирован с `front/package.json`
-- В изолированной временной копии `npm install && npm test` прошёл
-- В изолированной временной копии `npm install && npm run build` прошёл
+- `npm ci` повторно проверен в чистом `node:22-bookworm` контейнере и сейчас падает, потому что `front/package-lock.json` не синхронизирован с `front/package.json`
+- Из-за отсутствия host-level `npm` и дрейфа lockfile я не переисполнял frontend `npm test` и `npm run build` именно для текущей ревизии Google Ads UI на этом VPS
 
 Вывод:
 
-- Исходники фронта собираются, и тесты проходят после нормальной установки зависимостей
-- Зафиксированный lockfile сейчас нужно нормализовать, иначе на чистой машине `npm ci` ненадёжен
+- Backend состояние подтверждено тестами прямо на этом VPS
+- Google Ads backend flow подтверждён кодом и backend-интеграционными тестами
+- Для frontend остаётся технический долг: нормализовать lockfile и отдельно прогнать UI smoke/build уже на чистой Node-среде
 
-## 3. Критичное предупреждение про локальные изменения
+## 3. Состояние рабочего дерева
 
-Рабочее дерево на исходном VPS грязное. Обычный `git clone` или `git pull` ветки `main` на новом VPS не воспроизведёт текущее состояние, если эти локальные изменения отдельно не перенести.
+На момент проверки перед обновлением этого handoff `git status --short` был пустым.
 
-Текущие изменённые файлы относительно `HEAD`:
+Что это значит practically:
 
-- `front/package-lock.json`
-- `front/package.json`
-- `front/src/App.test.ts`
-- `front/src/App.vue`
-- `front/src/style.css`
-- `src/api_v1/meta/views.py`
-- `src/core/container.py`
-- `src/core/services/meta_report_service.py`
-- `src/core/use_cases/meta.py`
-- `tests/integration/test_api_routes.py`
-- `tests/integration/test_meta_ad_accounts_isolation.py`
-- `tests/unit/test_meta_use_cases.py`
+- приложение воспроизводится обычным `git clone` + checkout текущего `HEAD`
+- больше нет отдельного незакоммиченного product diff, который надо вручную переносить на другой VPS
+- если этот `HANDOFF_AGENT.md` не будет закоммичен отдельно после моей правки, единственное локальное отличие будет именно в нём
 
-Текущая сводка diff относительно `HEAD`:
+Итог:
 
-- `12 files changed`
-- `2235 insertions`
-- `63 deletions`
-
-Если переносишь проект на другой VPS, сделай одно из этого до любого деплоя:
-
-1. Лучший вариант: оформи реальный commit на исходном VPS и запушь его.
-2. Нормальный вариант: перенеси всё рабочее дерево целиком, а не только git commit.
-3. Минимальный fallback: экспортируй локальный patch и примени его до запуска.
-
-Нельзя считать, что `origin/main` уже содержит поведение, которое сейчас есть на исходном VPS.
+- для переноса нового VPS больше не нужен отдельный patch с Google Ads функциональностью
+- источник правды по текущему продукту теперь уже находится в git history, а не в грязном worktree
 
 ## 4. Карта проекта
 
 - `src/main.py`: bootstrap FastAPI, CORS, `/health/live`, `/health/ready`
 - `src/api_v1/auth/views.py`: register, login, refresh, logout, `/me`, обновление locale
 - `src/api_v1/meta/views.py`: Meta OAuth start/callback, ad accounts, disconnect, data deletion callback/status
-- `src/api_v1/google_ads/views.py`: Google Ads OAuth start/callback, customer sync
-- `src/api_v1/dashboard/views.py`: endpoint Meta Ads отчёта
-- `src/api_v1/ai/views.py`: каталог провайдеров, сохранённые user provider keys, auto verdict, chat по dashboard
+- `src/api_v1/google_ads/views.py`: Google Ads OAuth start/callback, customer sync, disconnect
+- `src/api_v1/dashboard/views.py`: endpoints Meta Ads и Google Ads dashboard-отчётов
+- `src/api_v1/ai/views.py`: каталог провайдеров, сохранённые user provider keys, auto verdict и chat по Meta/Google Ads dashboard context
 - `src/core/config.py`: валидируемый env-контракт
 - `src/core/security/encryption_service.py`: Fernet-шифрование для сохранённых credentials
+- `src/core/infrastructure/google_ads_api.py`: OAuth token exchange/refresh, customer discovery, Google Ads reporting queries
+- `src/core/services/google_ads_report_service.py`: нормализация Google Ads отчёта в общий dashboard shape и short-lived in-memory cache
+- `src/core/use_cases/google_ads.py`: OAuth callback orchestration, sync customers, disconnect
+- `src/core/use_cases/dashboard.py`: orchestration Meta/Google Ads report generation
+- `front/src/App.vue`: единый UI для Meta/Google Ads аккаунтов, AI analysis и provider-aware chat/settings
+- `front/src/App.test.ts`: smoke/behavior tests фронтового state flow
 - `database/migrations/versions/`: Alembic migrations
 - `docker/docker-compose.yml`: runtime stack
 - `docker/Dockerfile`: backend image, также запускает Alembic при старте
@@ -115,15 +104,26 @@
 
 ### Google Ads
 
+- OAuth start endpoint: `/api/v1/google-ads/oauth/start`
 - OAuth callback endpoint: `/api/v1/google-ads/oauth/callback`
 - Endpoint списка customers: `/api/v1/google-ads/customers`
-- Google Ads здесь опционален. Если конфиг неполный, старт OAuth вернёт `503`.
+- Endpoint отчёта: `/api/v1/dashboard/google-ads/customers/{customer_id}/report`
+- Endpoint disconnect: `DELETE /api/v1/google-ads/connections`
+- Google Ads здесь уже не connection-only: callback сохраняет encrypted credentials, синхронизирует customers в базе и потом эти данные используются для dashboard/AI flow
+- Кэш Google Ads отчёта сейчас только in-memory с коротким TTL. DB snapshot слоя, как у Meta, здесь пока нет.
+- Если конфиг неполный, старт OAuth вернёт `503`.
 
 ### AI
 
 - Внутренний AI provider работает только серверно и используется для auto verdict и fallback chat-сценариев.
 - Поддерживаемые внутренние провайдеры в текущем коде: `gemini` и `anthropic`
 - Пользовательские provider keys сохраняются в базе в зашифрованном виде.
+- Auto verdict endpoints:
+  - `POST /api/v1/ai/meta/ad-accounts/{ad_account_id}/auto-verdict`
+  - `POST /api/v1/ai/google-ads/customers/{customer_id}/auto-verdict`
+- Chat endpoints:
+  - `POST /api/v1/ai/meta/ad-accounts/{ad_account_id}/chat`
+  - `POST /api/v1/ai/google-ads/customers/{customer_id}/chat`
 - Если поменять `FIELD_ENCRYPTION_KEY` после того, как данные уже появились, сохранённые user AI keys и OAuth tokens перестанут расшифровываться.
 
 ## 6. Env-контракт
@@ -236,7 +236,7 @@ cp .env.example .env
 
 Дальше:
 
-1. Перенеси отсутствующие локальные изменения с исходного VPS, если они ещё не закоммичены.
+1. Забери текущий `HEAD` или нужную ветку как базу; отдельный перенос product patch больше не нужен.
 2. Заполни `.env` реальными секретами и публичными URL.
 3. Деплой делай из каталога `docker/`.
 
@@ -363,8 +363,8 @@ docker compose --env-file ../.env up -d --build front
 
 - `front/package-lock.json` сейчас не до конца синхронизирован с `front/package.json`
 - На чистой машине `npm ci` сейчас падает
-- `npm install`, тесты и production build в изолированной временной копии прошли
-- Я бы нормализовал и закоммитил frontend lockfile до того, как полагаться на чистый CI и детерминированные npm-установки
+- Пока lockfile не нормализован, нельзя рассчитывать на детерминированный frontend bootstrap на чистой машине
+- Я бы сначала пересобрал lockfile через контролируемый `npm install`, затем прогнал `npm test` и `npm run build`, и только после этого закоммитил обновлённый lockfile
 
 ## 13. OAuth и compliance checklist
 
@@ -384,11 +384,16 @@ docker compose --env-file ../.env up -d --build front
 - Установить OAuth client ID и secret
 - Зарегистрировать точный callback URI из `.env`
 - Если конфиг заполнен частично, сценарий подключения Google Ads не стартанёт
+- OAuth callback сохраняет encrypted access/refresh token pair и пересобирает customer tree пользователя в базе
+- Dashboard, AI analysis и AI chat потом работают поверх уже синхронизированных customers и сохранённых credentials
+- `DELETE /api/v1/google-ads/connections` удаляет сохранённое Google Ads подключение и связанные customers пользователя
 
 ## 14. Острые углы и реальные риски
 
-- На исходном VPS есть незакоммиченные локальные изменения. Игнорировать это нельзя.
+- Product worktree уже чистый, но сам handoff после редактирования нужно либо закоммитить, либо осознанно оставить локальным.
 - Frontend lockfile сейчас не готов для чистого `npm ci`.
+- Последняя ревизия Google Ads UI не была заново прогнана через `npm test` и `npm run build` на этом VPS, потому что на хосте нет `npm`, а `npm ci` в чистом Node-контейнере падает из-за lockfile drift.
+- Google Ads report cache сейчас только in-memory. После рестарта контейнера или в multi-instance схеме отчёты будут перезапрашиваться, потому что DB snapshot слоя для Google Ads пока нет.
 - Ротация `FIELD_ENCRYPTION_KEY` разрушительна для сохранённых credentials, если не делать re-encryption.
 - Ротация `JWT_SECRET_KEY` инвалидирует текущие сессии.
 - Backend сам запускает Alembic на старте контейнера, поэтому ошибки миграций всплывают прямо при boot.
@@ -398,13 +403,14 @@ docker compose --env-file ../.env up -d --build front
 
 ## 15. Что я бы сделал первым делом на втором VPS
 
-1. Воспроизвёл бы точное состояние исходного сервера, включая текущие локальные изменения.
+1. Забрал бы текущий `HEAD` как базу и отдельно закоммитил бы этот обновлённый handoff, если он нужен в истории.
 2. Подготовил бы финальный production `.env` под реальную схему публичного URL.
 3. Сразу бы решил, живёт приложение на отдельном домене или под `/chatico_ads/`.
 4. Развернул бы стек через Docker Compose и проверил оба health endpoint.
 5. Проверил бы register/login/refresh cookie через реальный публичный URL, а не только через localhost.
 6. Проверил бы Meta OAuth callback и data deletion callback URL до любого живого пользовательского трафика.
-7. Рано нормализовал бы и закоммитил frontend lockfile, чтобы дальше `npm ci` и CI были детерминированными.
+7. Проверил бы руками полный Google Ads flow: OAuth start/callback, список customers, dashboard report, AI analysis/chat и disconnect.
+8. Рано нормализовал бы и закоммитил frontend lockfile, чтобы дальше `npm ci` и CI были детерминированными.
 
 ## 16. Короткая итоговая оценка
 
@@ -415,10 +421,11 @@ docker compose --env-file ../.env up -d --build front
 - compose-стек простой
 - миграции на месте
 - OAuth routes и health checks реализованы
+- Google Ads flow уже включает OAuth, customer sync, dashboard report, AI summary/chat и disconnect
 
 Основные operational-риски здесь не архитектурные. Они такие:
 
-- незакоммиченные изменения на исходном VPS
 - дрейф frontend lockfile
+- отсутствие повторной локальной frontend-проверки для последней Google Ads UI ревизии
 - неправильная настройка публичного URL или cookie path при деплое
 - несохранённая непрерывность секретов при переносе живой базы

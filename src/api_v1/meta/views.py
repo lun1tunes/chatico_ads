@@ -4,7 +4,7 @@ import logging
 from urllib.parse import urlencode
 
 import jwt
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,3 +147,13 @@ async def list_ad_accounts(
         )
         for account in accounts
     ]
+
+
+@router.delete("/connections", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_meta(
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    container: Container = Depends(get_di_container),
+):
+    await container.disconnect_meta_use_case(session=session).execute(user_id=user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

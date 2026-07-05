@@ -26,6 +26,7 @@ class FakeContainer:
     def __init__(self) -> None:
         self.build_meta_oauth_url_use_case = Mock()
         self.handle_meta_oauth_callback_use_case = Mock()
+        self.disconnect_meta_use_case = Mock()
         self.handle_meta_data_deletion_callback_use_case = Mock()
         self.get_meta_data_deletion_status_use_case = Mock()
         self.list_meta_ad_accounts_use_case = Mock()
@@ -63,6 +64,9 @@ async def test_meta_routes(async_client):
     container.handle_meta_oauth_callback_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(return_value={"user_id": "user-1", "connection_id": "conn-1"}),
     )
+    container.disconnect_meta_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=None),
+    )
     container.list_meta_ad_accounts_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(
             return_value=[
@@ -97,6 +101,9 @@ async def test_meta_routes(async_client):
     accounts_response = await async_client.get("/api/v1/meta/ad-accounts")
     assert accounts_response.status_code == 200
     assert accounts_response.json()[0]["external_id"] == "act_1"
+
+    disconnect_response = await async_client.delete("/api/v1/meta/connections")
+    assert disconnect_response.status_code == 204
 
 
 @pytest.mark.integration

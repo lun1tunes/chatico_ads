@@ -167,6 +167,13 @@ class MetaReportService:
             return
         self._cache[cache_key] = (monotonic() + self.cache_ttl_seconds, deepcopy(report))
 
+    def clear_user_cache(self, *, user_id: str) -> None:
+        cache_prefix = f"{user_id}:"
+        for cache_key in [key for key in self._cache if key.startswith(cache_prefix)]:
+            self._cache.pop(cache_key, None)
+        for cache_key in [key for key in self._locks if key.startswith(cache_prefix)]:
+            self._locks.pop(cache_key, None)
+
     async def _resolve_creative_preview(self, creative: dict[str, object]) -> str | None:
         preferred_url = _resolve_creative_image_url(creative)
         if preferred_url and not _looks_like_low_res_preview(preferred_url):

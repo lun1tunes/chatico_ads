@@ -1,15 +1,22 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
+from sqlalchemy import select
 
-from core.repositories.meta_connection import MetaConnectionRepository
-from core.security.encryption_service import EncryptionService
-from core.use_cases.meta import BuildMetaOAuthUrlUseCase, HandleMetaOAuthCallbackUseCase, ListMetaAdAccountsUseCase
+from core.models.google_ads_connection import GoogleAdsConnection
 from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
+from core.models.meta_report_snapshot import MetaReportSnapshot
 from core.models.user import User
+from core.repositories.meta_connection import MetaConnectionRepository
+from core.security.encryption_service import EncryptionService
+from core.use_cases.meta import (
+    BuildMetaOAuthUrlUseCase,
+    DisconnectMetaUseCase,
+    HandleMetaOAuthCallbackUseCase,
+    ListMetaAdAccountsUseCase,
+)
+from core.utils.time import utcnow
 
 
 class FakeStateService:
@@ -29,6 +36,7 @@ class FakeStateService:
 class FakeMetaClient:
     def __init__(self, *, ad_accounts: list[dict[str, object]] | None = None) -> None:
         self.ad_accounts = ad_accounts
+
     def build_authorization_url(self, *, state: str) -> str:
         return f"https://facebook.test/oauth?state={state}"
 
@@ -198,3 +206,99 @@ async def test_handle_meta_oauth_callback_removes_stale_ad_accounts(db_session):
 
     ad_accounts = await ListMetaAdAccountsUseCase(session=db_session).execute(user_id="user-1")
     assert [account.external_id for account in ad_accounts] == ["act_1"]
+
+
+class FakeReportService:
+    def __init__(self) -> None:
+        self.cleared_for: str | None = None
+
+    def clear_user_cache(self, *, user_id: str) -> None:
+        self.cleared_for = user_id
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_disconnect_meta_use_case_removes_only_current_users_meta_data(db_session):
+    report_service = FakeReportService()
+    today = utcnow().date()
+
+    db_session.add_all(
+        [
+            User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"),
+            User(id="user-2", email="other@example.com", password_hash="hash", locale="en"),
+            MetaConnection(
+                id="conn-1",
+                user_id="user-1",
+                meta_user_id="meta-user-1",
+                meta_user_name="Meta Owner",
+                access_token_encrypted="token-1",
+            ),
+            MetaConnection(
+                id="conn-2",
+                user_id="user-2",
+                meta_user_id="meta-user-2",
+                meta_user_name="Meta Other",
+                access_token_encrypted="token-2",
+            ),
+            MetaAdAccount(
+                id="acc-1",
+                connection_id="conn-1",
+                external_id="act_1",
+                account_id="111",
+                name="Main account",
+            ),
+            MetaAdAccount(
+                id="acc-2",
+                connection_id="conn-2",
+                external_id="act_2",
+                account_id="222",
+                name="Other account",
+            ),
+            MetaReportSnapshot(
+                id="snapshot-1",
+                meta_ad_account_id="acc-1",
+                requested_days=30,
+                current_since=today,
+                current_until=today,
+                previous_since=today,
+                previous_until=today,
+                payload={"account": {"id": "act_1"}},
+                source_fetched_at=utcnow(),
+                expires_at=utcnow(),
+            ),
+            MetaReportSnapshot(
+                id="snapshot-2",
+                meta_ad_account_id="acc-2",
+                requested_days=30,
+                current_since=today,
+                current_until=today,
+                previous_since=today,
+                previous_until=today,
+                payload={"account": {"id": "act_2"}},
+                source_fetched_at=utcnow(),
+                expires_at=utcnow(),
+            ),
+            GoogleAdsConnection(
+                id="google-conn-1",
+                user_id="user-1",
+                refresh_token_encrypted="refresh-token",
+                access_token_encrypted="access-token",
+                scopes="https://www.googleapis.com/auth/adwords",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    await DisconnectMetaUseCase(session=db_session, report_service=report_service).execute(user_id="user-1")
+
+    assert await db_session.get(User, "user-1") is not None
+    assert await db_session.get(GoogleAdsConnection, "google-conn-1") is not None
+    assert await db_session.get(MetaConnection, "conn-1") is None
+    assert await db_session.get(MetaAdAccount, "acc-1") is None
+
+    remaining_snapshots = (await db_session.execute(select(MetaReportSnapshot))).scalars().all()
+    remaining_connections = (await db_session.execute(select(MetaConnection))).scalars().all()
+
+    assert [snapshot.id for snapshot in remaining_snapshots] == ["snapshot-2"]
+    assert [connection.id for connection in remaining_connections] == ["conn-2"]
+    assert report_service.cleared_for == "user-1"

@@ -33,7 +33,12 @@ from .use_cases.google_ads import (
     ListGoogleAdsCustomersUseCase,
 )
 from .use_cases.meta_data_deletion import GetMetaDataDeletionStatusUseCase, HandleMetaDataDeletionCallbackUseCase
-from .use_cases.meta import BuildMetaOAuthUrlUseCase, HandleMetaOAuthCallbackUseCase, ListMetaAdAccountsUseCase
+from .use_cases.meta import (
+    BuildMetaOAuthUrlUseCase,
+    DisconnectMetaUseCase,
+    HandleMetaOAuthCallbackUseCase,
+    ListMetaAdAccountsUseCase,
+)
 
 
 class Container(containers.DeclarativeContainer):
@@ -93,6 +98,10 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
     )
     list_meta_ad_accounts_use_case = providers.Factory(ListMetaAdAccountsUseCase)
+    disconnect_meta_use_case = providers.Factory(
+        DisconnectMetaUseCase,
+        report_service=meta_report_service,
+    )
     handle_meta_data_deletion_callback_use_case = providers.Factory(
         HandleMetaDataDeletionCallbackUseCase,
         signed_request_service=meta_signed_request_service,

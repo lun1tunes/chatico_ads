@@ -115,3 +115,21 @@ class ListMetaAdAccountsUseCase:
 
     async def execute(self, *, user_id: str) -> list[MetaAdAccount]:
         return await self.ad_account_repo.list_for_user(user_id)
+
+
+class DisconnectMetaUseCase:
+    def __init__(self, *, session: AsyncSession, report_service=None) -> None:
+        self.session = session
+        self.report_service = report_service
+        self.connection_repo = MetaConnectionRepository(session)
+
+    async def execute(self, *, user_id: str) -> None:
+        connections = await self.connection_repo.list_for_user(user_id)
+        for connection in connections:
+            await self.session.delete(connection)
+
+        if connections:
+            await self.session.commit()
+
+        if self.report_service is not None:
+            self.report_service.clear_user_cache(user_id=user_id)

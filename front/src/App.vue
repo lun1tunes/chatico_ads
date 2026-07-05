@@ -504,6 +504,9 @@ const translations = {
     authHint: 'У каждого пользователя изолированные кабинеты, refresh-сессия хранится на сервере.',
     workspace: 'Рабочая панель',
     connectMeta: 'Подключить Meta',
+    disconnectMeta: 'Отвязать Meta',
+    disconnectMetaConfirm: 'Это удалит все Meta-подключения, кабинеты и сохранённые отчёты из вашего аккаунта. Продолжить?',
+    metaDisconnectSuccess: 'Meta-данные удалены из аккаунта.',
     connectGoogle: 'Подключить Google Ads',
     accounts: 'Кабинеты',
     googleAds: 'Google Ads',
@@ -604,6 +607,9 @@ const translations = {
     authHint: 'Әр қолданушы тек өз кабинеттерін көреді, refresh-сессия серверде сақталады.',
     workspace: 'Жұмыс панелі',
     connectMeta: 'Meta қосу',
+    disconnectMeta: 'Meta-ны ажырату',
+    disconnectMetaConfirm: 'Бұл сіздің аккаунтыңыздан барлық Meta байланыстарын, кабинеттерін және сақталған есептерін жояды. Жалғастырасыз ба?',
+    metaDisconnectSuccess: 'Meta деректері аккаунттан өшірілді.',
     connectGoogle: 'Google Ads қосу',
     accounts: 'Кабинеттер',
     googleAds: 'Google Ads',
@@ -704,6 +710,9 @@ const translations = {
     authHint: 'Each user sees only their own ad accounts, and refresh sessions stay on the server.',
     workspace: 'Workspace',
     connectMeta: 'Connect Meta',
+    disconnectMeta: 'Disconnect Meta',
+    disconnectMetaConfirm: 'This will remove all Meta connections, ad accounts, and saved reports from your account. Continue?',
+    metaDisconnectSuccess: 'Meta data has been removed from your account.',
     connectGoogle: 'Connect Google Ads',
     accounts: 'Accounts',
     googleAds: 'Google Ads',
@@ -842,9 +851,11 @@ const oauthStatus = ref<OAuthStatus | null>(null)
 const authForm = ref({ email: '', password: '' })
 const authError = ref('')
 const pageError = ref('')
+const pageNotice = ref('')
 const authLoading = ref(false)
 const bootLoading = ref(true)
 const metaConnecting = ref(false)
+const metaDisconnecting = ref(false)
 const googleConnecting = ref(false)
 const accountsLoading = ref(false)
 const googleAccountsLoading = ref(false)
@@ -959,6 +970,9 @@ const overviewMetrics = computed(() => {
   }))
 })
 const workspaceNotice = computed(() => {
+  if (pageNotice.value) {
+    return pageNotice.value
+  }
   if (!oauthStatus.value) {
     return ''
   }
@@ -967,6 +981,12 @@ const workspaceNotice = computed(() => {
   return oauthStatus.value.status === 'success'
     ? successMessage
     : `${errorMessage}${oauthStatus.value.message ? `: ${oauthStatus.value.message}` : ''}`
+})
+const workspaceNoticeTone = computed(() => {
+  if (pageNotice.value) {
+    return 'success'
+  }
+  return oauthStatus.value?.status === 'error' ? 'error' : 'success'
 })
 const policySections = computed<readonly PrivacySection[]>(() => copy.value.privacySections)
 
@@ -1381,6 +1401,7 @@ function resetSession() {
   localeUpdateRequestId.value += 1
   accessToken.value = ''
   user.value = null
+  oauthStatus.value = null
   accounts.value = []
   googleAccounts.value = []
   report.value = null
@@ -1391,10 +1412,14 @@ function resetSession() {
   useClientCredentials.value = false
   savedProviderKeys.value = {}
   clientApiKey.value = ''
+  authLoading.value = false
+  metaConnecting.value = false
+  metaDisconnecting.value = false
   providerKeyLoading.value = false
   providerKeyEditing.value = false
   providerKeyError.value = ''
   providerKeyNotice.value = ''
+  pageNotice.value = ''
   reportContextKey.value = ''
   googleConnecting.value = false
   googleAccountsLoading.value = false
@@ -1494,6 +1519,7 @@ async function apiRequest<T>(
 async function bootstrapSession() {
   bootLoading.value = true
   document.documentElement.lang = locale.value
+  pageNotice.value = ''
   accounts.value = []
   googleAccounts.value = []
   report.value = null
@@ -1574,6 +1600,7 @@ async function loadSavedProviderKeys() {
 async function submitAuth() {
   authLoading.value = true
   authError.value = ''
+  pageNotice.value = ''
   user.value = null
   accessToken.value = ''
   accounts.value = []
@@ -1671,6 +1698,7 @@ async function loadGoogleAccounts() {
 async function connectMeta() {
   metaConnecting.value = true
   pageError.value = ''
+  pageNotice.value = ''
 
   try {
     const payload = await apiRequest<{ authorization_url: string }>('/meta/oauth/start')
@@ -1681,9 +1709,37 @@ async function connectMeta() {
   }
 }
 
+async function disconnectMeta() {
+  if (metaDisconnecting.value || !window.confirm(copy.value.disconnectMetaConfirm)) {
+    return
+  }
+
+  metaDisconnecting.value = true
+  pageError.value = ''
+  pageNotice.value = ''
+
+  try {
+    await apiRequest('/meta/connections', { method: 'DELETE' })
+    oauthStatus.value = null
+    report.value = null
+    selectedAccountId.value = ''
+    selectedCampaignId.value = ''
+    resetAutoVerdict()
+    reportContextKey.value = ''
+    resetChatState()
+    await loadAccounts()
+    pageNotice.value = copy.value.metaDisconnectSuccess
+  } catch (error) {
+    pageError.value = formatUnexpectedError(error)
+  } finally {
+    metaDisconnecting.value = false
+  }
+}
+
 async function connectGoogle() {
   googleConnecting.value = true
   pageError.value = ''
+  pageNotice.value = ''
 
   try {
     const payload = await apiRequest<{ authorization_url: string }>('/google-ads/oauth/start')
@@ -2243,9 +2299,20 @@ watch(currentView, (view) => {
         <section class="rail-section">
           <div class="section-head">
             <span>{{ copy.accounts }}</span>
-            <button type="button" class="rail-link" :disabled="metaConnecting" @click="connectMeta">
-              {{ copy.connectMeta }}
-            </button>
+            <div class="section-actions">
+              <button type="button" class="rail-link" :disabled="metaConnecting || metaDisconnecting" @click="connectMeta">
+                {{ copy.connectMeta }}
+              </button>
+              <button
+                v-if="accounts.length > 0"
+                type="button"
+                class="rail-link"
+                :disabled="metaConnecting || metaDisconnecting"
+                @click="disconnectMeta"
+              >
+                {{ copy.disconnectMeta }}
+              </button>
+            </div>
           </div>
 
           <div v-if="accountsLoading" class="empty-note">{{ copy.loadingReport }}</div>
@@ -2322,7 +2389,7 @@ watch(currentView, (view) => {
       </aside>
 
       <section class="stage-center">
-        <div v-if="workspaceNotice" class="message" :class="oauthStatus?.status === 'error' ? 'error' : 'success'">
+        <div v-if="workspaceNotice" class="message" :class="workspaceNoticeTone">
           {{ workspaceNotice }}
         </div>
         <div v-if="pageError" class="message error">{{ pageError }}</div>
@@ -2332,7 +2399,7 @@ watch(currentView, (view) => {
           <h2>{{ copy.noAccountsTitle }}</h2>
           <p>{{ copy.noAccountsBody }}</p>
           <div class="empty-surface-actions">
-            <button type="button" class="primary-button" :disabled="metaConnecting" @click="connectMeta">
+            <button type="button" class="primary-button" :disabled="metaConnecting || metaDisconnecting" @click="connectMeta">
               {{ copy.connectMeta }}
             </button>
             <button type="button" class="ghost-button" :disabled="googleConnecting" @click="connectGoogle">

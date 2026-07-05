@@ -5,10 +5,12 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..infrastructure.llm_clients import LLMProxyError
+from ..repositories.google_ads_customer import GoogleAdsCustomerRepository
 from ..repositories.meta_ad_account import MetaAdAccountRepository
 from ..repositories.meta_report_snapshot import MetaReportSnapshotRepository
 from ..repositories.user_ai_provider_key import UserAIProviderKeyRepository
 from ..models.user_ai_provider_key import UserAIProviderKey
+from ..services.google_ads_report_service import GoogleAdsReportService
 from ..services.meta_report_service import MetaReportService
 from ..utils.time import utcnow
 
@@ -35,6 +37,34 @@ class GenerateMetaReportUseCase:
             snapshot_repo=self.snapshot_repo,
             user_id=user_id,
             external_account_id=ad_account_id,
+            requested_days=days,
+            periods=periods,
+            force_refresh=force_refresh,
+        )
+        await self.session.commit()
+        return report
+
+
+class GenerateGoogleAdsReportUseCase:
+    def __init__(self, *, session: AsyncSession, date_range_service, report_service: GoogleAdsReportService) -> None:
+        self.session = session
+        self.date_range_service = date_range_service
+        self.report_service = report_service
+        self.customer_repo = GoogleAdsCustomerRepository(session)
+
+    async def execute(
+        self,
+        *,
+        user_id: str,
+        customer_id: str,
+        days: int,
+        force_refresh: bool = False,
+    ) -> dict[str, object]:
+        periods = self.date_range_service.build_periods(days=days)
+        report = await self.report_service.build_report(
+            customer_repo=self.customer_repo,
+            user_id=user_id,
+            external_customer_id=customer_id,
             requested_days=days,
             periods=periods,
             force_refresh=force_refresh,

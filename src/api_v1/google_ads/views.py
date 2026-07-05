@@ -118,3 +118,12 @@ async def list_customers(
         )
         for customer in customers
     ]
+
+
+@router.delete("/connections", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_google_ads(
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    container: Container = Depends(get_di_container),
+):
+    await container.disconnect_google_ads_use_case(session=session).execute(user_id=user.id)

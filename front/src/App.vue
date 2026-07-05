@@ -508,6 +508,9 @@ const translations = {
     disconnectMetaConfirm: 'Это удалит все Meta-подключения, кабинеты и сохранённые отчёты из вашего аккаунта. Продолжить?',
     metaDisconnectSuccess: 'Meta-данные удалены из аккаунта.',
     connectGoogle: 'Подключить Google Ads',
+    disconnectGoogle: 'Отвязать Google Ads',
+    disconnectGoogleConfirm: 'Это удалит подключение Google Ads и связанные аккаунты из вашего профиля. Продолжить?',
+    googleDisconnectSuccess: 'Google Ads данные удалены из аккаунта.',
     accounts: 'Кабинеты',
     googleAds: 'Google Ads',
     googleAccountsEmpty: 'Google Ads пока не подключён.',
@@ -518,9 +521,9 @@ const translations = {
     campaigns: 'Кампании',
     days: 'Период',
     dayOptions: { 7: '7 дней', 30: '30 дней', 90: '90 дней' },
-    noAccountsTitle: 'Meta ещё не подключена',
+    noAccountsTitle: 'Подключите Meta или Google Ads',
     noAccountsBody:
-      'Нажмите кнопку подключения. После OAuth кабинет появится слева, а отчёт и AI-анализ загрузятся через серверный прокси.',
+      'После OAuth подключённые кабинеты появятся слева, а отчёт и AI-анализ загрузятся через серверный прокси.',
     refreshData: 'Обновить отчёт',
     logout: 'Выйти',
     activeCampaigns: 'Активные кампании',
@@ -556,11 +559,11 @@ const translations = {
     askPlaceholder: 'Спросить по кампаниям, креативам или CPA...',
     send: 'Отправить',
     loading: 'Загружаем рабочую панель...',
-    loadingReport: 'Собираем Meta-отчёт...',
+    loadingReport: 'Собираем отчёт...',
     loadingVerdict: 'Готовим ИИ-анализ...',
     loadingChat: 'Готовим ответ...',
     emptyCampaigns: 'Кампании не найдены для выбранного периода.',
-    emptyCreatives: 'Meta не вернула превью креативов по этой кампании.',
+    emptyCreatives: 'По этой кампании нет доступных объявлений или превью.',
     oauthSuccess: 'Meta успешно подключена. Данные кабинета уже доступны.',
     oauthError: 'Подключение Meta завершилось ошибкой.',
     googleOauthSuccess: 'Google Ads успешно подключён. Аккаунты синхронизированы.',
@@ -586,7 +589,7 @@ const translations = {
       ctr: ['CTR', 'Доля кликов от показов.'],
       cpm: ['CPM', 'Стоимость 1000 показов.'],
       cpc: ['CPC', 'Средняя цена клика.'],
-      results: ['Результаты', 'Основная целевая конверсия Meta.'],
+      results: ['Результаты', 'Основная целевая конверсия платформы.'],
       cost_per_result: ['Цена результата', 'Сколько стоит одна целевая конверсия.'],
     },
   },
@@ -611,6 +614,9 @@ const translations = {
     disconnectMetaConfirm: 'Бұл сіздің аккаунтыңыздан барлық Meta байланыстарын, кабинеттерін және сақталған есептерін жояды. Жалғастырасыз ба?',
     metaDisconnectSuccess: 'Meta деректері аккаунттан өшірілді.',
     connectGoogle: 'Google Ads қосу',
+    disconnectGoogle: 'Google Ads ажырату',
+    disconnectGoogleConfirm: 'Бұл Google Ads байланысын және қатысты аккаунттарды өшіреді. Жалғастырасыз ба?',
+    googleDisconnectSuccess: 'Google Ads деректері аккаунттан өшірілді.',
     accounts: 'Кабинеттер',
     googleAds: 'Google Ads',
     googleAccountsEmpty: 'Google Ads әлі қосылмаған.',
@@ -621,9 +627,9 @@ const translations = {
     campaigns: 'Кампаниялар',
     days: 'Кезең',
     dayOptions: { 7: '7 күн', 30: '30 күн', 90: '90 күн' },
-    noAccountsTitle: 'Meta әлі қосылмаған',
+    noAccountsTitle: 'Meta немесе Google Ads қосыңыз',
     noAccountsBody:
-      'Қосу батырмасын басыңыз. OAuth аяқталған соң кабинет сол жақта көрінеді, ал есеп пен AI-талдау серверлік прокси арқылы жүктеледі.',
+      'OAuth аяқталған соң қосылған кабинеттер сол жақта көрінеді, ал есеп пен AI-талдау серверлік прокси арқылы жүктеледі.',
     refreshData: 'Есепті жаңарту',
     logout: 'Шығу',
     activeCampaigns: 'Белсенді кампаниялар',
@@ -659,11 +665,11 @@ const translations = {
     askPlaceholder: 'Кампания, креатив немесе CPA туралы сұраңыз...',
     send: 'Жіберу',
     loading: 'Жұмыс панелі жүктеліп жатыр...',
-    loadingReport: 'Meta есебі жиналып жатыр...',
+    loadingReport: 'Есеп жиналып жатыр...',
     loadingVerdict: 'AI талдау дайындалып жатыр...',
     loadingChat: 'Жауап дайындалып жатыр...',
     emptyCampaigns: 'Таңдалған кезең бойынша кампания табылмады.',
-    emptyCreatives: 'Бұл кампания үшін Meta креатив превьюін қайтармады.',
+    emptyCreatives: 'Бұл кампания үшін жарнамалар немесе превьюлар табылмады.',
     oauthSuccess: 'Meta сәтті қосылды. Кабинет деректері дайын.',
     oauthError: 'Meta қосу кезінде қате болды.',
     googleOauthSuccess: 'Google Ads сәтті қосылды. Аккаунттар синхрондалды.',
@@ -689,7 +695,7 @@ const translations = {
       ctr: ['CTR', 'Көрсетілімнен клик үлесі.'],
       cpm: ['CPM', '1000 көрсетілім құны.'],
       cpc: ['CPC', 'Бір кликтың орташа бағасы.'],
-      results: ['Нәтижелер', 'Meta анықтаған негізгі конверсия.'],
+      results: ['Нәтижелер', 'Платформа анықтаған негізгі конверсия.'],
       cost_per_result: ['Нәтиже құны', 'Бір негізгі конверсия бағасы.'],
     },
   },
@@ -714,6 +720,9 @@ const translations = {
     disconnectMetaConfirm: 'This will remove all Meta connections, ad accounts, and saved reports from your account. Continue?',
     metaDisconnectSuccess: 'Meta data has been removed from your account.',
     connectGoogle: 'Connect Google Ads',
+    disconnectGoogle: 'Disconnect Google Ads',
+    disconnectGoogleConfirm: 'This will remove the Google Ads connection and synced accounts from your profile. Continue?',
+    googleDisconnectSuccess: 'Google Ads data has been removed from your account.',
     accounts: 'Accounts',
     googleAds: 'Google Ads',
     googleAccountsEmpty: 'Google Ads is not connected yet.',
@@ -724,9 +733,9 @@ const translations = {
     campaigns: 'Campaigns',
     days: 'Range',
     dayOptions: { 7: '7 days', 30: '30 days', 90: '90 days' },
-    noAccountsTitle: 'Meta is not connected yet',
+    noAccountsTitle: 'Connect Meta or Google Ads',
     noAccountsBody:
-      'Start the OAuth flow. After approval, the account appears on the left and the dashboard plus AI analysis load through the backend proxy.',
+      'Start either OAuth flow. After approval, the connected accounts appear on the left and the dashboard plus AI analysis load through the backend proxy.',
     refreshData: 'Refresh report',
     logout: 'Logout',
     activeCampaigns: 'Active campaigns',
@@ -762,11 +771,11 @@ const translations = {
     askPlaceholder: 'Ask about campaigns, creatives, or CPA...',
     send: 'Send',
     loading: 'Loading workspace...',
-    loadingReport: 'Building Meta report...',
+    loadingReport: 'Building report...',
     loadingVerdict: 'Preparing AI analysis...',
     loadingChat: 'Preparing the answer...',
     emptyCampaigns: 'No campaigns were returned for this period.',
-    emptyCreatives: 'Meta did not return creative previews for this campaign.',
+    emptyCreatives: 'No ads or previews were returned for this campaign.',
     oauthSuccess: 'Meta connected successfully. Account data is ready.',
     oauthError: 'Meta connection failed.',
     googleOauthSuccess: 'Google Ads connected successfully. Accounts are synced.',
@@ -792,7 +801,7 @@ const translations = {
       ctr: ['CTR', 'Click-through rate from impressions.'],
       cpm: ['CPM', 'Cost per thousand impressions.'],
       cpc: ['CPC', 'Average cost per click.'],
-      results: ['Results', 'Primary Meta conversion result.'],
+      results: ['Results', 'Primary platform conversion result.'],
       cost_per_result: ['Cost per result', 'Average cost of one target result.'],
     },
   },
@@ -857,6 +866,7 @@ const bootLoading = ref(true)
 const metaConnecting = ref(false)
 const metaDisconnecting = ref(false)
 const googleConnecting = ref(false)
+const googleDisconnecting = ref(false)
 const accountsLoading = ref(false)
 const googleAccountsLoading = ref(false)
 const reportLoading = ref(false)
@@ -865,6 +875,7 @@ const chatLoading = ref(false)
 const reportDays = ref(30)
 const accounts = ref<MetaAccount[]>([])
 const googleAccounts = ref<GoogleAdsCustomer[]>([])
+const selectedProvider = ref<OAuthProvider>('meta')
 const selectedAccountId = ref('')
 const report = ref<DashboardReport | null>(null)
 const selectedCampaignId = ref('')
@@ -951,8 +962,43 @@ const autoVerdictDetails = computed(() => {
   return autoVerdictSections.value.details
 })
 const hasAutoVerdictDetails = computed(() => Boolean(autoVerdictDetails.value))
-const selectedAccount = computed(() => {
+const hasAnyConnectedAccounts = computed(() => accounts.value.length > 0 || googleAccounts.value.length > 0)
+const selectedMetaAccount = computed(() => {
   return accounts.value.find((account) => account.external_id === selectedAccountId.value) ?? null
+})
+const selectedGoogleAccount = computed(() => {
+  return googleAccounts.value.find((customer) => customer.external_customer_id === selectedAccountId.value) ?? null
+})
+const selectedAccount = computed(() => {
+  if (selectedProvider.value === 'google_ads') {
+    const customer = selectedGoogleAccount.value
+    if (!customer) {
+      return null
+    }
+    return {
+      id: customer.id,
+      account_id: customer.external_customer_id,
+      name: customer.descriptive_name,
+      currency: customer.currency_code,
+      timezone_name: customer.time_zone,
+    }
+  }
+
+  const account = selectedMetaAccount.value
+  if (!account) {
+    return null
+  }
+
+  return {
+    id: account.id,
+    account_id: account.account_id,
+    name: account.name,
+    currency: account.currency,
+    timezone_name: account.timezone_name,
+  }
+})
+const selectedProviderLabel = computed(() => {
+  return selectedProvider.value === 'google_ads' ? copy.value.googleAds : 'Meta'
 })
 const selectedCampaign = computed(() => {
   const campaigns = report.value?.campaigns ?? []
@@ -1397,6 +1443,113 @@ function persistAuth(payload: AuthResponse) {
   applyAuthenticatedLocale(payload.user.locale)
 }
 
+function clearReportState() {
+  report.value = null
+  selectedCampaignId.value = ''
+  resetAutoVerdict()
+  reportContextKey.value = ''
+  resetChatState()
+}
+
+function hasValidSelectedAccount(provider: OAuthProvider, accountId: string) {
+  if (!accountId) {
+    return false
+  }
+  if (provider === 'google_ads') {
+    return googleAccounts.value.some((customer) => customer.external_customer_id === accountId)
+  }
+  return accounts.value.some((account) => account.external_id === accountId)
+}
+
+function resolvePreferredAccountSelection(preferredProvider: OAuthProvider | null = null) {
+  if (hasValidSelectedAccount(selectedProvider.value, selectedAccountId.value)) {
+    return {
+      provider: selectedProvider.value,
+      accountId: selectedAccountId.value,
+    }
+  }
+
+  if (preferredProvider === 'google_ads' && googleAccounts.value.length > 0) {
+    return {
+      provider: 'google_ads' as const,
+      accountId: googleAccounts.value[0].external_customer_id,
+    }
+  }
+
+  if (preferredProvider === 'meta' && accounts.value.length > 0) {
+    return {
+      provider: 'meta' as const,
+      accountId: accounts.value[0].external_id,
+    }
+  }
+
+  if (accounts.value.length > 0) {
+    return {
+      provider: 'meta' as const,
+      accountId: accounts.value[0].external_id,
+    }
+  }
+
+  if (googleAccounts.value.length > 0) {
+    return {
+      provider: 'google_ads' as const,
+      accountId: googleAccounts.value[0].external_customer_id,
+    }
+  }
+
+  return null
+}
+
+function buildReportContextKey(provider: OAuthProvider, accountId: string, days: number) {
+  return `${provider}:${accountId}:${days}`
+}
+
+function buildDashboardReportPath(provider: OAuthProvider, accountId: string, query: string) {
+  if (provider === 'google_ads') {
+    return `/dashboard/google-ads/customers/${accountId}/report?${query}`
+  }
+  return `/dashboard/meta/ad-accounts/${accountId}/report?${query}`
+}
+
+function buildAutoVerdictPath(provider: OAuthProvider, accountId: string) {
+  if (provider === 'google_ads') {
+    return `/ai/google-ads/customers/${accountId}/auto-verdict`
+  }
+  return `/ai/meta/ad-accounts/${accountId}/auto-verdict`
+}
+
+function buildChatPath(provider: OAuthProvider, accountId: string) {
+  if (provider === 'google_ads') {
+    return `/ai/google-ads/customers/${accountId}/chat`
+  }
+  return `/ai/meta/ad-accounts/${accountId}/chat`
+}
+
+async function syncSelectedAccount(options: { preferredProvider?: OAuthProvider | null; forceReload?: boolean } = {}) {
+  const nextSelection = resolvePreferredAccountSelection(options.preferredProvider ?? null)
+  if (!nextSelection) {
+    selectedProvider.value = 'meta'
+    selectedAccountId.value = ''
+    clearReportState()
+    return
+  }
+
+  const selectionChanged =
+    nextSelection.provider !== selectedProvider.value || nextSelection.accountId !== selectedAccountId.value
+
+  selectedProvider.value = nextSelection.provider
+  selectedAccountId.value = nextSelection.accountId
+
+  if (selectionChanged) {
+    resetChatState()
+  }
+
+  const nextContextKey = buildReportContextKey(nextSelection.provider, nextSelection.accountId, reportDays.value)
+  if (selectionChanged || options.forceReload || reportContextKey.value !== nextContextKey || !report.value) {
+    await loadReport()
+  }
+}
+
 function resetSession() {
   localeUpdateRequestId.value += 1
   accessToken.value = ''
@@ -1404,23 +1557,21 @@ function resetSession() {
   oauthStatus.value = null
   accounts.value = []
   googleAccounts.value = []
-  report.value = null
+  selectedProvider.value = 'meta'
   selectedAccountId.value = ''
-  selectedCampaignId.value = ''
-  resetAutoVerdict()
-  resetChatState()
+  clearReportState()
   useClientCredentials.value = false
   savedProviderKeys.value = {}
   clientApiKey.value = ''
   authLoading.value = false
   metaConnecting.value = false
   metaDisconnecting.value = false
+  googleDisconnecting.value = false
   providerKeyLoading.value = false
   providerKeyEditing.value = false
   providerKeyError.value = ''
   providerKeyNotice.value = ''
   pageNotice.value = ''
-  reportContextKey.value = ''
   googleConnecting.value = false
   googleAccountsLoading.value = false
   localStorage.removeItem(STORAGE_TOKEN_KEY)
@@ -1522,9 +1673,9 @@ async function bootstrapSession() {
   pageNotice.value = ''
   accounts.value = []
   googleAccounts.value = []
-  report.value = null
+  selectedProvider.value = 'meta'
   selectedAccountId.value = ''
-  selectedCampaignId.value = ''
+  clearReportState()
 
   const callbackUrl = new URL(window.location.href)
   const providerParam = callbackUrl.searchParams.get('provider')
@@ -1553,7 +1704,13 @@ async function bootstrapSession() {
       user.value = await apiRequest<User>('/auth/me')
       applyAuthenticatedLocale(user.value.locale)
     }
-    await Promise.all([loadAccounts(), loadGoogleAccounts(), loadSavedProviderKeys()])
+    await loadAccounts()
+    await loadGoogleAccounts()
+    await loadSavedProviderKeys()
+    await syncSelectedAccount({
+      preferredProvider: oauthStatus.value?.status === 'success' ? oauthStatus.value.provider : null,
+      forceReload: true,
+    })
   } catch (error) {
     resetSession()
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
@@ -1605,9 +1762,9 @@ async function submitAuth() {
   accessToken.value = ''
   accounts.value = []
   googleAccounts.value = []
-  report.value = null
+  selectedProvider.value = 'meta'
   selectedAccountId.value = ''
-  selectedCampaignId.value = ''
+  clearReportState()
   localStorage.removeItem(STORAGE_TOKEN_KEY)
   localStorage.removeItem(LEGACY_STORAGE_TOKEN_KEY)
 
@@ -1627,7 +1784,10 @@ async function submitAuth() {
     persistAuth(result)
     authForm.value.password = ''
     pageError.value = ''
-    await Promise.all([loadAccounts(), loadGoogleAccounts(), loadSavedProviderKeys()])
+    await loadAccounts()
+    await loadGoogleAccounts()
+    await loadSavedProviderKeys()
+    await syncSelectedAccount({ forceReload: true })
   } catch (error) {
     authError.value = error instanceof Error ? error.message : 'Unexpected error'
   } finally {
@@ -1647,6 +1807,7 @@ async function logout() {
 
 async function loadAccounts() {
   if (!user.value) {
+    accounts.value = []
     return
   }
 
@@ -1654,22 +1815,7 @@ async function loadAccounts() {
   pageError.value = ''
 
   try {
-    const payload = await apiRequest<MetaAccount[]>('/meta/ad-accounts')
-    accounts.value = payload
-
-    if (payload.length === 0) {
-      report.value = null
-      selectedAccountId.value = ''
-      selectedCampaignId.value = ''
-      resetAutoVerdict()
-      reportContextKey.value = ''
-      resetChatState()
-      return
-    }
-
-    const isCurrentAccountValid = payload.some((account) => account.external_id === selectedAccountId.value)
-    selectedAccountId.value = isCurrentAccountValid ? selectedAccountId.value : payload[0].external_id
-    await loadReport()
+    accounts.value = await apiRequest<MetaAccount[]>('/meta/ad-accounts')
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
   } finally {
@@ -1686,8 +1832,7 @@ async function loadGoogleAccounts() {
   googleAccountsLoading.value = true
 
   try {
-    const payload = await apiRequest<GoogleAdsCustomer[]>('/google-ads/customers')
-    googleAccounts.value = payload
+    googleAccounts.value = await apiRequest<GoogleAdsCustomer[]>('/google-ads/customers')
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
   } finally {
@@ -1721,13 +1866,9 @@ async function disconnectMeta() {
   try {
     await apiRequest('/meta/connections', { method: 'DELETE' })
     oauthStatus.value = null
-    report.value = null
-    selectedAccountId.value = ''
-    selectedCampaignId.value = ''
-    resetAutoVerdict()
-    reportContextKey.value = ''
-    resetChatState()
     await loadAccounts()
+    await loadGoogleAccounts()
+    await syncSelectedAccount({ preferredProvider: 'google_ads', forceReload: true })
     pageNotice.value = copy.value.metaDisconnectSuccess
   } catch (error) {
     pageError.value = formatUnexpectedError(error)
@@ -1750,12 +1891,35 @@ async function connectGoogle() {
   }
 }
 
+async function disconnectGoogle() {
+  if (googleDisconnecting.value || !window.confirm(copy.value.disconnectGoogleConfirm)) {
+    return
+  }
+
+  googleDisconnecting.value = true
+  pageError.value = ''
+  pageNotice.value = ''
+
+  try {
+    await apiRequest('/google-ads/connections', { method: 'DELETE' })
+    oauthStatus.value = null
+    await loadGoogleAccounts()
+    await loadAccounts()
+    await syncSelectedAccount({ preferredProvider: 'meta', forceReload: true })
+    pageNotice.value = copy.value.googleDisconnectSuccess
+  } catch (error) {
+    pageError.value = formatUnexpectedError(error)
+  } finally {
+    googleDisconnecting.value = false
+  }
+}
+
 async function loadReport(options: { forceRefresh?: boolean } = {}) {
   if (!selectedAccountId.value) {
     return
   }
 
-  const nextContextKey = `${selectedAccountId.value}:${reportDays.value}`
+  const nextContextKey = buildReportContextKey(selectedProvider.value, selectedAccountId.value, reportDays.value)
   reportLoading.value = true
   pageError.value = ''
   chatError.value = ''
@@ -1772,9 +1936,7 @@ async function loadReport(options: { forceRefresh?: boolean } = {}) {
     if (options.forceRefresh) {
       query.set('force_refresh', 'true')
     }
-    const payload = await apiRequest<DashboardReport>(
-      `/dashboard/meta/ad-accounts/${selectedAccountId.value}/report?${query.toString()}`,
-    )
+    const payload = await apiRequest<DashboardReport>(buildDashboardReportPath(selectedProvider.value, selectedAccountId.value, query.toString()))
     report.value = payload
     reportContextKey.value = nextContextKey
     selectedCampaignId.value =
@@ -1796,16 +1958,13 @@ async function loadAutoVerdict() {
 
     verdictLoading.value = true
     autoVerdictExpanded.value = false
-    const payload = await apiRequest<{ text: string }>(
-      `/ai/meta/ad-accounts/${selectedAccountId.value}/auto-verdict`,
-      {
-        method: 'POST',
-        body: {
-          days: reportDays.value,
-          language: locale.value,
-        },
+    const payload = await apiRequest<{ text: string }>(buildAutoVerdictPath(selectedProvider.value, selectedAccountId.value), {
+      method: 'POST',
+      body: {
+        days: reportDays.value,
+        language: locale.value,
       },
-    )
+    })
     autoVerdict.value = payload.text
   } catch (error) {
     autoVerdict.value = formatUnexpectedError(error)
@@ -1834,7 +1993,7 @@ async function sendQuestion(question?: string) {
   chatDraft.value = ''
 
   try {
-    const payload = await apiRequest<{ text: string }>(`/ai/meta/ad-accounts/${selectedAccountId.value}/chat`, {
+    const payload = await apiRequest<{ text: string }>(buildChatPath(selectedProvider.value, selectedAccountId.value), {
       method: 'POST',
       body: {
         days: reportDays.value,
@@ -1931,10 +2090,11 @@ function cancelProviderKeyEdit() {
   clientApiKey.value = ''
 }
 
-function selectAccount(accountId: string) {
-  if (selectedAccountId.value === accountId) {
+function selectAccount(provider: OAuthProvider, accountId: string) {
+  if (selectedProvider.value === provider && selectedAccountId.value === accountId) {
     return
   }
+  selectedProvider.value = provider
   selectedAccountId.value = accountId
   resetChatState()
   void loadReport()
@@ -1972,7 +2132,7 @@ function formatMetricValue(key: MetricKey, value: number | null | undefined) {
   }
 
   return new Intl.NumberFormat(locale.value, {
-    maximumFractionDigits: 0,
+    maximumFractionDigits: key === 'results' ? 1 : 0,
   }).format(value)
 }
 
@@ -2024,10 +2184,10 @@ function metricTone(delta: number | null | undefined) {
 
 function statusTone(status: string) {
   const normalized = status.toUpperCase()
-  if (normalized.includes('ACTIVE')) {
+  if (normalized.includes('ACTIVE') || normalized === 'ENABLED') {
     return 'active'
   }
-  if (normalized.includes('PAUSED')) {
+  if (normalized.includes('PAUSED') || normalized === 'DISABLED') {
     return 'paused'
   }
   return 'other'
@@ -2322,8 +2482,8 @@ watch(currentView, (view) => {
             :key="account.id"
             type="button"
             class="account-item"
-            :class="{ active: selectedAccountId === account.external_id }"
-            @click="selectAccount(account.external_id)"
+            :class="{ active: selectedProvider === 'meta' && selectedAccountId === account.external_id }"
+            @click="selectAccount('meta', account.external_id)"
           >
             <span>{{ account.name }}</span>
             <small>{{ account.account_id }}</small>
@@ -2333,21 +2493,44 @@ watch(currentView, (view) => {
         <section class="rail-section">
           <div class="section-head">
             <span>{{ copy.googleAds }}</span>
-            <button type="button" class="rail-link" :disabled="googleConnecting" @click="connectGoogle">
-              {{ copy.connectGoogle }}
-            </button>
+            <div class="section-actions">
+              <button
+                type="button"
+                class="rail-link"
+                :disabled="googleConnecting || googleDisconnecting"
+                @click="connectGoogle"
+              >
+                {{ copy.connectGoogle }}
+              </button>
+              <button
+                v-if="googleAccounts.length > 0"
+                type="button"
+                class="rail-link"
+                :disabled="googleConnecting || googleDisconnecting"
+                @click="disconnectGoogle"
+              >
+                {{ copy.disconnectGoogle }}
+              </button>
+            </div>
           </div>
 
           <div v-if="googleAccountsLoading" class="empty-note">{{ copy.loading }}</div>
           <div v-else-if="googleAccounts.length === 0" class="empty-note">{{ copy.googleAccountsEmpty }}</div>
 
-          <div v-for="customer in googleAccounts" :key="customer.id" class="account-item account-item-static">
+          <button
+            v-for="customer in googleAccounts"
+            :key="customer.id"
+            type="button"
+            class="account-item"
+            :class="{ active: selectedProvider === 'google_ads' && selectedAccountId === customer.external_customer_id }"
+            @click="selectAccount('google_ads', customer.external_customer_id)"
+          >
             <span>{{ customer.descriptive_name }}</span>
             <small>{{ formatGoogleCustomerLabel(customer) }}</small>
-          </div>
+          </button>
         </section>
 
-        <section class="rail-section" v-if="accounts.length > 0">
+        <section class="rail-section" v-if="hasAnyConnectedAccounts">
           <div class="section-head">
             <span>{{ copy.days }}</span>
           </div>
@@ -2394,8 +2577,8 @@ watch(currentView, (view) => {
         </div>
         <div v-if="pageError" class="message error">{{ pageError }}</div>
 
-        <section v-if="accounts.length === 0" class="empty-surface">
-          <p class="eyebrow">{{ copy.connectMeta }}</p>
+        <section v-if="!hasAnyConnectedAccounts" class="empty-surface">
+          <p class="eyebrow">{{ copy.accounts }}</p>
           <h2>{{ copy.noAccountsTitle }}</h2>
           <p>{{ copy.noAccountsBody }}</p>
           <div class="empty-surface-actions">
@@ -2411,7 +2594,7 @@ watch(currentView, (view) => {
         <template v-else>
           <section class="hero-strip">
             <div>
-              <p class="eyebrow">{{ selectedAccount?.name }}</p>
+              <p class="eyebrow">{{ selectedProviderLabel }}</p>
               <h2>{{ report?.account.name || selectedAccount?.name }}</h2>
               <p class="muted">
                 {{ report?.periods.current.since }} - {{ report?.periods.current.until }}

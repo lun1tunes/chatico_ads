@@ -9,6 +9,7 @@ from ..models.google_ads_connection import GoogleAdsConnection
 from ..models.google_ads_customer import GoogleAdsCustomer
 from ..repositories.google_ads_connection import GoogleAdsConnectionRepository
 from ..repositories.google_ads_customer import GoogleAdsCustomerRepository
+from ..services.google_ads_report_service import GoogleAdsReportService
 from ..utils.time import utcnow
 
 
@@ -158,3 +159,19 @@ class ListGoogleAdsCustomersUseCase:
 
     async def execute(self, *, user_id: str) -> list[GoogleAdsCustomer]:
         return await self.customer_repo.list_for_user(user_id)
+
+
+class DisconnectGoogleAdsUseCase:
+    def __init__(self, *, session: AsyncSession, report_service: GoogleAdsReportService) -> None:
+        self.session = session
+        self.report_service = report_service
+        self.connection_repo = GoogleAdsConnectionRepository(session)
+
+    async def execute(self, *, user_id: str) -> None:
+        connection = await self.connection_repo.get_by_user(user_id=user_id)
+        if connection is None:
+            return
+
+        await self.session.delete(connection)
+        await self.session.commit()
+        self.report_service.clear_user_cache(user_id=user_id)

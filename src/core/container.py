@@ -12,6 +12,7 @@ from .security.jwt_service import JWTService
 from .security.password_service import PasswordService
 from .services.date_range_service import DateRangeService
 from .services.google_ads_state_service import GoogleAdsOAuthStateService
+from .services.google_ads_report_service import GoogleAdsReportService
 from .services.llm_proxy_service import LLMProxyService
 from .services.meta_report_service import MetaReportService
 from .services.meta_signed_request_service import MetaSignedRequestService
@@ -22,6 +23,7 @@ from .use_cases.dashboard import (
     AskDashboardUseCase,
     DeleteAIProviderKeyUseCase,
     GenerateAutoVerdictUseCase,
+    GenerateGoogleAdsReportUseCase,
     GenerateMetaReportUseCase,
     ListSavedAIProviderKeysUseCase,
     ListSupportedAIProvidersUseCase,
@@ -29,6 +31,7 @@ from .use_cases.dashboard import (
 )
 from .use_cases.google_ads import (
     BuildGoogleAdsOAuthUrlUseCase,
+    DisconnectGoogleAdsUseCase,
     HandleGoogleAdsOAuthCallbackUseCase,
     ListGoogleAdsCustomersUseCase,
 )
@@ -70,6 +73,12 @@ class Container(containers.DeclarativeContainer):
         preview_client=creative_preview_client,
         cache_ttl_seconds=settings.meta_report_cache_ttl_seconds,
         snapshot_cache_ttl_seconds=settings.meta_report_snapshot_ttl_seconds,
+    )
+    google_ads_report_service = providers.Singleton(
+        GoogleAdsReportService,
+        google_ads_client=google_ads_client,
+        encryption_service=encryption_service,
+        cache_ttl_seconds=settings.meta_report_cache_ttl_seconds,
     )
 
     register_user_use_case = providers.Factory(
@@ -119,11 +128,20 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
     )
     list_google_ads_customers_use_case = providers.Factory(ListGoogleAdsCustomersUseCase)
+    disconnect_google_ads_use_case = providers.Factory(
+        DisconnectGoogleAdsUseCase,
+        report_service=google_ads_report_service,
+    )
 
     generate_meta_report_use_case = providers.Factory(
         GenerateMetaReportUseCase,
         date_range_service=date_range_service,
         report_service=meta_report_service,
+    )
+    generate_google_ads_report_use_case = providers.Factory(
+        GenerateGoogleAdsReportUseCase,
+        date_range_service=date_range_service,
+        report_service=google_ads_report_service,
     )
     generate_auto_verdict_use_case = providers.Factory(
         GenerateAutoVerdictUseCase,

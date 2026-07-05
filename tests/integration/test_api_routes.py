@@ -33,7 +33,9 @@ class FakeContainer:
         self.build_google_ads_oauth_url_use_case = Mock()
         self.handle_google_ads_oauth_callback_use_case = Mock()
         self.list_google_ads_customers_use_case = Mock()
+        self.disconnect_google_ads_use_case = Mock()
         self.generate_meta_report_use_case = Mock()
+        self.generate_google_ads_report_use_case = Mock()
         self.generate_auto_verdict_use_case = Mock()
         self.list_supported_ai_providers_use_case = Mock()
         self.list_saved_ai_provider_keys_use_case = Mock()
@@ -181,6 +183,9 @@ async def test_google_ads_routes(async_client):
             ]
         ),
     )
+    container.disconnect_google_ads_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=None),
+    )
 
     app.dependency_overrides[get_current_user] = _override_current_user
     app.dependency_overrides[get_db_session] = _override_db_session
@@ -200,6 +205,9 @@ async def test_google_ads_routes(async_client):
     customers_response = await async_client.get("/api/v1/google-ads/customers")
     assert customers_response.status_code == 200
     assert customers_response.json()[0]["external_customer_id"] == "1234567890"
+
+    disconnect_response = await async_client.delete("/api/v1/google-ads/connections")
+    assert disconnect_response.status_code == 204
 
 
 @pytest.mark.integration
@@ -318,6 +326,9 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     container.generate_meta_report_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(side_effect=MetaAdAccountNotFoundError("Meta ad account not found")),
     )
+    container.generate_google_ads_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=GoogleAdsConfigurationError("Google Ads upstream failed")),
+    )
     container.generate_auto_verdict_use_case.return_value = SimpleNamespace(execute=AsyncMock(return_value="ok"))
     container.list_saved_ai_provider_keys_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(
@@ -341,6 +352,10 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     report_response = await async_client.get("/api/v1/dashboard/meta/ad-accounts/act_1/report")
     assert report_response.status_code == 404
     assert report_response.json()["detail"] == "Meta ad account not found"
+
+    google_report_response = await async_client.get("/api/v1/dashboard/google-ads/customers/1234567890/report")
+    assert google_report_response.status_code == 502
+    assert google_report_response.json()["detail"] == "Google Ads upstream failed"
 
     providers_response = await async_client.get("/api/v1/ai/providers")
     assert providers_response.status_code == 200
@@ -366,6 +381,12 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     )
     assert auto_verdict_response.status_code == 404
 
+    google_auto_verdict_response = await async_client.post(
+        "/api/v1/ai/google-ads/customers/1234567890/auto-verdict",
+        json={"days": 30, "language": "kz"},
+    )
+    assert google_auto_verdict_response.status_code == 502
+
     container.generate_meta_report_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(
             return_value={
@@ -379,6 +400,34 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
                     "metrics": {
                         "spend": {"current": 120.0, "previous": 100.0, "delta_pct": 20.0},
                         "reach": {"current": 1000, "previous": 900, "delta_pct": 11.1},
+                        "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
+                        "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
+                        "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
+                        "cpm": {"current": 10.0, "previous": 9.0, "delta_pct": 11.1},
+                        "cpc": {"current": 1.0, "previous": 1.0, "delta_pct": 0.0},
+                        "results": {"current": 10, "previous": 8, "delta_pct": 25.0},
+                        "cost_per_result": {"current": 12.0, "previous": 12.5, "delta_pct": -4.0},
+                    },
+                    "active_campaigns": 1,
+                    "total_campaigns": 1,
+                },
+                "campaigns": [],
+            }
+        ),
+    )
+    container.generate_google_ads_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value={
+                "account": {"name": "Main Google account", "account_id": "1234567890"},
+                "periods": {
+                    "current": {"since": "2026-06-01", "until": "2026-06-30"},
+                    "previous": {"since": "2026-05-01", "until": "2026-05-31"},
+                },
+                "summary": {
+                    "primary_result_kind": "result",
+                    "metrics": {
+                        "spend": {"current": 120.0, "previous": 100.0, "delta_pct": 20.0},
+                        "reach": {"current": None, "previous": None, "delta_pct": None},
                         "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
                         "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
                         "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
@@ -411,6 +460,17 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     default_chat_call = container.ask_dashboard_use_case.return_value.execute.await_args_list[0].kwargs
     assert default_chat_call["use_client_credentials"] is False
     assert default_chat_call["provider"] is None
+
+    google_default_chat_response = await async_client.post(
+        "/api/v1/ai/google-ads/customers/1234567890/chat",
+        json={
+            "days": 30,
+            "language": "kz",
+            "messages": [{"role": "user", "content": "test"}],
+        },
+    )
+    assert google_default_chat_response.status_code == 200
+    assert google_default_chat_response.json()["text"] == "internal-chat-ok"
 
     container.ask_dashboard_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(side_effect=LLMProxyError("Unsupported AI provider")),

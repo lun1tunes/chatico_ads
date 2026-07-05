@@ -178,42 +178,23 @@ class GoogleAdsAPIClient:
         access_token: str,
         login_customer_id: str | None,
     ) -> list[dict[str, object]]:
-        query = (
-            "SELECT "
-            "customer_client.client_customer, "
-            "customer_client.id, "
-            "customer_client.descriptive_name, "
-            "customer_client.currency_code, "
-            "customer_client.time_zone, "
-            "customer_client.manager, "
-            "customer_client.level "
-            "FROM customer_client "
-            "WHERE customer_client.level <= 1"
+        return await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "customer_client.client_customer, "
+                "customer_client.id, "
+                "customer_client.descriptive_name, "
+                "customer_client.currency_code, "
+                "customer_client.time_zone, "
+                "customer_client.manager, "
+                "customer_client.level "
+                "FROM customer_client "
+                "WHERE customer_client.level <= 1"
+            ),
+            login_customer_id=login_customer_id,
         )
-        results: list[dict[str, object]] = []
-        next_page_token: str | None = None
-
-        while True:
-            body: dict[str, object] = {"query": query}
-            if next_page_token:
-                body["pageToken"] = next_page_token
-            payload = await self._request_json(
-                "POST",
-                f"{self.base_api_url}/customers/{customer_id}/googleAds:search",
-                headers=self._build_api_headers(access_token=access_token, login_customer_id=login_customer_id),
-                json=body,
-            )
-            page_results = payload.get("results")
-            if isinstance(page_results, list):
-                results.extend(item for item in page_results if isinstance(item, dict))
-            raw_next_page_token = payload.get("nextPageToken")
-            next_page_token = (
-                raw_next_page_token if isinstance(raw_next_page_token, str) and raw_next_page_token else None
-            )
-            if next_page_token is None:
-                break
-
-        return results
 
     async def list_customer_accounts(self, *, access_token: str) -> list[dict[str, object]]:
         accessible_customer_ids = await self.list_accessible_customers(access_token=access_token)
@@ -285,6 +266,160 @@ class GoogleAdsAPIClient:
                 str(item["descriptive_name"]).lower(),
                 str(item["external_customer_id"]),
             ),
+        )
+
+    async def search(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        query: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        results: list[dict[str, object]] = []
+        next_page_token: str | None = None
+
+        while True:
+            body: dict[str, object] = {"query": query}
+            if next_page_token:
+                body["pageToken"] = next_page_token
+            payload = await self._request_json(
+                "POST",
+                f"{self.base_api_url}/customers/{customer_id}/googleAds:search",
+                headers=self._build_api_headers(access_token=access_token, login_customer_id=login_customer_id),
+                json=body,
+            )
+            page_results = payload.get("results")
+            if isinstance(page_results, list):
+                results.extend(item for item in page_results if isinstance(item, dict))
+            raw_next_page_token = payload.get("nextPageToken")
+            next_page_token = (
+                raw_next_page_token if isinstance(raw_next_page_token, str) and raw_next_page_token else None
+            )
+            if next_page_token is None:
+                break
+
+        return results
+
+    async def get_customer(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        login_customer_id: str | None = None,
+    ) -> dict[str, object] | None:
+        rows = await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "customer.id, "
+                "customer.descriptive_name, "
+                "customer.currency_code, "
+                "customer.time_zone "
+                "FROM customer "
+                "LIMIT 1"
+            ),
+            login_customer_id=login_customer_id,
+        )
+        return rows[0] if rows else None
+
+    async def list_campaigns(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "campaign.id, "
+                "campaign.name, "
+                "campaign.status "
+                "FROM campaign"
+            ),
+            login_customer_id=login_customer_id,
+        )
+
+    async def get_customer_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> dict[str, object] | None:
+        rows = await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "customer.id, "
+                "metrics.cost_micros, "
+                "metrics.impressions, "
+                "metrics.clicks, "
+                "metrics.conversions "
+                "FROM customer "
+                f"WHERE segments.date BETWEEN '{since}' AND '{until}'"
+            ),
+            login_customer_id=login_customer_id,
+        )
+        return rows[0] if rows else None
+
+    async def get_campaign_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "campaign.id, "
+                "metrics.cost_micros, "
+                "metrics.impressions, "
+                "metrics.clicks, "
+                "metrics.conversions "
+                "FROM campaign "
+                f"WHERE segments.date BETWEEN '{since}' AND '{until}'"
+            ),
+            login_customer_id=login_customer_id,
+        )
+
+    async def get_ad_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "campaign.id, "
+                "ad_group_ad.ad.id, "
+                "ad_group_ad.ad.type, "
+                "metrics.cost_micros, "
+                "metrics.impressions, "
+                "metrics.clicks, "
+                "metrics.conversions "
+                "FROM ad_group_ad "
+                f"WHERE segments.date BETWEEN '{since}' AND '{until}'"
+            ),
+            login_customer_id=login_customer_id,
         )
 
     @staticmethod

@@ -47,6 +47,11 @@ class HandleGoogleAdsOAuthCallbackUseCase:
         scopes = self._normalize_scopes(token_data.get("scope"))
 
         customers = await self.google_ads_client.list_customer_accounts(access_token=access_token)
+        if not customers:
+            raise GoogleAdsOAuthUseCaseError(
+                "No active Google Ads accounts were found for this Google user. "
+                "Finish Google Ads signup, reactivate the account in Google Ads, or sign in with another Google account."
+            )
         connection = await self.connection_repo.get_by_user(user_id=user_id)
 
         if connection is None and refresh_token is None:

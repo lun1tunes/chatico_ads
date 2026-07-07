@@ -13,6 +13,14 @@ class GoogleAdsAPIError(Exception):
     pass
 
 
+_SKIP_CUSTOMER_ACCESS_ERRORS = frozenset(
+    {
+        "CUSTOMER_NOT_ENABLED",
+        "CUSTOMER_NOT_FOUND",
+    }
+)
+
+
 class GoogleAdsConfigurationError(GoogleAdsAPIError):
     pass
 
@@ -110,6 +118,33 @@ class GoogleAdsAPIClient:
                 error_message = error.get("message")
                 if isinstance(error_message, str) and error_message.strip():
                     message = error_message
+                details = error.get("details")
+                if isinstance(details, list):
+                    for detail in details:
+                        if not isinstance(detail, dict):
+                            continue
+                        nested_errors = detail.get("errors")
+                        if not isinstance(nested_errors, list):
+                            continue
+                        for nested_error in nested_errors:
+                            if not isinstance(nested_error, dict):
+                                continue
+                            nested_message = nested_error.get("message")
+                            error_code = nested_error.get("errorCode")
+                            code_label = None
+                            if isinstance(error_code, dict):
+                                code_label = next(
+                                    (value for value in error_code.values() if isinstance(value, str) and value.strip()),
+                                    None,
+                                )
+                            if isinstance(nested_message, str) and nested_message.strip():
+                                if code_label:
+                                    message = f"{nested_message} [{code_label}]"
+                                else:
+                                    message = nested_message
+                                break
+                        if "[" in message or message != error_message:
+                            break
             raise GoogleAdsAPIError(message)
 
         return payload
@@ -171,6 +206,11 @@ class GoogleAdsAPIClient:
                     customer_ids.append(customer_id)
         return customer_ids
 
+    @staticmethod
+    def _is_skippable_customer_access_error(exc: GoogleAdsAPIError) -> bool:
+        message = str(exc)
+        return any(f"[{code}]" in message for code in _SKIP_CUSTOMER_ACCESS_ERRORS)
+
     async def _search_customer_clients(
         self,
         *,
@@ -212,11 +252,16 @@ class GoogleAdsAPIClient:
                 visited_managers.add(current_customer_id)
 
                 login_customer_id = None if current_customer_id in accessible_customer_set else seed_customer_id
-                rows = await self._search_customer_clients(
-                    customer_id=current_customer_id,
-                    access_token=access_token,
-                    login_customer_id=login_customer_id,
-                )
+                try:
+                    rows = await self._search_customer_clients(
+                        customer_id=current_customer_id,
+                        access_token=access_token,
+                        login_customer_id=login_customer_id,
+                    )
+                except GoogleAdsAPIError as exc:
+                    if self._is_skippable_customer_access_error(exc):
+                        continue
+                    raise
 
                 for row in rows:
                     customer_client = row.get("customerClient") or row.get("customer_client")

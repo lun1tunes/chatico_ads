@@ -4,8 +4,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 type Locale = 'ru' | 'kz' | 'en'
 type AuthMode = 'login' | 'register'
 type AIProvider = 'anthropic' | 'openai' | 'gemini'
-type AppView = 'app' | 'privacy' | 'dataDeletion'
-type OAuthProvider = 'meta' | 'google_ads'
+type AppView = 'app' | 'privacy' | 'dataDeletion' | 'terms'
+type OAuthProvider = 'meta' | 'google_ads' | 'tiktok_ads'
 type MetricKey =
   | 'spend'
   | 'reach'
@@ -53,6 +53,15 @@ interface GoogleAdsCustomer {
   root_customer_id: string | null
   manager_customer_id: string | null
   login_customer_id: string | null
+}
+
+interface TikTokAdsAdvertiser {
+  id: string
+  advertiser_id: string
+  name: string
+  currency: string | null
+  timezone_name: string | null
+  status: string | null
 }
 
 interface MetricValue {
@@ -134,7 +143,7 @@ interface SavedProviderKey {
   updated_at: string
 }
 
-interface PrivacySection {
+interface LegalSection {
   id: string
   title: string
   paragraphs?: readonly string[]
@@ -197,6 +206,7 @@ function buildRoutePath(segment: string): string {
 const APP_HOME_PATH = normalizePathname(APP_BASE_PATH)
 const PRIVACY_ROUTE_PATH = buildRoutePath('privacy-policy')
 const DATA_DELETION_ROUTE_PATH = buildRoutePath('data-deletion')
+const TERMS_ROUTE_PATH = buildRoutePath('terms-of-service')
 
 function isLocale(value: string | null | undefined): value is Locale {
   return value === 'ru' || value === 'kz' || value === 'en'
@@ -212,18 +222,20 @@ const privacyContent = {
     privacyPolicy: 'Политика приватности',
     backToApp: 'К приложению',
     dataDeletionLabel: 'Удаление данных',
-    privacyTitle: 'Как Chatico Ads обрабатывает данные Meta и данные пользователя',
+    privacyTitle: 'Как Chatico Ads обрабатывает данные Meta, Google, TikTok и пользователя',
     privacyLead:
-      `Эта политика описывает, какие данные собирает сервис, зачем они используются, кому могут передаваться и как запросить удаление. Официальный адрес сервиса: ${PRIVACY_SERVICE_URL}. Документ предназначен для публичного доступа и соответствует требованиям Meta App Review.`,
+      `Эта политика описывает, какие данные собирает приложение Chatico Ads, зачем они используются, кому могут передаваться и как запросить удаление. Официальный адрес сервиса: ${PRIVACY_SERVICE_URL}. Документ опубликован для публичного доступа и соответствует требованиям Meta App Review, Google OAuth / Google API Services User Data Policy (Limited Use) и business onboarding/review для TikTok Ads.`,
     privacyUpdatedLabel: 'Обновлено',
-    privacyUpdatedOn: '20 июня 2026',
+    privacyUpdatedOn: '5 июля 2026',
     privacyMetaScopeLabel: 'Разрешение Meta',
+    privacyGoogleScopeLabel: 'Google OAuth scope',
+    privacyTikTokScopeLabel: 'TikTok API for Business',
     privacySections: [
       {
         id: 'overview',
         title: '1. Что делает сервис',
         paragraphs: [
-          `${PRIVACY_SERVICE_OPERATOR} помогает владельцу бизнеса подключить рекламный кабинет Meta и просматривать рекламную статистику в одном интерфейсе.`,
+          `${PRIVACY_SERVICE_OPERATOR} помогает владельцу бизнеса подключить рекламные кабинеты Meta, Google Ads и TikTok Ads и просматривать рекламную статистику в одном интерфейсе.`,
           'Сервис работает в режиме только чтения: не публикует контент, не отправляет сообщения от имени пользователя и не изменяет рекламные кампании.',
           `Оператор сервиса: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}). Контакт по вопросам данных: ${PRIVACY_CONTACT_EMAIL}.`,
         ],
@@ -234,7 +246,9 @@ const privacyContent = {
         bullets: [
           'данные аккаунта сервиса: email, язык интерфейса, данные для входа и токены сессии',
           'Meta Platform Data по разрешению ads_read: Meta user ID и имя профиля, рекламные аккаунты (ID, название, валюта, часовой пояс, статус), кампании, объявления, креативы, превью медиа и метрики эффективности (spend, impressions, clicks, reach и др.)',
-          'кешированные снимки отчётов, сформированные из Meta-данных, хранятся на сервере до истечения срока или удаления',
+          'Google user data через Google Ads API и OAuth scope https://www.googleapis.com/auth/adwords: идентификатор Google-аккаунта и email (из OAuth), OAuth refresh/access tokens, Google Ads customer account IDs, названия, валюта, часовой пояс, метаданные кампаний/объявлений/креативов и метрики эффективности (расход, показы, клики, конверсии и др.)',
+          'данные TikTok Ads через TikTok API for Business: OAuth access/refresh tokens, advertiser account IDs, названия, валюта, часовой пояс, статусы, метаданные кампаний/объявлений и read-only метрики эффективности (расход, показы, клики, конверсии и др.)',
+          'кешированные снимки отчётов, сформированные из Meta-, Google- и TikTok-данных, хранятся на сервере до истечения срока или удаления',
           'технические данные: IP-адрес, сведения о браузере и запросе, серверные логи — для безопасности, диагностики и предотвращения злоупотреблений',
           'по явному выбору пользователя для AI-функций: текст вопроса, выбранный AI-провайдер, ответ модели; при сохранении — API-ключ провайдера в зашифрованном виде',
         ],
@@ -244,7 +258,7 @@ const privacyContent = {
         title: '3. Зачем мы используем данные',
         bullets: [
           'для регистрации, входа и изоляции данных между пользователями',
-          'для подключения Meta, загрузки, кеширования и отображения рекламной статистики',
+          'для подключения Meta, Google Ads и TikTok Ads, загрузки, кеширования и отображения рекламной статистики',
           'для формирования AI-сводки и AI-ответов только по явному запросу пользователя',
           'для обеспечения безопасности, мониторинга ошибок и стабильной работы сервиса',
         ],
@@ -258,44 +272,63 @@ const privacyContent = {
         ],
       },
       {
+        id: 'google-user-data',
+        title: '5. Google user data и Google Ads API',
+        paragraphs: [
+          'Приложение Chatico Ads использует Google OAuth и scope https://www.googleapis.com/auth/adwords для доступа к Google Ads API в режиме только чтения.',
+          'Мы используем Google user data исключительно для функций приложения, которые вы запрашиваете: подключение аккаунта, выбор customer account, отображение отчётов и сравнение периодов.',
+          'Мы не используем Google user data для таргетированной рекламы, interest-based advertising, ретаргетинга, продажи брокерам данных, оценки кредитоспособности, кредитования или создания баз данных, не связанных с функциональностью приложения.',
+          'Мы не используем Google user data для обучения обобщённых AI/ML-моделей.',
+          'Мы не продаём Google user data. Передача ограничена subprocessors, необходимыми для хостинга и защиты сервиса (облачная инфраструктура). AI-процессоры получают только агрегированный контекст отчёта при явном запросе AI-функций — не OAuth-токены Google и не полные сырые выгрузки Google Ads.',
+          'Google OAuth tokens хранятся на сервере в зашифрованном виде; передача данных — по HTTPS. Доступ ограничен аутентифицированными пользователями и серверной логикой приложения.',
+          'Google user data хранится, пока активно подключение и до отключения, отзыва доступа в Google Account, истечения токена или выполнения запроса на удаление. Снимки отчётов удаляются по истечении срока хранения или по запросу.',
+          'Чтобы отозвать доступ: Google Account → Security → Third-party apps with account access → Chatico Ads → Remove access. Также можно отключить Google в приложении или написать на support@chatico.cc.',
+          'Использование Google user data соответствует Google API Services User Data Policy, включая требования Limited Use.',
+        ],
+      },
+      {
         id: 'storage-security',
-        title: '5. Хранение, передача и защита данных',
+        title: '6. Хранение, передача и защита данных',
         bullets: [
-          'Meta access tokens и пользовательские API-ключи AI-провайдеров хранятся на сервере в зашифрованном виде',
-          'данные не продаются и не передаются третьим лицам для их собственного маркетинга или рекламы',
-          'для AI-функций мы можем передавать выбранному процессору (например, Google Gemini или Anthropic) только вопрос пользователя и агрегированный контекст отчёта; Meta access tokens и полные сырые выгрузки Meta не передаются',
+          'Meta, Google и TikTok OAuth tokens, а также пользовательские API-ключи AI-провайдеров хранятся на сервере в зашифрованном виде',
+          'данные не продаются и не передаются третьим лицам для их собственного маркетинга, рекламы или профилирования',
+          'для AI-функций мы можем передавать выбранному процессору (например, Google Gemini или Anthropic) только вопрос пользователя и агрегированный контекст отчёта; OAuth-токены Meta/Google/TikTok и полные сырые выгрузки не передаются',
           'отчёты кешируются кратковременно в памяти и могут сохраняться как снимки в базе данных до истечения срока хранения или удаления по запросу',
           'данные хранятся только столько, сколько нужно для работы сервиса, соблюдения закона, срока действия токенов или снимков, либо до выполнения запроса на удаление',
         ],
       },
       {
         id: 'data-deletion',
-        title: '6. Как запросить удаление данных',
+        title: '7. Как запросить удаление данных',
         paragraphs: [
-          'Вы можете прекратить доступ приложения к Meta в настройках Facebook: Settings & Privacy → Settings → Apps and Websites → выберите приложение → Remove.',
-          `Чтобы удалить данные, сохранённые в ${PRIVACY_SERVICE_OPERATOR}, напишите на ${PRIVACY_CONTACT_EMAIL} с темой "Data deletion request". Укажите email аккаунта сервиса; если известен Meta ad account ID — приложите его.`,
+          'Meta: Settings & Privacy → Settings → Apps and Websites → выберите приложение → Remove.',
+          'Google: Google Account → Security → Third-party apps with account access → Chatico Ads → Remove access.',
+          'TikTok: отключите Chatico Ads в настройках TikTok for Business / TikTok Developer App authorization или через отключение в приложении.',
+          `Чтобы удалить данные, сохранённые в ${PRIVACY_SERVICE_OPERATOR}, напишите на ${PRIVACY_CONTACT_EMAIL} с темой "Data deletion request". Укажите email аккаунта сервиса; если известны Meta ad account ID, Google Ads customer ID или TikTok advertiser ID — приложите их.`,
           'Для запросов, инициированных через Meta Platform, приложение также поддерживает автоматический серверный callback удаления данных.',
         ],
         bullets: [
           'мы подтвердим получение запроса',
-          'удалим аккаунт сервиса, токены, Meta-подключения, записи рекламных аккаунтов, снимки отчётов и сохранённые AI-ключи, если закон не требует временно сохранить часть данных',
+          'удалим аккаунт сервиса, токены, Meta-, Google- и TikTok-подключения, записи рекламных аккаунтов, снимки отчётов и сохранённые AI-ключи, если закон не требует временно сохранить часть данных',
           'сообщим, когда удаление завершено',
         ],
       },
       {
         id: 'rights',
-        title: '7. Права пользователя',
+        title: '8. Права пользователя',
         bullets: [
           'запросить доступ к данным, исправление или удаление',
-          'отозвать доступ Meta через настройки Facebook или запросить удаление данных у нас',
+          'отозвать доступ Meta через настройки Facebook, Google через Google Account или TikTok через настройки авторизации приложения',
+          'отключить рекламные интеграции в приложении и запросить удаление данных у нас',
           'не использовать AI-функции и не сохранять свой API-ключ провайдера',
         ],
       },
       {
         id: 'contact',
-        title: '8. Контакты',
+        title: '9. Контакты и связанные документы',
         paragraphs: [
-          `По вопросам конфиденциальности, использования Meta Platform Data и удаления данных: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+          `По вопросам конфиденциальности, Meta Platform Data, Google user data, TikTok Ads data и удаления данных: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+          `Условия использования сервиса: ${PRIVACY_SERVICE_URL}/terms-of-service`,
         ],
       },
     ],
@@ -304,18 +337,20 @@ const privacyContent = {
     privacyPolicy: 'Құпиялылық саясаты',
     backToApp: 'Қосымшаға оралу',
     dataDeletionLabel: 'Деректерді жою',
-    privacyTitle: 'Chatico Ads Meta және пайдаланушы деректерін қалай өңдейді',
+    privacyTitle: 'Chatico Ads Meta, Google, TikTok және пайдаланушы деректерін қалай өңдейді',
     privacyLead:
-      `Бұл саясат сервис қандай деректерді жинайтынын, не үшін пайдаланатынын, кімге берілетінін және оларды қалай жоюға болатынын түсіндіреді. Сервистің ресми мекенжайы: ${PRIVACY_SERVICE_URL}. Құжат жария қолдануға жарайды және Meta App Review талаптарына сәйкес.`,
+      `Бұл саясат Chatico Ads қосымшасы қандай деректерді жинайтынын, не үшін пайдаланатынын, кімге берілетінін және оларды қалай жоюға болатынын түсіндіреді. Сервистің ресми мекенжайы: ${PRIVACY_SERVICE_URL}. Құжат жария қолдануға жарайды және Meta App Review, Google OAuth / Google API Services User Data Policy (Limited Use) және TikTok Ads business onboarding/review талаптарына сәйкес.`,
     privacyUpdatedLabel: 'Жаңартылды',
-    privacyUpdatedOn: '2026 жылғы 20 маусым',
+    privacyUpdatedOn: '2026 жылғы 5 шілде',
     privacyMetaScopeLabel: 'Meta рұқсаты',
+    privacyGoogleScopeLabel: 'Google OAuth scope',
+    privacyTikTokScopeLabel: 'TikTok API for Business',
     privacySections: [
       {
         id: 'overview',
         title: '1. Сервис не істейді',
         paragraphs: [
-          `${PRIVACY_SERVICE_OPERATOR} бизнес иесіне Meta жарнама кабинетін қосып, жарнама статистикасын бір интерфейсте көруге көмектеседі.`,
+          `${PRIVACY_SERVICE_OPERATOR} бизнес иесіне Meta, Google Ads және TikTok Ads жарнама кабинеттерін қосып, жарнама статистикасын бір интерфейсте көруге көмектеседі.`,
           'Сервис тек оқу режимінде жұмыс істейді: пайдаланушы атынан контент жарияламайды, хабарлама жібермейді және жарнамалық кампанияларды өзгертпейді.',
           `Сервис операторы: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}). Деректер бойынша байланыс: ${PRIVACY_CONTACT_EMAIL}.`,
         ],
@@ -326,7 +361,9 @@ const privacyContent = {
         bullets: [
           'сервис аккаунты деректері: email, интерфейс тілі, кіру деректері және сессия токендері',
           'ads_read рұқсаты арқылы Meta Platform Data: Meta user ID және профиль аты, жарнама аккаунттары (ID, атау, валюта, уақыт белдеуі, статус), кампаниялар, жарнамалар, креативтер, медиа-превью және тиімділік метрикалары (spend, impressions, clicks, reach және т.б.)',
-          'Meta деректерінен құрылған кештеулі есеп снимоктары серверде мерзімі біткенше немесе жойылғанша сақталады',
+          'Google Ads API және OAuth scope https://www.googleapis.com/auth/adwords арқылы Google user data: Google аккаунт ID және email, OAuth refresh/access tokens, Google Ads customer account ID-лері, атаулар, валюта, уақыт белдеуі, кампания/жарнама/креатив метадатасы және тиімділік метрикалары (шек, көрсетілім, клик, конверсия және т.б.)',
+          'TikTok API for Business арқылы TikTok Ads деректері: OAuth access/refresh tokens, advertiser account ID-лері, атаулар, валюта, уақыт белдеуі, статус, кампания/жарнама метадатасы және read-only тиімділік метрикалары',
+          'Meta, Google және TikTok деректерінен құрылған кештеулі есеп снимоктары серверде мерзімі біткенше немесе жойылғанша сақталады',
           'техникалық деректер: IP-мекенжай, браузер/сұрау деректері, сервер логтары — қауіпсіздік, диагностика және теріс пайдалануды болдырмау үшін',
           'AI-функцияларды пайдаланушы таңдағанда: сұрақ мәтіні, таңдалған AI-провайдер, модель жауабы; сақталса — провайдер API-килті шифрланған түрде',
         ],
@@ -336,7 +373,7 @@ const privacyContent = {
         title: '3. Деректер не үшін қолданылады',
         bullets: [
           'тіркелу, кіру және пайдаланушылар арасында деректерді оқшаулау үшін',
-          'Meta қосу, жарнама статистикасын жүктеу, кэштеу және көрсету үшін',
+          'Meta, Google Ads және TikTok Ads қосу, жарнама статистикасын жүктеу, кэштеу және көрсету үшін',
           'пайдаланушы нақты сұрағанда AI-қорытынды мен AI-жауап беру үшін',
           'қауіпсіздік, қателерді бақылау және сервистің тұрақты жұмысы үшін',
         ],
@@ -350,44 +387,62 @@ const privacyContent = {
         ],
       },
       {
+        id: 'google-user-data',
+        title: '5. Google user data және Google Ads API',
+        paragraphs: [
+          'Chatico Ads қосымшасы Google OAuth және scope https://www.googleapis.com/auth/adwords арқылы Google Ads API-ге тек оқу режимінде қол жеткізеді.',
+          'Google user data тек сіз сұраған қосымша функциялар үшін қолданылады: аккаунт қосу, customer account таңдау, есептерді көрсету және кезеңдерді салыстыру.',
+          'Google user data таргеттелген жарнама, interest-based advertising, ретаргетинг, деректер брокерлеріне сату, несиеге қабілеттілікті бағалау, несие беру немесе қосымша функциясына байланысты емес базалар құру үшін қолданылмайды.',
+          'Google user data жалпы AI/ML модельдерін оқыту үшін қолданылмайды.',
+          'Google user data сатылмайды. Беру тек сервисті хостингтеу және қорғау үшін қажет subprocessors-мен шектеледі. AI-процессорлар OAuth токендер мен толық шикі Google Ads деректерін емес, тек агрегатталған есеп контекстін алады.',
+          'Google OAuth token-дері серверде шифрланған түрде сақталады; деректер HTTPS арқылы беріледі.',
+          'Google user data байланыс белсенді болғанша сақталады; Google Account-тан доступ кері алу, қосымшада ажырату немесе жою сұрауы орындалғанша.',
+          'Доступты кері алу: Google Account → Security → Third-party apps with account access → Chatico Ads → Remove access. Немесе қосымшада Google ажырату немесе support@chatico.cc.',
+          'Google user data Google API Services User Data Policy, соның ішінде Limited Use талаптарына сәйкес пайдаланылады.',
+        ],
+      },
+      {
         id: 'storage-security',
-        title: '5. Сақтау, беру және қорғау',
+        title: '6. Сақтау, беру және қорғау',
         bullets: [
-          'Meta access token-дері және пайдаланушы AI API-килттері серверде шифрланған түрде сақталады',
-          'деректер сатылмайды және үшінші тараптардың өз маркетинг/жарнама мақсаттарына берілмейді',
-          'AI-функциялар үшін таңдалған процессорға (мысалы, Google Gemini немесе Anthropic) тек пайдаланушы сұрағы мен агрегатталған есеп контексті берілуі мүмкін; Meta access token-дері мен толық шикі Meta деректері берілмейді',
+          'Meta, Google және TikTok OAuth token-дері, сондай-ақ пайдаланушы AI API-килттері серверде шифрланған түрде сақталады',
+          'деректер сатылмайды және үшінші тараптардың өз маркетинг/жарнама/профильдеу мақсаттарына берілмейді',
+          'AI-функциялар үшін таңдалған процессорға тек пайдаланушы сұрағы мен агрегатталған есеп контексті берілуі мүмкін; Meta/Google/TikTok OAuth token-дері мен толық шикі деректер берілмейді',
           'есептер қысқа уақытқа жадта кэштеледі және дерекқорда снимок ретінде мерзімге дейін сақталуы мүмкін',
           'деректер сервис жұмысына, заң талаптарына, токен/снимок мерзіміне немесе жою сұрауына дейін ғана сақталады',
         ],
       },
       {
         id: 'data-deletion',
-        title: '6. Деректерді жоюды қалай сұрауға болады',
+        title: '7. Деректерді жоюды қалай сұрауға болады',
         paragraphs: [
-          'Meta-ға қолданба доступын Facebook баптауларынан өшіруге болады: Settings & Privacy → Settings → Apps and Websites → қолданбаны таңдаңыз → Remove.',
-          `${PRIVACY_SERVICE_OPERATOR} сақтаған деректерді жою үшін ${PRIVACY_CONTACT_EMAIL} адресіне "Data deletion request" тақырыбымен хат жіберіңіз. Сервис email-ін көрсетіңіз; Meta ad account ID белгілі болса, қосыңыз.`,
+          'Meta: Settings & Privacy → Settings → Apps and Websites → қолданбаны таңдаңыз → Remove.',
+          'Google: Google Account → Security → Third-party apps with account access → Chatico Ads → Remove access.',
+          `${PRIVACY_SERVICE_OPERATOR} сақтаған деректерді жою үшін ${PRIVACY_CONTACT_EMAIL} адресіне "Data deletion request" тақырыбымен хат жіберіңіз. Сервис email-ін көрсетіңіз; Meta ad account ID, Google Ads customer ID немесе TikTok advertiser ID белгілі болса, қосыңыз.`,
           'Meta Platform арқылы басталған сұраулар үшін қолданба деректерді жоюға арналған автоматты серверлік callback-ты да қолдайды.',
         ],
         bullets: [
           'сұраудың алынғанын растаймыз',
-          'сервис аккаунты, токендер, Meta байланыстары, жарнама аккаунттары, есеп снимоктары және AI-килттер жойылады; заң уақытша сақтау талап етпесе',
+          'сервис аккаунты, токендер, Meta/Google/TikTok байланыстары, жарнама аккаунттары, есеп снимоктары және AI-килттер жойылады; заң уақытша сақтау талап етпесе',
           'жою аяқталған соң хабарлаймыз',
         ],
       },
       {
         id: 'rights',
-        title: '7. Пайдаланушы құқықтары',
+        title: '8. Пайдаланушы құқықтары',
         bullets: [
           'деректерге қол жеткізуді, түзетуді немесе жоюды сұрау',
-          'Facebook баптаулары арқылы Meta доступын кері алу немесе бізден деректерді жоюды сұрау',
+          'Facebook баптаулары арқылы Meta доступын, Google Account арқылы Google доступын немесе TikTok авторизация баптаулары арқылы TikTok доступын кері алу',
+          'қосымшада интеграцияларды ажырату және бізден деректерді жоюды сұрау',
           'AI-функцияларды қолданбау және провайдер API-килтін сақтамау',
         ],
       },
       {
         id: 'contact',
-        title: '8. Байланыс',
+        title: '9. Байланыс және байланысты құжаттар',
         paragraphs: [
-          `Құпиялылық, Meta Platform Data және деректерді жою бойынша: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+          `Құпиялылық, Meta Platform Data, Google user data, TikTok Ads data және деректерді жою бойынша: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+          `Пайдалану шарттары: ${PRIVACY_SERVICE_URL}/terms-of-service`,
         ],
       },
     ],
@@ -396,18 +451,20 @@ const privacyContent = {
     privacyPolicy: 'Privacy Policy',
     backToApp: 'Back to App',
     dataDeletionLabel: 'Data Deletion',
-    privacyTitle: 'Privacy Policy — Chatico Ads',
+    privacyTitle: 'Privacy Policy — Chatico Ads (Meta, Google, and TikTok Ads)',
     privacyLead:
-      `This Privacy Policy explains what data Chatico Ads collects, why we use it, which third parties may process it, and how you can request deletion. The official production URL is ${PRIVACY_SERVICE_URL}. This document is published for public access and is intended to meet Meta App Review requirements.`,
+      `This Privacy Policy explains what data the Chatico Ads application collects, why we use it, which third parties may process it, and how you can request deletion. The official production URL is ${PRIVACY_SERVICE_URL}. This document is published for public access and is intended to meet Meta App Review, Google OAuth / Google API Services User Data Policy (Limited Use), and TikTok Ads business onboarding/review requirements.`,
     privacyUpdatedLabel: 'Last updated',
-    privacyUpdatedOn: 'June 20, 2026',
+    privacyUpdatedOn: 'July 5, 2026',
     privacyMetaScopeLabel: 'Meta permission',
+    privacyGoogleScopeLabel: 'Google OAuth scope',
+    privacyTikTokScopeLabel: 'TikTok API for Business',
     privacySections: [
       {
         id: 'overview',
         title: '1. What the service does',
         paragraphs: [
-          `${PRIVACY_SERVICE_OPERATOR} helps business owners connect a Meta ad account and review advertising performance in one dashboard.`,
+          `${PRIVACY_SERVICE_OPERATOR} helps business owners connect Meta, Google Ads, and TikTok Ads accounts and review advertising performance in one dashboard.`,
           'The service is read-only: it does not publish content, send messages on behalf of users, or modify advertising campaigns.',
           `Service operator: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}). Data protection contact: ${PRIVACY_CONTACT_EMAIL}.`,
         ],
@@ -418,7 +475,9 @@ const privacyContent = {
         bullets: [
           'account data you provide to Chatico Ads: email address, interface language, login credentials, and session tokens',
           'Meta Platform Data obtained through the ads_read permission: Meta user ID and profile name, ad account metadata (ID, name, currency, timezone, status), campaigns, ads, creatives, media preview URLs, and performance metrics such as spend, impressions, clicks, and reach',
-          'cached report snapshots derived from Meta data, stored on our servers until they expire or are deleted',
+          'Google user data obtained through the Google Ads API and OAuth scope https://www.googleapis.com/auth/adwords: Google account identifier and email (from OAuth), OAuth refresh/access tokens, Google Ads customer account IDs, names, currency, timezone, campaign/ad/creative metadata, and performance metrics such as spend, impressions, clicks, and conversions',
+          'TikTok Ads data obtained through TikTok API for Business: OAuth access/refresh tokens, advertiser account IDs, names, currency, timezone, status, campaign/ad metadata, and read-only performance metrics such as spend, impressions, clicks, and conversions',
+          'cached report snapshots derived from Meta, Google, and TikTok data, stored on our servers until they expire or are deleted',
           'technical data collected automatically: IP address, browser and request metadata, and server logs for security, troubleshooting, and abuse prevention',
           'when you choose to use AI features: your question, selected AI provider, model response, and—if you save it—your provider API key in encrypted form',
         ],
@@ -428,7 +487,7 @@ const privacyContent = {
         title: '3. How and why we use data',
         bullets: [
           'to register and authenticate users and keep each customer\'s data isolated',
-          'to connect Meta accounts, fetch advertising statistics, cache reports, and display dashboards',
+          'to connect Meta, Google Ads, and TikTok Ads accounts, fetch advertising statistics, cache reports, and display dashboards',
           'to generate AI summaries and chat answers only when you explicitly request them',
           'to operate the service securely, monitor errors, and prevent abuse',
         ],
@@ -442,44 +501,390 @@ const privacyContent = {
         ],
       },
       {
+        id: 'google-user-data',
+        title: '5. Google user data and Google Ads API',
+        paragraphs: [
+          'The Chatico Ads application uses Google OAuth and the scope https://www.googleapis.com/auth/adwords to access the Google Ads API in read-only mode.',
+          'We use Google user data solely to provide app features you request: connecting your account, selecting a customer account, displaying reports, and comparing time periods.',
+          'We do not use Google user data for serving targeted ads, interest-based advertising, retargeting, selling to data brokers, determining creditworthiness, lending, or building databases unrelated to app functionality.',
+          'We do not use Google user data to train generalized AI or machine learning models.',
+          'We do not sell Google user data. Disclosure is limited to subprocessors required to host and secure the service (cloud infrastructure). AI processors receive only aggregated report context when you explicitly use AI features—not Google OAuth tokens or full raw Google Ads exports.',
+          'Google OAuth tokens are stored on our servers in encrypted form; data is transmitted over HTTPS. Access is limited to authenticated users and server-side application logic.',
+          'Google user data is retained while your connection is active and until you disconnect, revoke access in your Google Account, the token expires, or we complete a valid deletion request. Report snapshots are removed when they expire or upon request.',
+          'To revoke access: Google Account → Security → Third-party apps with account access → Chatico Ads → Remove access. You may also disconnect Google in the app or email support@chatico.cc.',
+          'Our use of Google user data complies with the Google API Services User Data Policy, including Limited Use requirements.',
+        ],
+      },
+      {
         id: 'storage-security',
-        title: '5. Storage, sharing, and security',
+        title: '6. Storage, sharing, and security',
         bullets: [
-          'Meta access tokens and user-provided AI provider API keys are stored on our servers in encrypted form',
-          'we do not sell data and do not share it with third parties for their own marketing or advertising',
-          'for AI features, we may send your question and an aggregated report summary to the processor you select (for example, Google Gemini or Anthropic); we do not send Meta access tokens or full raw Meta exports',
+          'Meta, Google, and TikTok OAuth tokens and user-provided AI provider API keys are stored on our servers in encrypted form',
+          'we do not sell data and do not share it with third parties for their own marketing, advertising, or profiling',
+          'for AI features, we may send your question and an aggregated report summary to the processor you select (for example, Google Gemini or Anthropic); we do not send Meta, Google, or TikTok OAuth tokens or full raw platform exports',
           'reports are cached briefly in memory and may also be stored as time-limited snapshots in our database',
           'we retain data only as long as needed to operate the service, comply with law, honor token or snapshot expiry, or until a valid deletion request is completed',
         ],
       },
       {
         id: 'data-deletion',
-        title: '6. How to request deletion of your data',
+        title: '7. How to request deletion of your data',
         paragraphs: [
-          'To revoke the app\'s access to Meta, go to Facebook settings: Settings & Privacy → Settings → Apps and Websites → select the app → Remove.',
-          `To delete data stored by ${PRIVACY_SERVICE_OPERATOR}, email ${PRIVACY_CONTACT_EMAIL} with the subject line "Data deletion request". Include the email address linked to your Chatico Ads account. If you know your Meta ad account ID, include it as well.`,
+          'Meta: Settings & Privacy → Settings → Apps and Websites → select the app → Remove.',
+          'Google: Google Account → Security → Third-party apps with account access → Chatico Ads → Remove access.',
+          'TikTok: disconnect Chatico Ads in TikTok for Business / TikTok Developer app authorization settings or inside the app.',
+          `To delete data stored by ${PRIVACY_SERVICE_OPERATOR}, email ${PRIVACY_CONTACT_EMAIL} with the subject line "Data deletion request". Include the email address linked to your Chatico Ads account. If you know your Meta ad account ID, Google Ads customer ID, or TikTok advertiser ID, include it as well.`,
           'For deletion requests initiated through Meta Platform, the app also supports an automated server-side data deletion callback.',
         ],
         bullets: [
           'we will confirm receipt of your request',
-          'we will delete your service account, tokens, Meta connections, ad account records, report snapshots, and saved AI keys unless we are legally required to retain specific data temporarily',
+          'we will delete your service account, tokens, Meta, Google, and TikTok connections, ad account records, report snapshots, and saved AI keys unless we are legally required to retain specific data temporarily',
           'we will notify you when deletion is complete',
         ],
       },
       {
         id: 'rights',
-        title: '7. Your choices and rights',
+        title: '8. Your choices and rights',
         bullets: [
           'request access to, correction of, or deletion of your data',
-          'revoke Meta access through Facebook settings or ask us to delete stored data',
+          'revoke Meta access through Facebook settings, Google access through your Google Account, or TikTok access through TikTok authorization settings',
+          'disconnect advertising integrations in the app and ask us to delete stored data',
           'avoid AI features and choose not to store a provider API key',
         ],
       },
       {
         id: 'contact',
-        title: '8. Contact',
+        title: '9. Contact and related documents',
         paragraphs: [
-          `For privacy questions, Meta Platform Data usage, or deletion requests, contact ${PRIVACY_CONTACT_EMAIL}. Operator: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+          `For privacy questions, Meta Platform Data, Google user data, TikTok Ads data, or deletion requests, contact ${PRIVACY_CONTACT_EMAIL}. Operator: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+          `Terms of Service: ${PRIVACY_SERVICE_URL}/terms-of-service`,
+        ],
+      },
+    ],
+  },
+} as const
+
+const termsContent = {
+  ru: {
+    termsOfService: 'Условия использования',
+    termsTitle: 'Условия использования Chatico Ads',
+    termsLead:
+      `Настоящие Условия регулируют доступ к веб-приложению Chatico Ads (${PRIVACY_SERVICE_URL}). Используя сервис, вы соглашаетесь с этими Условиями и с Политикой приватности.`,
+    termsUpdatedLabel: 'Обновлено',
+    termsUpdatedOn: '5 июля 2026',
+    termsPrivacyLinkLabel: 'Политика приватности',
+    termsSections: [
+      {
+        id: 'agreement',
+        title: '1. Принятие условий',
+        paragraphs: [
+          'Chatico Ads — SaaS-приложение для владельцев бизнеса, которое в режиме только чтения отображает рекламную статистику из подключённых кабинетов Meta, Google Ads и TikTok Ads.',
+          `Оператор сервиса: ${PRIVACY_SERVICE_OPERATOR}. Контакт: ${PRIVACY_CONTACT_EMAIL}.`,
+          `Политика приватности доступна по адресу ${PRIVACY_SERVICE_URL}/privacy-policy и является неотъемлемой частью этих Условий.`,
+        ],
+      },
+      {
+        id: 'account',
+        title: '2. Регистрация и аккаунт',
+        bullets: [
+          'для использования сервиса необходимо создать аккаунт с действительным email и надёжным паролем',
+          'вы несёте ответственность за сохранность учётных данных и все действия в вашем аккаунте',
+          'вы подтверждаете, что имеете право подключать рекламные кабинеты Meta, Google и TikTok, данные которых отображаются в сервисе',
+          'мы можем приостановить или закрыть аккаунт при нарушении Условий, злоупотреблениях или по требованию закона',
+        ],
+      },
+      {
+        id: 'service',
+        title: '3. Описание сервиса',
+        bullets: [
+          'сервис предоставляет дашборды, отчёты, сравнение периодов и опциональные AI-функции по вашему запросу',
+          'сервис не создаёт, не редактирует и не останавливает рекламные кампании от вашего имени',
+          'данные рекламных платформ предоставляются «как есть»; мы не гарантируем их полноту, актуальность или доступность API третьих сторон',
+          'функции и интерфейс могут изменяться по мере развития продукта',
+        ],
+      },
+      {
+        id: 'third-party',
+        title: '4. Интеграции с Meta, Google и TikTok',
+        paragraphs: [
+          'Подключая Meta, Google Ads или TikTok Ads, вы авторизуете Chatico Ads получать данные в объёме запрошенных OAuth-разрешений (Meta: ads_read; Google: https://www.googleapis.com/auth/adwords; TikTok: read-only advertiser/reporting scopes).',
+          'Использование данных Meta, Google и TikTok регулируется также политиками соответствующих платформ и нашей Политикой приватности.',
+        ],
+        bullets: [
+          'вы можете отключить интеграции в приложении или отозвать доступ в настройках Meta, Google или TikTok',
+          'мы не несём ответственности за изменения, ограничения или сбои API Meta, Google, TikTok или AI-провайдеров',
+        ],
+      },
+      {
+        id: 'ai',
+        title: '5. AI-функции',
+        bullets: [
+          'AI-сводки и чат доступны только по вашему явному запросу',
+          'вы можете указать собственный API-ключ выбранного провайдера; ключ хранится в зашифрованном виде',
+          'ответы AI носят информационный характер и не являются профессиональной, юридической или финансовой консультацией',
+          'вы несёте ответственность за соблюдение условий выбранного AI-провайдера',
+        ],
+      },
+      {
+        id: 'acceptable-use',
+        title: '6. Допустимое использование',
+        bullets: [
+          'запрещено нарушать закон, права третьих лиц или условия Meta, Google, TikTok и AI-провайдеров',
+          'запрещены попытки взлома, обратной разработки, чрезмерной нагрузки на сервис или доступа к чужим данным',
+          'запрещено использовать сервис для перепродажи доступа без нашего письменного согласия',
+        ],
+      },
+      {
+        id: 'ip',
+        title: '7. Интеллектуальная собственность',
+        paragraphs: [
+          'Интерфейс, код и бренд Chatico Ads принадлежат оператору сервиса. Данные ваших рекламных кабинетов остаются вашими; мы получаем ограниченную лицензию обрабатывать их для предоставления сервиса.',
+        ],
+      },
+      {
+        id: 'disclaimer',
+        title: '8. Отказ от гарантий и ограничение ответственности',
+        paragraphs: [
+          'Сервис предоставляется «как есть» и «по мере доступности». В максимально допустимой законом степени мы отказываемся от подразумеваемых гарантий.',
+          `${PRIVACY_SERVICE_OPERATOR} не несёт ответственности за косвенные, incidental или consequential убытки, упущенную выгоду или решения, принятые на основе отчётов или AI-ответов.`,
+        ],
+      },
+      {
+        id: 'termination',
+        title: '9. Прекращение использования',
+        bullets: [
+          'вы можете прекратить использование в любой момент и запросить удаление данных',
+          'мы можем прекратить или ограничить доступ при нарушении Условий или по операционным причинам с разумным уведомлением, когда это возможно',
+        ],
+      },
+      {
+        id: 'changes',
+        title: '10. Изменения условий',
+        paragraphs: [
+          'Мы можем обновлять эти Условия. Актуальная версия публикуется на этой странице с указанием даты обновления. Продолжение использования после публикации изменений означает согласие с обновлённой версией.',
+        ],
+      },
+      {
+        id: 'contact',
+        title: '11. Контакты',
+        paragraphs: [
+          `По вопросам Условий использования: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+        ],
+      },
+    ],
+  },
+  kz: {
+    termsOfService: 'Пайдалану шарттары',
+    termsTitle: 'Chatico Ads пайдалану шарттары',
+    termsLead:
+      `Бұл Шарттар Chatico Ads (${PRIVACY_SERVICE_URL}) веб-қосымшасына қол жеткізуді реттейді. Сервисті пайдалану арқылы сіз осы Шарттармен және Құпиялылық саясатымен келісесіз.`,
+    termsUpdatedLabel: 'Жаңартылды',
+    termsUpdatedOn: '2026 жылғы 5 шілде',
+    termsPrivacyLinkLabel: 'Құпиялылық саясаты',
+    termsSections: [
+      {
+        id: 'agreement',
+        title: '1. Шарттарды қабылдау',
+        paragraphs: [
+          'Chatico Ads — бизнес иелері үшін Meta, Google Ads және TikTok Ads кабинеттерінен жарнама статистикасын тек оқу режимінде көрсететін SaaS-қосымша.',
+          `Сервис операторы: ${PRIVACY_SERVICE_OPERATOR}. Байланыс: ${PRIVACY_CONTACT_EMAIL}.`,
+          `Құпиялылық саясаты ${PRIVACY_SERVICE_URL}/privacy-policy мекенжайында жарияланған және осы Шарттардың бөлігі.`,
+        ],
+      },
+      {
+        id: 'account',
+        title: '2. Тіркелу және аккаунт',
+        bullets: [
+          'сервисті пайдалану үшін жарамды email және надежді пароль қажет',
+          'логин/пароль қауіпсіздігі және аккаунтадағы барлық әрекеттер үшін жауапкершілік сізде',
+          'сервисте көрсетілетін Meta, Google және TikTok жарнама кабинеттерін қосуға құқығыңыз бар екенін растайсыз',
+          'Шарттар бұзылғанда, теріс пайдалануда немесе заң талабы бойынша аккаунт тоқтатылуы мүмкін',
+        ],
+      },
+      {
+        id: 'service',
+        title: '3. Сервис сипаттамасы',
+        bullets: [
+          'дашборд, есеп, кезең салыстыру және сіз сұраған AI-функциялар',
+          'қосымша сіздің атынан жарнама кампанияларын жасамайды, өзгертпейді және тоқтатпайды',
+          'жарнама платформалары деректері «как есть» беріледі; API-тің толықтығы мен қолжетімділігіне кепілдік берілмейді',
+          'функциялар мен интерфейс даму барысында өзгеруі мүмкін',
+        ],
+      },
+      {
+        id: 'third-party',
+        title: '4. Meta, Google және TikTok интеграциялары',
+        paragraphs: [
+          'Meta, Google Ads немесе TikTok Ads қосу арқылы Chatico Ads-ке сұралған OAuth рұқсаттары шегінде деректер алуға рұқсат бересіз (Meta: ads_read; Google: https://www.googleapis.com/auth/adwords; TikTok: read-only advertiser/reporting scopes).',
+          'Meta, Google және TikTok деректерін пайдалану платформалар саясаттарымен және біздің Құпиялылық саясатымен реттеледі.',
+        ],
+        bullets: [
+          'интеграцияларды қосымшада ажырату немесе Meta, Google немесе TikTok баптауларынан доступ кері алуға болады',
+          'Meta, Google, TikTok немесе AI-провайдер API өзгерістері үшін жауапкершілік шектелген',
+        ],
+      },
+      {
+        id: 'ai',
+        title: '5. AI-функциялар',
+        bullets: [
+          'AI-қорытынды мен чат тек сіздің нақты сұрауыңызбен',
+          'өз AI-провайдер API-килтіңізді сақтауға болады; ол шифрланған түрде сақталады',
+          'AI жауаптары ақпараттық сипатта; кәсіби кеңес емес',
+          'таңдалған AI-провайдер шарттарын сіз орындайсыз',
+        ],
+      },
+      {
+        id: 'acceptable-use',
+        title: '6. Рұқсат етілген пайдалану',
+        bullets: [
+          'заңды, Meta/Google/TikTok/AI шарттарын және үшінші тарап құқықтарын бұзуға болмайды',
+          'бұзу, кері инженерия, артық жүктеме немесе басқа пайдаланушы деректеріне қол жеткізуге болмайды',
+          'біздің жазарсыз келісімсіз доступты қайта сатуға болмайды',
+        ],
+      },
+      {
+        id: 'ip',
+        title: '7. Зияткерлік меншік',
+        paragraphs: [
+          'Chatico Ads интерфейсі, коды және бренді операторға тиесілі. Жарнама кабинеті деректері сіздікі; біз оларды сервис көрсету үшін шектеулі лицензиямен өңдейміз.',
+        ],
+      },
+      {
+        id: 'disclaimer',
+        title: '8. Кепілдіктерден бас тарту',
+        paragraphs: [
+          'Сервис «как есть» және «қолжетімділігі бойынша» ұсынылады. Заң рұқсат ететін шектеуде кепілдіктерден бас тартылады.',
+          `${PRIVACY_SERVICE_OPERATOR} жанама зиян, жоғалған пайда немесе есеп/AI негізіндегі шешімдер үшін жауап бермейді.`,
+        ],
+      },
+      {
+        id: 'termination',
+        title: '9. Пайдалануды тоқтату',
+        bullets: [
+          'кез келген уақытта пайдалануды тоқтатып, деректерді жоюды сұрауға болады',
+          'Шарттар бұзылғанда немесе операциялық себептермен доступ шектелуі мүмкін',
+        ],
+      },
+      {
+        id: 'changes',
+        title: '10. Шарттарды өзгерту',
+        paragraphs: [
+          'Бұл Шарттар жаңартылуы мүмкін. Актуалды нұсқа осы бетте жарияланады. Өзгерістерден кейін пайдалану — жаңа нұсқаға келісім.',
+        ],
+      },
+      {
+        id: 'contact',
+        title: '11. Байланыс',
+        paragraphs: [
+          `Пайдалану шарттары бойынша: ${PRIVACY_CONTACT_EMAIL}. Оператор: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
+        ],
+      },
+    ],
+  },
+  en: {
+    termsOfService: 'Terms of Service',
+    termsTitle: 'Terms of Service — Chatico Ads',
+    termsLead:
+      `These Terms govern access to the Chatico Ads web application (${PRIVACY_SERVICE_URL}). By using the service, you agree to these Terms and our Privacy Policy.`,
+    termsUpdatedLabel: 'Last updated',
+    termsUpdatedOn: 'July 5, 2026',
+    termsPrivacyLinkLabel: 'Privacy Policy',
+    termsSections: [
+      {
+        id: 'agreement',
+        title: '1. Agreement',
+        paragraphs: [
+          'Chatico Ads is a SaaS application that helps business owners view advertising statistics from connected Meta, Google Ads, and TikTok Ads accounts in read-only mode.',
+          `Service operator: ${PRIVACY_SERVICE_OPERATOR}. Contact: ${PRIVACY_CONTACT_EMAIL}.`,
+          `Our Privacy Policy is available at ${PRIVACY_SERVICE_URL}/privacy-policy and is incorporated into these Terms.`,
+        ],
+      },
+      {
+        id: 'account',
+        title: '2. Registration and account',
+        bullets: [
+          'you must create an account with a valid email address and a strong password',
+          'you are responsible for safeguarding your credentials and all activity under your account',
+          'you confirm that you have the right to connect the Meta, Google, and TikTok ad accounts whose data is displayed in the service',
+          'we may suspend or terminate accounts for violations, abuse, or legal requirements',
+        ],
+      },
+      {
+        id: 'service',
+        title: '3. Service description',
+        bullets: [
+          'the service provides dashboards, reports, period comparisons, and optional AI features upon your request',
+          'the service does not create, edit, pause, or publish advertising campaigns on your behalf',
+          'third-party advertising data is provided as-is; we do not guarantee completeness, timeliness, or API availability',
+          'features and the interface may change as the product evolves',
+        ],
+      },
+      {
+        id: 'third-party',
+        title: '4. Meta, Google, and TikTok integrations',
+        paragraphs: [
+          'By connecting Meta, Google Ads, or TikTok Ads, you authorize Chatico Ads to receive data within the requested OAuth scopes (Meta: ads_read; Google: https://www.googleapis.com/auth/adwords; TikTok: read-only advertiser/reporting scopes).',
+          'Use of Meta, Google, and TikTok data is also subject to those platforms\' policies and our Privacy Policy.',
+        ],
+        bullets: [
+          'you may disconnect integrations in the app or revoke access in Meta, Google, or TikTok settings',
+          'we are not liable for changes, limits, or outages of Meta, Google, TikTok, or AI provider APIs',
+        ],
+      },
+      {
+        id: 'ai',
+        title: '5. AI features',
+        bullets: [
+          'AI summaries and chat are provided only when you explicitly request them',
+          'you may store your own API key for a selected provider; keys are stored encrypted',
+          'AI outputs are informational only and are not professional, legal, or financial advice',
+          'you are responsible for complying with your chosen AI provider\'s terms',
+        ],
+      },
+      {
+        id: 'acceptable-use',
+        title: '6. Acceptable use',
+        bullets: [
+          'you must not violate law, third-party rights, or Meta, Google, TikTok, or AI provider terms',
+          'you must not attempt to hack, reverse engineer, overload the service, or access other users\' data',
+          'you must not resell access without our written consent',
+        ],
+      },
+      {
+        id: 'ip',
+        title: '7. Intellectual property',
+        paragraphs: [
+          'The Chatico Ads interface, code, and brand belong to the service operator. Your ad account data remains yours; we receive a limited license to process it to provide the service.',
+        ],
+      },
+      {
+        id: 'disclaimer',
+        title: '8. Disclaimer and limitation of liability',
+        paragraphs: [
+          'The service is provided "as is" and "as available." To the maximum extent permitted by law, we disclaim implied warranties.',
+          `${PRIVACY_SERVICE_OPERATOR} is not liable for indirect, incidental, or consequential damages, lost profits, or decisions made based on reports or AI responses.`,
+        ],
+      },
+      {
+        id: 'termination',
+        title: '9. Termination',
+        bullets: [
+          'you may stop using the service at any time and request deletion of your data',
+          'we may suspend or terminate access for violations or operational reasons, with reasonable notice when feasible',
+        ],
+      },
+      {
+        id: 'changes',
+        title: '10. Changes to these Terms',
+        paragraphs: [
+          'We may update these Terms. The current version is published on this page with an updated date. Continued use after changes are posted constitutes acceptance of the revised Terms.',
+        ],
+      },
+      {
+        id: 'contact',
+        title: '11. Contact',
+        paragraphs: [
+          `For questions about these Terms: ${PRIVACY_CONTACT_EMAIL}. Operator: ${PRIVACY_SERVICE_OPERATOR} (${PRIVACY_SERVICE_URL}).`,
         ],
       },
     ],
@@ -489,11 +894,13 @@ const privacyContent = {
 const translations = {
   ru: {
     ...privacyContent.ru,
+    ...termsContent.ru,
     brand: 'Chatico Ads',
-    authLead: 'Единая панель Meta Ads для владельца бизнеса.',
-    authTitle: 'Подключайте кабинеты и читайте рекламу простым языком.',
+    authLead: 'Единая панель рекламы для владельца бизнеса: Meta, Google и TikTok.',
+    authTitle: 'Подключайте кабинеты Meta, Google и TikTok — читайте рекламу простым языком.',
     authBody:
-      'Сервис хранит доступы на сервере, сам собирает отчёты через Meta Marketing API и показывает AI-вывод без ручных токенов в браузере.',
+      'Сервис хранит доступы на сервере, собирает отчёты через API рекламных платформ и показывает AI-вывод без ручных токенов в браузере.',
+    authFeaturePlatforms: 'Рекламные платформы',
     authModeLogin: 'Вход',
     authModeRegister: 'Регистрация',
     email: 'Email',
@@ -511,9 +918,15 @@ const translations = {
     disconnectGoogle: 'Отвязать Google Ads',
     disconnectGoogleConfirm: 'Это удалит подключение Google Ads и связанные аккаунты из вашего профиля. Продолжить?',
     googleDisconnectSuccess: 'Google Ads данные удалены из аккаунта.',
+    connectTikTok: 'Подключить TikTok Ads',
+    disconnectTikTok: 'Отвязать TikTok Ads',
+    disconnectTikTokConfirm: 'Это удалит подключение TikTok Ads и связанные рекламные аккаунты из вашего профиля. Продолжить?',
+    tiktokDisconnectSuccess: 'TikTok Ads данные удалены из аккаунта.',
     accounts: 'Кабинеты',
     googleAds: 'Google Ads',
+    tiktokAds: 'TikTok Ads',
     googleAccountsEmpty: 'Google Ads пока не подключён.',
+    tiktokAccountsEmpty: 'TikTok Ads пока не подключён.',
     directAccess: 'Прямой доступ',
     viaManager: 'Через MCC',
     managerAccount: 'MCC',
@@ -521,7 +934,7 @@ const translations = {
     campaigns: 'Кампании',
     days: 'Период',
     dayOptions: { 7: '7 дней', 30: '30 дней', 90: '90 дней' },
-    noAccountsTitle: 'Подключите Meta или Google Ads',
+    noAccountsTitle: 'Подключите Meta, Google Ads или TikTok Ads',
     noAccountsBody:
       'После OAuth подключённые кабинеты появятся слева, а отчёт и AI-анализ загрузятся через серверный прокси.',
     refreshData: 'Обновить отчёт',
@@ -568,6 +981,8 @@ const translations = {
     oauthError: 'Подключение Meta завершилось ошибкой.',
     googleOauthSuccess: 'Google Ads успешно подключён. Аккаунты синхронизированы.',
     googleOauthError: 'Подключение Google Ads завершилось ошибкой.',
+    tiktokOauthSuccess: 'TikTok Ads успешно подключён. Рекламные аккаунты синхронизированы.',
+    tiktokOauthError: 'Подключение TikTok Ads завершилось ошибкой.',
     chatKeyHint: 'Можно использовать ключ Anthropic, OpenAI или Gemini.',
     savedKeyHint: 'Ключ для выбранного провайдера уже сохранён на сервере и будет использоваться автоматически.',
     apiKeySavedNotice: 'Ключ сохранён и теперь будет использоваться автоматически.',
@@ -580,7 +995,7 @@ const translations = {
     },
     helperQuestions: ['Какая кампания тянет результат?', 'Где растёт стоимость лида?', 'Что отключить в первую очередь?'],
     status: { active: 'Активна', paused: 'Пауза', other: 'Другая' },
-    resultKinds: { messages: 'Сообщения', leads: 'Лиды', result: 'Результаты' },
+    resultKinds: { messages: 'Сообщения', leads: 'Лиды', result: 'Результаты', conversions: 'Конверсии' },
     metricCopy: {
       spend: ['Расход', 'Сколько потрачено за период.'],
       reach: ['Охват', 'Сколько людей увидели рекламу.'],
@@ -595,11 +1010,13 @@ const translations = {
   },
   kz: {
     ...privacyContent.kz,
+    ...termsContent.kz,
     brand: 'Chatico Ads',
-    authLead: 'Шағын бизнеске арналған бірыңғай Meta Ads панелі.',
-    authTitle: 'Кабинеттерді қосып, жарнаманы түсінікті тілде бақылаңыз.',
+    authLead: 'Шағын бизнес иесі үшін Meta, Google және TikTok Ads панелі.',
+    authTitle: 'Meta, Google және TikTok кабинеттерін қосып, жарнаманы түсінікті тілде бақылаңыз.',
     authBody:
-      'Сервис рұқсаттарды серверде сақтайды, Meta Marketing API арқылы есепті өзі жинайды және браузерге токен шығармай AI-қорытынды береді.',
+      'Сервис рұқсаттарды серверде сақтайды, жарнама платформалары API арқылы есепті өзі жинайды және браузерге токен шығармай AI-қорытынды береді.',
+    authFeaturePlatforms: 'Жарнама платформалары',
     authModeLogin: 'Кіру',
     authModeRegister: 'Тіркелу',
     email: 'Email',
@@ -617,9 +1034,15 @@ const translations = {
     disconnectGoogle: 'Google Ads ажырату',
     disconnectGoogleConfirm: 'Бұл Google Ads байланысын және қатысты аккаунттарды өшіреді. Жалғастырасыз ба?',
     googleDisconnectSuccess: 'Google Ads деректері аккаунттан өшірілді.',
+    connectTikTok: 'TikTok Ads қосу',
+    disconnectTikTok: 'TikTok Ads ажырату',
+    disconnectTikTokConfirm: 'Бұл TikTok Ads байланысын және қатысты жарнама аккаунттарын өшіреді. Жалғастырасыз ба?',
+    tiktokDisconnectSuccess: 'TikTok Ads деректері аккаунттан өшірілді.',
     accounts: 'Кабинеттер',
     googleAds: 'Google Ads',
+    tiktokAds: 'TikTok Ads',
     googleAccountsEmpty: 'Google Ads әлі қосылмаған.',
+    tiktokAccountsEmpty: 'TikTok Ads әлі қосылмаған.',
     directAccess: 'Тікелей қолжетім',
     viaManager: 'MCC арқылы',
     managerAccount: 'MCC',
@@ -627,7 +1050,7 @@ const translations = {
     campaigns: 'Кампаниялар',
     days: 'Кезең',
     dayOptions: { 7: '7 күн', 30: '30 күн', 90: '90 күн' },
-    noAccountsTitle: 'Meta немесе Google Ads қосыңыз',
+    noAccountsTitle: 'Meta, Google Ads немесе TikTok Ads қосыңыз',
     noAccountsBody:
       'OAuth аяқталған соң қосылған кабинеттер сол жақта көрінеді, ал есеп пен AI-талдау серверлік прокси арқылы жүктеледі.',
     refreshData: 'Есепті жаңарту',
@@ -674,6 +1097,8 @@ const translations = {
     oauthError: 'Meta қосу кезінде қате болды.',
     googleOauthSuccess: 'Google Ads сәтті қосылды. Аккаунттар синхрондалды.',
     googleOauthError: 'Google Ads қосу кезінде қате болды.',
+    tiktokOauthSuccess: 'TikTok Ads сәтті қосылды. Жарнама аккаунттары синхрондалды.',
+    tiktokOauthError: 'TikTok Ads қосу кезінде қате болды.',
     chatKeyHint: 'Anthropic, OpenAI немесе Gemini кілтін қолдануға болады.',
     savedKeyHint: 'Таңдалған провайдер кілті серверде сақталған және автоматты түрде қолданылады.',
     apiKeySavedNotice: 'Кілт сақталды және енді автоматты түрде қолданылады.',
@@ -686,7 +1111,7 @@ const translations = {
     },
     helperQuestions: ['Нәтижені қай кампания әкеліп тұр?', 'Лид құны қай жерде өсіп жатыр?', 'Ең алдымен нені өшіру керек?'],
     status: { active: 'Белсенді', paused: 'Пауза', other: 'Басқа' },
-    resultKinds: { messages: 'Хабарламалар', leads: 'Лидтер', result: 'Нәтижелер' },
+    resultKinds: { messages: 'Хабарламалар', leads: 'Лидтер', result: 'Нәтижелер', conversions: 'Конверсиялар' },
     metricCopy: {
       spend: ['Шығын', 'Кезеңдегі жалпы шығын.'],
       reach: ['Қамту', 'Жарнаманы көрген адамдар саны.'],
@@ -701,11 +1126,13 @@ const translations = {
   },
   en: {
     ...privacyContent.en,
+    ...termsContent.en,
     brand: 'Chatico Ads',
-    authLead: 'A single Meta Ads workspace for small business owners.',
-    authTitle: 'Connect ad accounts and read performance in plain language.',
+    authLead: 'One ad analytics workspace for small business owners: Meta, Google, and TikTok.',
+    authTitle: 'Connect Meta, Google, and TikTok ad accounts and read performance in plain language.',
     authBody:
-      'The app keeps access on the server, builds reports through the Meta Marketing API, and adds AI commentary without exposing platform tokens in the browser.',
+      'The app keeps access on the server, builds reports through Meta, Google Ads, and TikTok APIs, and adds AI commentary without exposing platform tokens in the browser.',
+    authFeaturePlatforms: 'Ad platforms',
     authModeLogin: 'Login',
     authModeRegister: 'Register',
     email: 'Email',
@@ -723,9 +1150,15 @@ const translations = {
     disconnectGoogle: 'Disconnect Google Ads',
     disconnectGoogleConfirm: 'This will remove the Google Ads connection and synced accounts from your profile. Continue?',
     googleDisconnectSuccess: 'Google Ads data has been removed from your account.',
+    connectTikTok: 'Connect TikTok Ads',
+    disconnectTikTok: 'Disconnect TikTok Ads',
+    disconnectTikTokConfirm: 'This will remove the TikTok Ads connection and synced advertiser accounts from your profile. Continue?',
+    tiktokDisconnectSuccess: 'TikTok Ads data has been removed from your account.',
     accounts: 'Accounts',
     googleAds: 'Google Ads',
+    tiktokAds: 'TikTok Ads',
     googleAccountsEmpty: 'Google Ads is not connected yet.',
+    tiktokAccountsEmpty: 'TikTok Ads is not connected yet.',
     directAccess: 'Direct access',
     viaManager: 'Via MCC',
     managerAccount: 'MCC',
@@ -733,7 +1166,7 @@ const translations = {
     campaigns: 'Campaigns',
     days: 'Range',
     dayOptions: { 7: '7 days', 30: '30 days', 90: '90 days' },
-    noAccountsTitle: 'Connect Meta or Google Ads',
+    noAccountsTitle: 'Connect Meta, Google Ads, or TikTok Ads',
     noAccountsBody:
       'Start either OAuth flow. After approval, the connected accounts appear on the left and the dashboard plus AI analysis load through the backend proxy.',
     refreshData: 'Refresh report',
@@ -780,6 +1213,8 @@ const translations = {
     oauthError: 'Meta connection failed.',
     googleOauthSuccess: 'Google Ads connected successfully. Accounts are synced.',
     googleOauthError: 'Google Ads connection failed.',
+    tiktokOauthSuccess: 'TikTok Ads connected successfully. Advertiser accounts are synced.',
+    tiktokOauthError: 'TikTok Ads connection failed.',
     chatKeyHint: 'You can use an Anthropic, OpenAI, or Gemini key.',
     savedKeyHint: 'A key for the selected provider is already stored on the server and will be used automatically.',
     apiKeySavedNotice: 'The key has been saved and will now be used automatically.',
@@ -792,7 +1227,7 @@ const translations = {
     },
     helperQuestions: ['Which campaign drives the result?', 'Where is cost per lead rising?', 'What should I pause first?'],
     status: { active: 'Active', paused: 'Paused', other: 'Other' },
-    resultKinds: { messages: 'Messages', leads: 'Leads', result: 'Results' },
+    resultKinds: { messages: 'Messages', leads: 'Leads', result: 'Results', conversions: 'Conversions' },
     metricCopy: {
       spend: ['Spend', 'Total spend for the selected period.'],
       reach: ['Reach', 'How many people saw the ads.'],
@@ -867,14 +1302,18 @@ const metaConnecting = ref(false)
 const metaDisconnecting = ref(false)
 const googleConnecting = ref(false)
 const googleDisconnecting = ref(false)
+const tiktokConnecting = ref(false)
+const tiktokDisconnecting = ref(false)
 const accountsLoading = ref(false)
 const googleAccountsLoading = ref(false)
+const tiktokAccountsLoading = ref(false)
 const reportLoading = ref(false)
 const verdictLoading = ref(false)
 const chatLoading = ref(false)
 const reportDays = ref(30)
 const accounts = ref<MetaAccount[]>([])
 const googleAccounts = ref<GoogleAdsCustomer[]>([])
+const tiktokAccounts = ref<TikTokAdsAdvertiser[]>([])
 const selectedProvider = ref<OAuthProvider>('meta')
 const selectedAccountId = ref('')
 const report = ref<DashboardReport | null>(null)
@@ -904,7 +1343,12 @@ const appViewInitialized = ref(false)
 const copy = computed(() => translations[locale.value])
 const isAuthenticated = computed(() => user.value !== null)
 const isPolicyView = computed(() => currentView.value === 'privacy' || currentView.value === 'dataDeletion')
+const isTermsView = computed(() => currentView.value === 'terms')
+const isLegalView = computed(() => isPolicyView.value || isTermsView.value)
 const headerTitle = computed(() => {
+  if (isTermsView.value) {
+    return copy.value.termsOfService
+  }
   if (isPolicyView.value) {
     return copy.value.privacyPolicy
   }
@@ -962,12 +1406,17 @@ const autoVerdictDetails = computed(() => {
   return autoVerdictSections.value.details
 })
 const hasAutoVerdictDetails = computed(() => Boolean(autoVerdictDetails.value))
-const hasAnyConnectedAccounts = computed(() => accounts.value.length > 0 || googleAccounts.value.length > 0)
+const hasAnyConnectedAccounts = computed(
+  () => accounts.value.length > 0 || googleAccounts.value.length > 0 || tiktokAccounts.value.length > 0,
+)
 const selectedMetaAccount = computed(() => {
   return accounts.value.find((account) => account.external_id === selectedAccountId.value) ?? null
 })
 const selectedGoogleAccount = computed(() => {
   return googleAccounts.value.find((customer) => customer.external_customer_id === selectedAccountId.value) ?? null
+})
+const selectedTikTokAccount = computed(() => {
+  return tiktokAccounts.value.find((advertiser) => advertiser.advertiser_id === selectedAccountId.value) ?? null
 })
 const selectedAccount = computed(() => {
   if (selectedProvider.value === 'google_ads') {
@@ -981,6 +1430,20 @@ const selectedAccount = computed(() => {
       name: customer.descriptive_name,
       currency: customer.currency_code,
       timezone_name: customer.time_zone,
+    }
+  }
+
+  if (selectedProvider.value === 'tiktok_ads') {
+    const advertiser = selectedTikTokAccount.value
+    if (!advertiser) {
+      return null
+    }
+    return {
+      id: advertiser.id,
+      account_id: advertiser.advertiser_id,
+      name: advertiser.name,
+      currency: advertiser.currency,
+      timezone_name: advertiser.timezone_name,
     }
   }
 
@@ -998,7 +1461,13 @@ const selectedAccount = computed(() => {
   }
 })
 const selectedProviderLabel = computed(() => {
-  return selectedProvider.value === 'google_ads' ? copy.value.googleAds : 'Meta'
+  if (selectedProvider.value === 'google_ads') {
+    return copy.value.googleAds
+  }
+  if (selectedProvider.value === 'tiktok_ads') {
+    return copy.value.tiktokAds
+  }
+  return 'Meta'
 })
 const selectedCampaign = computed(() => {
   const campaigns = report.value?.campaigns ?? []
@@ -1022,8 +1491,18 @@ const workspaceNotice = computed(() => {
   if (!oauthStatus.value) {
     return ''
   }
-  const successMessage = oauthStatus.value.provider === 'google_ads' ? copy.value.googleOauthSuccess : copy.value.oauthSuccess
-  const errorMessage = oauthStatus.value.provider === 'google_ads' ? copy.value.googleOauthError : copy.value.oauthError
+  const successMessage =
+    oauthStatus.value.provider === 'google_ads'
+      ? copy.value.googleOauthSuccess
+      : oauthStatus.value.provider === 'tiktok_ads'
+        ? copy.value.tiktokOauthSuccess
+        : copy.value.oauthSuccess
+  const errorMessage =
+    oauthStatus.value.provider === 'google_ads'
+      ? copy.value.googleOauthError
+      : oauthStatus.value.provider === 'tiktok_ads'
+        ? copy.value.tiktokOauthError
+        : copy.value.oauthError
   return oauthStatus.value.status === 'success'
     ? successMessage
     : `${errorMessage}${oauthStatus.value.message ? `: ${oauthStatus.value.message}` : ''}`
@@ -1034,7 +1513,19 @@ const workspaceNoticeTone = computed(() => {
   }
   return oauthStatus.value?.status === 'error' ? 'error' : 'success'
 })
-const policySections = computed<readonly PrivacySection[]>(() => copy.value.privacySections)
+const legalSections = computed<readonly LegalSection[]>(() => {
+  if (isTermsView.value) {
+    return copy.value.termsSections
+  }
+  return copy.value.privacySections
+})
+const legalEyebrow = computed(() => (isTermsView.value ? copy.value.termsOfService : copy.value.privacyPolicy))
+const legalTitle = computed(() => (isTermsView.value ? copy.value.termsTitle : copy.value.privacyTitle))
+const legalLead = computed(() => (isTermsView.value ? copy.value.termsLead : copy.value.privacyLead))
+const legalUpdatedLabel = computed(() =>
+  isTermsView.value ? copy.value.termsUpdatedLabel : copy.value.privacyUpdatedLabel,
+)
+const legalUpdatedOn = computed(() => (isTermsView.value ? copy.value.termsUpdatedOn : copy.value.privacyUpdatedOn))
 
 function resolveCurrentView(pathname: string): AppView {
   const normalized = normalizePathname(pathname)
@@ -1043,6 +1534,9 @@ function resolveCurrentView(pathname: string): AppView {
   }
   if (normalized === DATA_DELETION_ROUTE_PATH) {
     return 'dataDeletion'
+  }
+  if (normalized === TERMS_ROUTE_PATH) {
+    return 'terms'
   }
   return 'app'
 }
@@ -1053,6 +1547,9 @@ function routePathForView(view: AppView): string {
   }
   if (view === 'dataDeletion') {
     return DATA_DELETION_ROUTE_PATH
+  }
+  if (view === 'terms') {
+    return TERMS_ROUTE_PATH
   }
   return APP_HOME_PATH
 }
@@ -1081,6 +1578,10 @@ function navigateToView(view: AppView) {
   currentView.value = view
 }
 
+function openTermsOfService() {
+  navigateToView('terms')
+}
+
 function openPrivacyPolicy() {
   navigateToView('privacy')
 }
@@ -1098,6 +1599,10 @@ function handlePopState() {
 }
 
 function updateDocumentTitle() {
+  if (isTermsView.value) {
+    document.title = `${copy.value.termsOfService} · ${copy.value.brand}`
+    return
+  }
   if (isPolicyView.value) {
     document.title = `${copy.value.privacyPolicy} · ${copy.value.brand}`
     return
@@ -1458,6 +1963,9 @@ function hasValidSelectedAccount(provider: OAuthProvider, accountId: string) {
   if (provider === 'google_ads') {
     return googleAccounts.value.some((customer) => customer.external_customer_id === accountId)
   }
+  if (provider === 'tiktok_ads') {
+    return tiktokAccounts.value.some((advertiser) => advertiser.advertiser_id === accountId)
+  }
   return accounts.value.some((account) => account.external_id === accountId)
 }
 
@@ -1473,6 +1981,13 @@ function resolvePreferredAccountSelection(preferredProvider: OAuthProvider | nul
     return {
       provider: 'google_ads' as const,
       accountId: googleAccounts.value[0].external_customer_id,
+    }
+  }
+
+  if (preferredProvider === 'tiktok_ads' && tiktokAccounts.value.length > 0) {
+    return {
+      provider: 'tiktok_ads' as const,
+      accountId: tiktokAccounts.value[0].advertiser_id,
     }
   }
 
@@ -1497,6 +2012,13 @@ function resolvePreferredAccountSelection(preferredProvider: OAuthProvider | nul
     }
   }
 
+  if (tiktokAccounts.value.length > 0) {
+    return {
+      provider: 'tiktok_ads' as const,
+      accountId: tiktokAccounts.value[0].advertiser_id,
+    }
+  }
+
   return null
 }
 
@@ -1508,6 +2030,9 @@ function buildDashboardReportPath(provider: OAuthProvider, accountId: string, qu
   if (provider === 'google_ads') {
     return `/dashboard/google-ads/customers/${accountId}/report?${query}`
   }
+  if (provider === 'tiktok_ads') {
+    return `/dashboard/tiktok-ads/advertisers/${accountId}/report?${query}`
+  }
   return `/dashboard/meta/ad-accounts/${accountId}/report?${query}`
 }
 
@@ -1515,12 +2040,18 @@ function buildAutoVerdictPath(provider: OAuthProvider, accountId: string) {
   if (provider === 'google_ads') {
     return `/ai/google-ads/customers/${accountId}/auto-verdict`
   }
+  if (provider === 'tiktok_ads') {
+    return `/ai/tiktok-ads/advertisers/${accountId}/auto-verdict`
+  }
   return `/ai/meta/ad-accounts/${accountId}/auto-verdict`
 }
 
 function buildChatPath(provider: OAuthProvider, accountId: string) {
   if (provider === 'google_ads') {
     return `/ai/google-ads/customers/${accountId}/chat`
+  }
+  if (provider === 'tiktok_ads') {
+    return `/ai/tiktok-ads/advertisers/${accountId}/chat`
   }
   return `/ai/meta/ad-accounts/${accountId}/chat`
 }
@@ -1557,6 +2088,7 @@ function resetSession() {
   oauthStatus.value = null
   accounts.value = []
   googleAccounts.value = []
+  tiktokAccounts.value = []
   selectedProvider.value = 'meta'
   selectedAccountId.value = ''
   clearReportState()
@@ -1567,6 +2099,8 @@ function resetSession() {
   metaConnecting.value = false
   metaDisconnecting.value = false
   googleDisconnecting.value = false
+  tiktokConnecting.value = false
+  tiktokDisconnecting.value = false
   providerKeyLoading.value = false
   providerKeyEditing.value = false
   providerKeyError.value = ''
@@ -1574,6 +2108,7 @@ function resetSession() {
   pageNotice.value = ''
   googleConnecting.value = false
   googleAccountsLoading.value = false
+  tiktokAccountsLoading.value = false
   localStorage.removeItem(STORAGE_TOKEN_KEY)
   localStorage.removeItem(LEGACY_STORAGE_TOKEN_KEY)
   applyLocale(resolveInitialLocale(), { persist: false })
@@ -1673,6 +2208,7 @@ async function bootstrapSession() {
   pageNotice.value = ''
   accounts.value = []
   googleAccounts.value = []
+  tiktokAccounts.value = []
   selectedProvider.value = 'meta'
   selectedAccountId.value = ''
   clearReportState()
@@ -1680,7 +2216,10 @@ async function bootstrapSession() {
   const callbackUrl = new URL(window.location.href)
   const providerParam = callbackUrl.searchParams.get('provider')
   const statusParam = callbackUrl.searchParams.get('status')
-  if ((providerParam === 'meta' || providerParam === 'google_ads') && (statusParam === 'success' || statusParam === 'error')) {
+  if (
+    (providerParam === 'meta' || providerParam === 'google_ads' || providerParam === 'tiktok_ads') &&
+    (statusParam === 'success' || statusParam === 'error')
+  ) {
     oauthStatus.value = {
       provider: providerParam as OAuthProvider,
       status: statusParam,
@@ -1706,6 +2245,7 @@ async function bootstrapSession() {
     }
     await loadAccounts()
     await loadGoogleAccounts()
+    await loadTikTokAccounts()
     await loadSavedProviderKeys()
     await syncSelectedAccount({
       preferredProvider: oauthStatus.value?.status === 'success' ? oauthStatus.value.provider : null,
@@ -1762,6 +2302,7 @@ async function submitAuth() {
   accessToken.value = ''
   accounts.value = []
   googleAccounts.value = []
+  tiktokAccounts.value = []
   selectedProvider.value = 'meta'
   selectedAccountId.value = ''
   clearReportState()
@@ -1786,6 +2327,7 @@ async function submitAuth() {
     pageError.value = ''
     await loadAccounts()
     await loadGoogleAccounts()
+    await loadTikTokAccounts()
     await loadSavedProviderKeys()
     await syncSelectedAccount({ forceReload: true })
   } catch (error) {
@@ -1837,6 +2379,25 @@ async function loadGoogleAccounts() {
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
   } finally {
     googleAccountsLoading.value = false
+  }
+}
+
+async function loadTikTokAccounts() {
+  if (!user.value) {
+    tiktokAccounts.value = []
+    return
+  }
+
+  tiktokAccountsLoading.value = true
+
+  try {
+    tiktokAccounts.value = await apiRequest<TikTokAdsAdvertiser[]>('/tiktok-ads/advertisers')
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('Not Found')) {
+      pageError.value = error instanceof Error ? error.message : 'Unexpected error'
+    }
+  } finally {
+    tiktokAccountsLoading.value = false
   }
 }
 
@@ -1911,6 +2472,44 @@ async function disconnectGoogle() {
     pageError.value = formatUnexpectedError(error)
   } finally {
     googleDisconnecting.value = false
+  }
+}
+
+async function connectTikTok() {
+  tiktokConnecting.value = true
+  pageError.value = ''
+  pageNotice.value = ''
+
+  try {
+    const payload = await apiRequest<{ authorization_url: string }>('/tiktok-ads/oauth/start')
+    window.location.href = payload.authorization_url
+  } catch (error) {
+    tiktokConnecting.value = false
+    pageError.value = error instanceof Error ? error.message : 'Unexpected error'
+  }
+}
+
+async function disconnectTikTok() {
+  if (tiktokDisconnecting.value || !window.confirm(copy.value.disconnectTikTokConfirm)) {
+    return
+  }
+
+  tiktokDisconnecting.value = true
+  pageError.value = ''
+  pageNotice.value = ''
+
+  try {
+    await apiRequest('/tiktok-ads/connections', { method: 'DELETE' })
+    oauthStatus.value = null
+    await loadTikTokAccounts()
+    await loadAccounts()
+    await loadGoogleAccounts()
+    await syncSelectedAccount({ preferredProvider: 'meta', forceReload: true })
+    pageNotice.value = copy.value.tiktokDisconnectSuccess
+  } catch (error) {
+    pageError.value = formatUnexpectedError(error)
+  } finally {
+    tiktokDisconnecting.value = false
   }
 }
 
@@ -2161,6 +2760,10 @@ function formatGoogleCustomerLabel(customer: GoogleAdsCustomer) {
   return `${accountKind} · ${accessKind} · ${formatGoogleCustomerId(customer.external_customer_id)}`
 }
 
+function formatTikTokAdvertiserLabel(advertiser: TikTokAdsAdvertiser) {
+  return [advertiser.status, advertiser.currency, advertiser.advertiser_id].filter(Boolean).join(' · ')
+}
+
 function formatDelta(delta: number | null | undefined) {
   if (delta === null || delta === undefined) {
     return '—'
@@ -2326,7 +2929,17 @@ watch(currentView, (view) => {
           {{ copy.privacyPolicy }}
         </button>
 
-        <button v-if="isPolicyView" type="button" class="ghost-button" @click="openAppView">
+        <button
+          type="button"
+          class="ghost-button"
+          :class="{ active: isTermsView }"
+          :disabled="currentView === 'terms'"
+          @click="openTermsOfService"
+        >
+          {{ copy.termsOfService }}
+        </button>
+
+        <button v-if="isLegalView" type="button" class="ghost-button" @click="openAppView">
           {{ copy.backToApp }}
         </button>
 
@@ -2336,26 +2949,38 @@ watch(currentView, (view) => {
       </div>
     </header>
 
-    <main v-if="isPolicyView" class="policy-stage">
+    <main v-if="isLegalView" class="policy-stage">
       <section class="policy-surface">
         <div class="policy-hero">
-          <p class="eyebrow">{{ copy.privacyPolicy }}</p>
-          <h2>{{ copy.privacyTitle }}</h2>
-          <p class="auth-copy">{{ copy.privacyLead }}</p>
+          <p class="eyebrow">{{ legalEyebrow }}</p>
+          <h2>{{ legalTitle }}</h2>
+          <p class="auth-copy">{{ legalLead }}</p>
 
           <div class="policy-meta">
-            <span class="policy-chip">{{ copy.privacyUpdatedLabel }}: {{ copy.privacyUpdatedOn }}</span>
-            <span class="policy-chip">{{ copy.privacyMetaScopeLabel }}: ads_read</span>
-            <a class="ghost-link" :href="`mailto:${PRIVACY_CONTACT_EMAIL}`">{{ PRIVACY_CONTACT_EMAIL }}</a>
-            <button type="button" class="ghost-button" @click="openDataDeletion">
-              {{ copy.dataDeletionLabel }}
-            </button>
+            <span class="policy-chip">{{ legalUpdatedLabel }}: {{ legalUpdatedOn }}</span>
+            <template v-if="isPolicyView">
+              <span class="policy-chip">{{ copy.privacyMetaScopeLabel }}: ads_read</span>
+              <span class="policy-chip">{{ copy.privacyGoogleScopeLabel }}: adwords</span>
+              <span class="policy-chip">{{ copy.privacyTikTokScopeLabel }}: read-only advertiser/reporting</span>
+              <a class="ghost-link" :href="`mailto:${PRIVACY_CONTACT_EMAIL}`">{{ PRIVACY_CONTACT_EMAIL }}</a>
+              <button type="button" class="ghost-button" @click="openDataDeletion">
+                {{ copy.dataDeletionLabel }}
+              </button>
+              <button type="button" class="ghost-button" @click="openTermsOfService">
+                {{ copy.termsOfService }}
+              </button>
+            </template>
+            <template v-else>
+              <button type="button" class="ghost-button" @click="openPrivacyPolicy">
+                {{ copy.termsPrivacyLinkLabel }}
+              </button>
+            </template>
           </div>
         </div>
 
         <div class="policy-grid">
           <section
-            v-for="section in policySections"
+            v-for="section in legalSections"
             :id="section.id"
             :key="section.id"
             class="policy-block"
@@ -2377,14 +3002,13 @@ watch(currentView, (view) => {
 
     <main v-else-if="!isAuthenticated" class="auth-stage">
       <section class="auth-intro">
-        <p class="eyebrow">Meta + Google Ads + AI proxy</p>
         <h2>{{ copy.authTitle }}</h2>
         <p class="auth-copy">{{ copy.authBody }}</p>
 
         <div class="auth-grid">
           <div>
-            <span>{{ copy.connectMeta }}</span>
-            <strong>OAuth</strong>
+            <span>{{ copy.authFeaturePlatforms }}</span>
+            <strong>Meta · Google · TikTok</strong>
           </div>
           <div>
             <span>{{ copy.periodCompare }}</span>
@@ -2530,6 +3154,46 @@ watch(currentView, (view) => {
           </button>
         </section>
 
+        <section class="rail-section">
+          <div class="section-head">
+            <span>{{ copy.tiktokAds }}</span>
+            <div class="section-actions">
+              <button
+                type="button"
+                class="rail-link"
+                :disabled="tiktokConnecting || tiktokDisconnecting"
+                @click="connectTikTok"
+              >
+                {{ copy.connectTikTok }}
+              </button>
+              <button
+                v-if="tiktokAccounts.length > 0"
+                type="button"
+                class="rail-link"
+                :disabled="tiktokConnecting || tiktokDisconnecting"
+                @click="disconnectTikTok"
+              >
+                {{ copy.disconnectTikTok }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="tiktokAccountsLoading" class="empty-note">{{ copy.loading }}</div>
+          <div v-else-if="tiktokAccounts.length === 0" class="empty-note">{{ copy.tiktokAccountsEmpty }}</div>
+
+          <button
+            v-for="advertiser in tiktokAccounts"
+            :key="advertiser.id"
+            type="button"
+            class="account-item"
+            :class="{ active: selectedProvider === 'tiktok_ads' && selectedAccountId === advertiser.advertiser_id }"
+            @click="selectAccount('tiktok_ads', advertiser.advertiser_id)"
+          >
+            <span>{{ advertiser.name }}</span>
+            <small>{{ formatTikTokAdvertiserLabel(advertiser) }}</small>
+          </button>
+        </section>
+
         <section class="rail-section" v-if="hasAnyConnectedAccounts">
           <div class="section-head">
             <span>{{ copy.days }}</span>
@@ -2587,6 +3251,9 @@ watch(currentView, (view) => {
             </button>
             <button type="button" class="ghost-button" :disabled="googleConnecting" @click="connectGoogle">
               {{ copy.connectGoogle }}
+            </button>
+            <button type="button" class="ghost-button" :disabled="tiktokConnecting" @click="connectTikTok">
+              {{ copy.connectTikTok }}
             </button>
           </div>
         </section>

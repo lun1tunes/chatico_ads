@@ -16,7 +16,7 @@ if str(SRC) not in sys.path:
 
 from core.config import settings
 from core.models.base import Base
-from core.models import auth_session, google_ads_connection, google_ads_customer, meta_ad_account, meta_connection, meta_data_deletion_request, meta_report_snapshot, user, user_ai_provider_key  # noqa: F401
+from core.models import auth_session, google_ads_connection, google_ads_customer, meta_ad_account, meta_connection, meta_data_deletion_request, meta_report_snapshot, tiktok_ads_advertiser, tiktok_ads_connection, user, user_ai_provider_key  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

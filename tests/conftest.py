@@ -24,6 +24,9 @@ os.environ["GOOGLE_ADS_DEVELOPER_TOKEN"] = "test-google-developer-token"
 os.environ["GOOGLE_OAUTH_CLIENT_ID"] = "test-google-client-id"
 os.environ["GOOGLE_OAUTH_CLIENT_SECRET"] = "test-google-client-secret"
 os.environ["GOOGLE_OAUTH_REDIRECT_URI"] = "http://localhost:8000/api/v1/google-ads/oauth/callback"
+os.environ["TIKTOK_APP_ID"] = "test-tiktok-app-id"
+os.environ["TIKTOK_APP_SECRET"] = "test-tiktok-app-secret"
+os.environ["TIKTOK_OAUTH_REDIRECT_URI"] = "http://localhost:8000/api/v1/tiktok-ads/oauth/callback"
 os.environ["FIELD_ENCRYPTION_KEY"] = "1p_UUU0j5OJ9SxWwtUWFI7Ak4luuL8EA3twJY86W0Z0="
 os.environ["INTERNAL_ANTHROPIC_API_KEY"] = "test-anthropic-key"
 os.environ["INTERNAL_GEMINI_API_KEY"] = "test-gemini-key"
@@ -40,6 +43,8 @@ from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
 from core.models.meta_data_deletion_request import MetaDataDeletionRequest
 from core.models.meta_report_snapshot import MetaReportSnapshot
+from core.models.tiktok_ads_advertiser import TikTokAdsAdvertiser
+from core.models.tiktok_ads_connection import TikTokAdsConnection
 from core.models.user import User
 from core.models.user_ai_provider_key import UserAIProviderKey
 
@@ -78,6 +83,8 @@ async def reset_state():
             MetaConnection,
             GoogleAdsCustomer,
             GoogleAdsConnection,
+            TikTokAdsAdvertiser,
+            TikTokAdsConnection,
             AuthSession,
             User,
         ):

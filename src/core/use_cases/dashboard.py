@@ -8,10 +8,12 @@ from ..infrastructure.llm_clients import LLMProxyError
 from ..repositories.google_ads_customer import GoogleAdsCustomerRepository
 from ..repositories.meta_ad_account import MetaAdAccountRepository
 from ..repositories.meta_report_snapshot import MetaReportSnapshotRepository
+from ..repositories.tiktok_ads_advertiser import TikTokAdsAdvertiserRepository
 from ..repositories.user_ai_provider_key import UserAIProviderKeyRepository
 from ..models.user_ai_provider_key import UserAIProviderKey
 from ..services.google_ads_report_service import GoogleAdsReportService
 from ..services.meta_report_service import MetaReportService
+from ..services.tiktok_ads_report_service import TikTokAdsReportService
 from ..utils.time import utcnow
 
 
@@ -65,6 +67,34 @@ class GenerateGoogleAdsReportUseCase:
             customer_repo=self.customer_repo,
             user_id=user_id,
             external_customer_id=customer_id,
+            requested_days=days,
+            periods=periods,
+            force_refresh=force_refresh,
+        )
+        await self.session.commit()
+        return report
+
+
+class GenerateTikTokAdsReportUseCase:
+    def __init__(self, *, session: AsyncSession, date_range_service, report_service: TikTokAdsReportService) -> None:
+        self.session = session
+        self.date_range_service = date_range_service
+        self.report_service = report_service
+        self.advertiser_repo = TikTokAdsAdvertiserRepository(session)
+
+    async def execute(
+        self,
+        *,
+        user_id: str,
+        advertiser_id: str,
+        days: int,
+        force_refresh: bool = False,
+    ) -> dict[str, object]:
+        periods = self.date_range_service.build_periods(days=days)
+        report = await self.report_service.build_report(
+            advertiser_repo=self.advertiser_repo,
+            user_id=user_id,
+            external_advertiser_id=advertiser_id,
             requested_days=days,
             periods=periods,
             force_refresh=force_refresh,

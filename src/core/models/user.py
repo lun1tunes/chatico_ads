@@ -17,4 +17,5 @@ class User(Base, StringIdMixin, TimestampMixin):
     sessions = relationship("AuthSession", back_populates="user", cascade="all, delete-orphan")
     meta_connections = relationship("MetaConnection", back_populates="user", cascade="all, delete-orphan")
     google_ads_connections = relationship("GoogleAdsConnection", back_populates="user", cascade="all, delete-orphan")
+    tiktok_ads_connections = relationship("TikTokAdsConnection", back_populates="user", cascade="all, delete-orphan")
     ai_provider_keys = relationship("UserAIProviderKey", back_populates="user", cascade="all, delete-orphan")

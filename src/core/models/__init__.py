@@ -1,5 +1,7 @@
 from .google_ads_connection import GoogleAdsConnection
 from .google_ads_customer import GoogleAdsCustomer
+from .tiktok_ads_advertiser import TikTokAdsAdvertiser
+from .tiktok_ads_connection import TikTokAdsConnection
 from .auth_session import AuthSession
 from .meta_ad_account import MetaAdAccount
 from .meta_connection import MetaConnection
@@ -16,6 +18,8 @@ __all__ = [
     "MetaConnection",
     "MetaDataDeletionRequest",
     "MetaReportSnapshot",
+    "TikTokAdsAdvertiser",
+    "TikTokAdsConnection",
     "User",
     "UserAIProviderKey",
 ]

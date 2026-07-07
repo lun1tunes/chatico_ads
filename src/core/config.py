@@ -22,6 +22,10 @@ def _default_google_oauth_scopes() -> list[str]:
     return ["https://www.googleapis.com/auth/adwords"]
 
 
+def _default_tiktok_oauth_scopes() -> list[str]:
+    return []
+
+
 def _normalize_optional_secret(value: str | None) -> str | None:
     if value is None:
         return None
@@ -244,6 +248,60 @@ class GoogleAdsSettings(BaseModel):
         return all(not _looks_like_placeholder_secret(value) for value in values)
 
 
+class TikTokAdsSettings(BaseModel):
+    app_id: str | None = None
+    app_secret: str | None = None
+    oauth_redirect_uri: str | None = None
+    oauth_authorize_url: str = "https://ads.tiktok.com/marketing_api/auth"
+    oauth_scopes: list[str] = Field(default_factory=_default_tiktok_oauth_scopes)
+    api_base_url: str = "https://business-api.tiktok.com"
+    api_version: str = "v1.3"
+    business_sdk_path: str = "/tmp/tiktok-business-api-sdk/python_sdk"
+
+    @field_validator(
+        "app_id",
+        "app_secret",
+        "oauth_redirect_uri",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_strings(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        return _normalize_optional_secret(str(value))
+
+    @field_validator("oauth_scopes", mode="before")
+    @classmethod
+    def normalize_scopes(cls, value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return _csv(value)
+        return _default_tiktok_oauth_scopes()
+
+    @model_validator(mode="after")
+    def validate_values(self) -> Self:
+        if self.oauth_redirect_uri and not _is_absolute_http_url(self.oauth_redirect_uri):
+            raise ValueError("TIKTOK_OAUTH_REDIRECT_URI must be an absolute http(s) URL")
+        if not _is_absolute_http_url(self.oauth_authorize_url):
+            raise ValueError("TIKTOK_OAUTH_AUTHORIZE_URL must be an absolute http(s) URL")
+        if not _is_absolute_http_url(self.api_base_url):
+            raise ValueError("TIKTOK_API_BASE_URL must be an absolute http(s) URL")
+        if not self.api_version.startswith("v"):
+            self.api_version = f"v{self.api_version}"
+        self.business_sdk_path = self.business_sdk_path.strip() or "/tmp/tiktok-business-api-sdk/python_sdk"
+        return self
+
+    @property
+    def is_configured(self) -> bool:
+        values = (
+            self.app_id,
+            self.app_secret,
+            self.oauth_redirect_uri,
+        )
+        return all(not _looks_like_placeholder_secret(value) for value in values)
+
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -286,6 +344,14 @@ class AppSettings(BaseSettings):
     google_oauth_access_type: str = "offline"
     google_oauth_include_granted_scopes: bool = True
     google_oauth_prompt: str | None = "consent"
+    tiktok_app_id: str | None = Field(default=None, validation_alias="TIKTOK_APP_ID")
+    tiktok_app_secret: str | None = Field(default=None, validation_alias="TIKTOK_APP_SECRET")
+    tiktok_oauth_redirect_uri: str | None = Field(default=None, validation_alias="TIKTOK_OAUTH_REDIRECT_URI")
+    tiktok_oauth_authorize_url: str = "https://ads.tiktok.com/marketing_api/auth"
+    tiktok_oauth_scopes: Annotated[list[str], NoDecode] = Field(default_factory=_default_tiktok_oauth_scopes)
+    tiktok_api_base_url: str = "https://business-api.tiktok.com"
+    tiktok_api_version: str = "v1.3"
+    tiktok_business_sdk_path: str = "/tmp/tiktok-business-api-sdk/python_sdk"
     internal_anthropic_api_key: str | None = Field(default=None, validation_alias="INTERNAL_ANTHROPIC_API_KEY")
     internal_gemini_api_key: str | None = Field(default=None, validation_alias="INTERNAL_GEMINI_API_KEY")
     internal_ai_provider: str | None = Field(default=None, validation_alias="INTERNAL_AI_PROVIDER")
@@ -326,6 +392,15 @@ class AppSettings(BaseSettings):
         if isinstance(value, str):
             return _csv(value)
         return _default_google_oauth_scopes()
+
+    @field_validator("tiktok_oauth_scopes", mode="before")
+    @classmethod
+    def normalize_tiktok_scopes(cls, value: object) -> list[str]:
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            return _csv(value)
+        return _default_tiktok_oauth_scopes()
 
     @model_validator(mode="after")
     def validate_values(self) -> Self:
@@ -391,6 +466,19 @@ class AppSettings(BaseSettings):
             oauth_access_type=self.google_oauth_access_type,
             oauth_include_granted_scopes=self.google_oauth_include_granted_scopes,
             oauth_prompt=self.google_oauth_prompt,
+        )
+
+    @cached_property
+    def tiktok_ads(self) -> TikTokAdsSettings:
+        return TikTokAdsSettings(
+            app_id=self.tiktok_app_id,
+            app_secret=self.tiktok_app_secret,
+            oauth_redirect_uri=self.tiktok_oauth_redirect_uri,
+            oauth_authorize_url=self.tiktok_oauth_authorize_url,
+            oauth_scopes=self.tiktok_oauth_scopes,
+            api_base_url=self.tiktok_api_base_url,
+            api_version=self.tiktok_api_version,
+            business_sdk_path=self.tiktok_business_sdk_path,
         )
 
     @cached_property

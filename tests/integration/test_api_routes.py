@@ -9,6 +9,7 @@ from core.dependencies import get_current_user, get_db_session, get_di_container
 from core.infrastructure.google_ads_api import GoogleAdsConfigurationError
 from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
+from core.infrastructure.tiktok_ads_api import TikTokAdsConfigurationError
 from core.use_cases.meta_data_deletion import MetaDataDeletionUseCaseError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from main import app
@@ -34,8 +35,13 @@ class FakeContainer:
         self.handle_google_ads_oauth_callback_use_case = Mock()
         self.list_google_ads_customers_use_case = Mock()
         self.disconnect_google_ads_use_case = Mock()
+        self.build_tiktok_ads_oauth_url_use_case = Mock()
+        self.handle_tiktok_ads_oauth_callback_use_case = Mock()
+        self.list_tiktok_ads_advertisers_use_case = Mock()
+        self.disconnect_tiktok_ads_use_case = Mock()
         self.generate_meta_report_use_case = Mock()
         self.generate_google_ads_report_use_case = Mock()
+        self.generate_tiktok_ads_report_use_case = Mock()
         self.generate_auto_verdict_use_case = Mock()
         self.list_supported_ai_providers_use_case = Mock()
         self.list_saved_ai_provider_keys_use_case = Mock()
@@ -253,6 +259,102 @@ async def test_google_ads_oauth_routes_handle_configuration_and_callback_errors(
     assert callback_error_response.status_code == 307
     assert "provider=google_ads" in callback_error_response.headers["location"]
     assert "Google+Ads+connection+failed.+Please+try+again." in callback_error_response.headers["location"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_tiktok_ads_routes(async_client):
+    container = FakeContainer()
+    container.build_tiktok_ads_oauth_url_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value={"authorization_url": "https://ads.tiktok.test/marketing_api/auth"}),
+    )
+    container.handle_tiktok_ads_oauth_callback_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value={"user_id": "user-1", "connection_id": "tiktok-conn-1", "advertiser_count": 2}),
+    )
+    container.list_tiktok_ads_advertisers_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    id="tiktok-advertiser-1",
+                    advertiser_id="1234567890123456789",
+                    name="TikTok Main Advertiser",
+                    currency="USD",
+                    timezone_name="Asia/Almaty",
+                    status="ACTIVE",
+                )
+            ]
+        ),
+    )
+    container.disconnect_tiktok_ads_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=None),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    start_response = await async_client.get("/api/v1/tiktok-ads/oauth/start")
+    assert start_response.status_code == 200
+    assert start_response.json()["authorization_url"] == "https://ads.tiktok.test/marketing_api/auth"
+
+    callback_response = await async_client.get(
+        "/api/v1/tiktok-ads/oauth/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+    )
+    assert callback_response.status_code == 307
+    assert callback_response.headers["location"].endswith("/connections?provider=tiktok_ads&status=success")
+
+    advertisers_response = await async_client.get("/api/v1/tiktok-ads/advertisers")
+    assert advertisers_response.status_code == 200
+    assert advertisers_response.json()[0]["advertiser_id"] == "1234567890123456789"
+
+    disconnect_response = await async_client.delete("/api/v1/tiktok-ads/connections")
+    assert disconnect_response.status_code == 204
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_tiktok_ads_oauth_routes_handle_configuration_and_callback_errors(async_client):
+    container = FakeContainer()
+    container.build_tiktok_ads_oauth_url_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=TikTokAdsConfigurationError("TikTok Ads OAuth is not configured")),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    start_response = await async_client.get("/api/v1/tiktok-ads/oauth/start")
+    assert start_response.status_code == 503
+    assert start_response.json()["detail"] == "TikTok Ads OAuth is not configured"
+
+    denied_response = await async_client.get(
+        "/api/v1/tiktok-ads/oauth/callback?error=access_denied&error_description=User%20denied%20access",
+        follow_redirects=False,
+    )
+    assert denied_response.status_code == 307
+    assert "provider=tiktok_ads" in denied_response.headers["location"]
+    assert "status=error" in denied_response.headers["location"]
+    assert "User+denied+access" in denied_response.headers["location"]
+
+    missing_params_response = await async_client.get(
+        "/api/v1/tiktok-ads/oauth/callback",
+        follow_redirects=False,
+    )
+    assert missing_params_response.status_code == 307
+    assert "Missing+TikTok+OAuth+callback+parameters" in missing_params_response.headers["location"]
+
+    container.handle_tiktok_ads_oauth_callback_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=RuntimeError("low-level boom")),
+    )
+
+    callback_error_response = await async_client.get(
+        "/api/v1/tiktok-ads/oauth/callback?code=test-code&state=test-state",
+        follow_redirects=False,
+    )
+    assert callback_error_response.status_code == 307
+    assert "provider=tiktok_ads" in callback_error_response.headers["location"]
+    assert "TikTok+Ads+connection+failed.+Please+try+again." in callback_error_response.headers["location"]
 
 
 @pytest.mark.integration

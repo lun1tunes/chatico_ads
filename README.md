@@ -1,6 +1,6 @@
 # Chatico Ads
 
-Dockerized FastAPI + Vue 3 analytics workspace for Meta Ads reporting, JWT auth, OAuth account connection, and AI proxy workflows.
+Dockerized FastAPI + Vue 3 analytics workspace for Meta, Google Ads, and TikTok Ads reporting, JWT auth, OAuth account connection, and AI proxy workflows.
 
 ## Stack
 

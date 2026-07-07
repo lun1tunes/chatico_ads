@@ -150,6 +150,7 @@ activemq-data/
 # Environments
 .env
 .envrc
+.meta-review.credentials
 .venv
 env/
 venv/

@@ -5,6 +5,7 @@ from dependency_injector import containers, providers
 from .infrastructure.google_ads_api import GoogleAdsAPIClient
 from .infrastructure.llm_clients import AnthropicClient, GeminiClient, OpenAIClient
 from .infrastructure.meta_graph_api import MetaGraphAPIClient
+from .infrastructure.tiktok_ads_api import TikTokAdsAPIClient
 from .infrastructure.public_media_preview import PublicCreativePreviewClient
 from .config import settings
 from .security.encryption_service import EncryptionService
@@ -17,6 +18,8 @@ from .services.llm_proxy_service import LLMProxyService
 from .services.meta_report_service import MetaReportService
 from .services.meta_signed_request_service import MetaSignedRequestService
 from .services.meta_state_service import MetaOAuthStateService
+from .services.tiktok_ads_report_service import TikTokAdsReportService
+from .services.tiktok_ads_state_service import TikTokAdsOAuthStateService
 from .use_cases.auth import LoginUserUseCase, LogoutUserUseCase, RefreshSessionUseCase, RegisterUserUseCase
 from .use_cases.auth import UpdateUserLocaleUseCase
 from .use_cases.dashboard import (
@@ -25,6 +28,7 @@ from .use_cases.dashboard import (
     GenerateAutoVerdictUseCase,
     GenerateGoogleAdsReportUseCase,
     GenerateMetaReportUseCase,
+    GenerateTikTokAdsReportUseCase,
     ListSavedAIProviderKeysUseCase,
     ListSupportedAIProvidersUseCase,
     SaveAIProviderKeyUseCase,
@@ -42,6 +46,12 @@ from .use_cases.meta import (
     HandleMetaOAuthCallbackUseCase,
     ListMetaAdAccountsUseCase,
 )
+from .use_cases.tiktok_ads import (
+    BuildTikTokAdsOAuthUrlUseCase,
+    DisconnectTikTokAdsUseCase,
+    HandleTikTokAdsOAuthCallbackUseCase,
+    ListTikTokAdsAdvertisersUseCase,
+)
 
 
 class Container(containers.DeclarativeContainer):
@@ -51,10 +61,12 @@ class Container(containers.DeclarativeContainer):
     meta_state_service = providers.Singleton(MetaOAuthStateService)
     meta_signed_request_service = providers.Singleton(MetaSignedRequestService)
     google_ads_state_service = providers.Singleton(GoogleAdsOAuthStateService)
+    tiktok_ads_state_service = providers.Singleton(TikTokAdsOAuthStateService)
     date_range_service = providers.Singleton(DateRangeService)
 
     meta_client = providers.Singleton(MetaGraphAPIClient)
     google_ads_client = providers.Singleton(GoogleAdsAPIClient)
+    tiktok_ads_client = providers.Singleton(TikTokAdsAPIClient)
     creative_preview_client = providers.Singleton(PublicCreativePreviewClient)
     anthropic_client = providers.Singleton(AnthropicClient)
     openai_client = providers.Singleton(OpenAIClient)
@@ -77,6 +89,12 @@ class Container(containers.DeclarativeContainer):
     google_ads_report_service = providers.Singleton(
         GoogleAdsReportService,
         google_ads_client=google_ads_client,
+        encryption_service=encryption_service,
+        cache_ttl_seconds=settings.meta_report_cache_ttl_seconds,
+    )
+    tiktok_ads_report_service = providers.Singleton(
+        TikTokAdsReportService,
+        tiktok_ads_client=tiktok_ads_client,
         encryption_service=encryption_service,
         cache_ttl_seconds=settings.meta_report_cache_ttl_seconds,
     )
@@ -132,6 +150,22 @@ class Container(containers.DeclarativeContainer):
         DisconnectGoogleAdsUseCase,
         report_service=google_ads_report_service,
     )
+    build_tiktok_ads_oauth_url_use_case = providers.Factory(
+        BuildTikTokAdsOAuthUrlUseCase,
+        state_service=tiktok_ads_state_service,
+        tiktok_ads_client=tiktok_ads_client,
+    )
+    handle_tiktok_ads_oauth_callback_use_case = providers.Factory(
+        HandleTikTokAdsOAuthCallbackUseCase,
+        state_service=tiktok_ads_state_service,
+        tiktok_ads_client=tiktok_ads_client,
+        encryption_service=encryption_service,
+    )
+    list_tiktok_ads_advertisers_use_case = providers.Factory(ListTikTokAdsAdvertisersUseCase)
+    disconnect_tiktok_ads_use_case = providers.Factory(
+        DisconnectTikTokAdsUseCase,
+        report_service=tiktok_ads_report_service,
+    )
 
     generate_meta_report_use_case = providers.Factory(
         GenerateMetaReportUseCase,
@@ -142,6 +176,11 @@ class Container(containers.DeclarativeContainer):
         GenerateGoogleAdsReportUseCase,
         date_range_service=date_range_service,
         report_service=google_ads_report_service,
+    )
+    generate_tiktok_ads_report_use_case = providers.Factory(
+        GenerateTikTokAdsReportUseCase,
+        date_range_service=date_range_service,
+        report_service=tiktok_ads_report_service,
     )
     generate_auto_verdict_use_case = providers.Factory(
         GenerateAutoVerdictUseCase,

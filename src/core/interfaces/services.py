@@ -73,6 +73,23 @@ class IGoogleAdsClient(Protocol):
     async def list_customer_accounts(self, *, access_token: str) -> list[dict[str, Any]]: ...
 
 
+class ITikTokAdsClient(Protocol):
+    def build_authorization_url(self, *, state: str) -> str: ...
+
+    async def exchange_code_for_tokens(self, *, code: str) -> dict[str, Any]: ...
+
+    async def refresh_access_token(self, *, refresh_token: str) -> dict[str, Any]: ...
+
+    async def list_authorized_advertiser_ids(self, *, access_token: str) -> list[str]: ...
+
+    async def get_advertiser_info(
+        self,
+        *,
+        advertiser_ids: list[str],
+        access_token: str,
+    ) -> list[dict[str, Any]]: ...
+
+
 class IPublicCreativePreviewClient(Protocol):
     async def resolve_instagram_permalink_preview(self, *, permalink_url: str) -> str | None: ...
 

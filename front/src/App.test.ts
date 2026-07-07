@@ -80,9 +80,50 @@ function buildGoogleReport() {
   }
 }
 
-function createFetchMock(options: { googleCustomers?: unknown[] } = {}) {
+function buildTikTokReport() {
+  return {
+    ...buildReport(),
+    account: {
+      id: '1234567890123456789',
+      account_id: '1234567890123456789',
+      name: 'Primary TikTok Advertiser',
+      currency: 'USD',
+      timezone_name: 'UTC',
+    },
+    summary: {
+      ...buildReport().summary,
+      primary_result_kind: 'conversions',
+    },
+    campaigns: [
+      {
+        ...buildReport().campaigns[0],
+        primary_result_kind: 'conversions',
+        creatives: [
+          {
+            id: 'ad_1',
+            name: 'Spark Ad 1',
+            object_type: 'SPARK_AD',
+            thumbnail_url: null,
+            image_url: null,
+            metrics: {
+              spend: 10,
+              impressions: 1000,
+              clicks: 20,
+              ctr: 2,
+              results: 3,
+              result_kind: 'conversions',
+            },
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function createFetchMock(options: { googleCustomers?: unknown[]; tiktokAdvertisers?: unknown[] } = {}) {
   let adAccountsCalls = 0
   let googleCustomersCalls = 0
+  let tiktokAdvertisersCalls = 0
 
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -124,6 +165,13 @@ function createFetchMock(options: { googleCustomers?: unknown[] } = {}) {
       }
       return jsonResponse([])
     }
+    if (url.endsWith('/tiktok-ads/advertisers')) {
+      tiktokAdvertisersCalls += 1
+      if (options.tiktokAdvertisers && tiktokAdvertisersCalls === 1) {
+        return jsonResponse(options.tiktokAdvertisers)
+      }
+      return jsonResponse([])
+    }
     if (url.endsWith('/ai/provider-keys')) {
       return jsonResponse([])
     }
@@ -133,16 +181,25 @@ function createFetchMock(options: { googleCustomers?: unknown[] } = {}) {
     if (url.includes('/dashboard/google-ads/customers/1234567890/report?')) {
       return jsonResponse(buildGoogleReport())
     }
+    if (url.includes('/dashboard/tiktok-ads/advertisers/1234567890123456789/report?')) {
+      return jsonResponse(buildTikTokReport())
+    }
     if (url.endsWith('/ai/meta/ad-accounts/act_1/auto-verdict') && method === 'POST') {
       return jsonResponse({ text: 'Stable account performance.' })
     }
     if (url.endsWith('/ai/google-ads/customers/1234567890/auto-verdict') && method === 'POST') {
       return jsonResponse({ text: 'Stable Google account performance.' })
     }
+    if (url.endsWith('/ai/tiktok-ads/advertisers/1234567890123456789/auto-verdict') && method === 'POST') {
+      return jsonResponse({ text: 'Stable TikTok advertiser performance.' })
+    }
     if (url.endsWith('/meta/connections') && method === 'DELETE') {
       return new Response(null, { status: 204 })
     }
     if (url.endsWith('/google-ads/connections') && method === 'DELETE') {
+      return new Response(null, { status: 204 })
+    }
+    if (url.endsWith('/tiktok-ads/connections') && method === 'DELETE') {
       return new Response(null, { status: 204 })
     }
 
@@ -252,6 +309,54 @@ describe('App Meta disconnect flow', () => {
       ).toBe(true)
       expect(wrapper.text()).toContain('Google Ads data has been removed from your account.')
       expect(wrapper.text()).not.toContain('Disconnect Google Ads')
+    })
+
+    wrapper.unmount()
+  })
+
+  it('deletes TikTok Ads connections and shows a success notice', async () => {
+    vi.stubGlobal(
+      'fetch',
+      createFetchMock({
+        tiktokAdvertisers: [
+          {
+            id: 'tiktok-advertiser-1',
+            advertiser_id: '1234567890123456789',
+            name: 'Primary TikTok Advertiser',
+            currency: 'USD',
+            timezone_name: 'UTC',
+            status: 'ACTIVE',
+          },
+        ],
+      }),
+    )
+
+    const { default: App } = await import('./App.vue')
+    const wrapper = mount(App)
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Disconnect TikTok Ads')
+    })
+
+    const disconnectButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Disconnect TikTok Ads')
+
+    expect(disconnectButton).toBeDefined()
+
+    await disconnectButton!.trigger('click')
+    await flushPromises()
+
+    const fetchMock = vi.mocked(fetch)
+
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) => String(input).endsWith('/tiktok-ads/connections') && init?.method === 'DELETE',
+        ),
+      ).toBe(true)
+      expect(wrapper.text()).toContain('TikTok Ads data has been removed from your account.')
+      expect(wrapper.text()).not.toContain('Disconnect TikTok Ads')
     })
 
     wrapper.unmount()

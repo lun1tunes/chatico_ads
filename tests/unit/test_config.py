@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.config import AppSettings, AuthSettings, GoogleAdsSettings, LLMSettings, MetaSettings
+from core.config import AppSettings, AuthSettings, GoogleAdsSettings, LLMSettings, MetaSettings, TikTokAdsSettings
 
 
 @pytest.mark.unit
@@ -67,6 +67,24 @@ def test_google_ads_settings_require_absolute_http_redirect_uri():
             oauth_client_id="google-client-id",
             oauth_client_secret="google-client-secret",
             oauth_redirect_uri="google-ads/callback",
+        )
+
+
+@pytest.mark.unit
+def test_tiktok_ads_settings_are_optional_by_default():
+    settings = TikTokAdsSettings()
+
+    assert settings.is_configured is False
+    assert settings.oauth_authorize_url == "https://ads.tiktok.com/marketing_api/auth"
+
+
+@pytest.mark.unit
+def test_tiktok_ads_settings_require_absolute_http_redirect_uri_when_present():
+    with pytest.raises(ValueError, match="absolute http"):
+        TikTokAdsSettings(
+            app_id="tiktok-app-id",
+            app_secret="tiktok-app-secret",
+            oauth_redirect_uri="tiktok-ads/callback",
         )
 
 

@@ -170,3 +170,66 @@ async def test_google_ads_client_falls_back_to_customer_id_when_name_missing():
     await client.aclose()
 
     assert customers[0]["descriptive_name"] == "1234567890"
+
+
+@pytest.mark.unit
+@pytest.mark.service
+async def test_google_ads_client_skips_disabled_accessible_customers():
+    client = GoogleAdsAPIClient(
+        developer_token="dev-token",
+        api_version="v22",
+        client_id="client-id",
+        client_secret="client-secret",
+        redirect_uri="http://localhost/google/callback",
+    )
+
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get("https://googleads.googleapis.com/v22/customers:listAccessibleCustomers").respond(
+            200,
+            json={"resourceNames": ["customers/1234567890", "customers/9999999999"]},
+        )
+        mock.post("https://googleads.googleapis.com/v22/customers/1234567890/googleAds:search").respond(
+            200,
+            json={
+                "results": [
+                    {
+                        "customerClient": {
+                            "clientCustomer": "customers/1234567890",
+                            "id": "1234567890",
+                            "descriptiveName": "Active account",
+                            "currencyCode": "USD",
+                            "timeZone": "Europe/Paris",
+                            "manager": False,
+                            "level": "0",
+                        }
+                    }
+                ]
+            },
+        )
+        mock.post("https://googleads.googleapis.com/v22/customers/9999999999/googleAds:search").respond(
+            403,
+            json={
+                "error": {
+                    "code": 403,
+                    "message": "The customer account can't be accessed because it is not yet enabled or has been deactivated.",
+                    "status": "PERMISSION_DENIED",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.ads.googleads.v22.errors.GoogleAdsFailure",
+                            "errors": [
+                                {
+                                    "errorCode": {"authorizationError": "CUSTOMER_NOT_ENABLED"},
+                                    "message": "The customer account can't be accessed because it is not yet enabled or has been deactivated.",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            },
+        )
+
+        customers = await client.list_customer_accounts(access_token="access-token")
+
+    await client.aclose()
+
+    assert [customer["external_customer_id"] for customer in customers] == ["1234567890"]

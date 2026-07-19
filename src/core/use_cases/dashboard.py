@@ -17,6 +17,38 @@ from ..services.tiktok_ads_report_service import TikTokAdsReportService
 from ..utils.time import utcnow
 
 
+async def _resolve_client_provider_credentials(
+    *,
+    user_id: str,
+    provider: str | None,
+    api_key: str | None,
+    key_repo: UserAIProviderKeyRepository,
+    encryption_service,
+    llm_proxy_service,
+):
+    normalized_provider = llm_proxy_service.normalize_provider(provider or "gemini")
+    resolved_api_key = api_key.strip() if api_key else ""
+    credential = None
+
+    if not resolved_api_key:
+        credential = await key_repo.get_by_user_and_provider(user_id=user_id, provider=normalized_provider)
+        if credential is None:
+            raise LLMProxyError("Add an API key or save one for this provider")
+        try:
+            resolved_api_key = encryption_service.decrypt(credential.api_key_encrypted)
+        except Exception as exc:  # noqa: BLE001
+            raise LLMProxyError("Saved API key is unreadable, please save it again") from exc
+
+    return normalized_provider, resolved_api_key, credential
+
+
+async def _touch_used_provider_credential(*, session: AsyncSession, credential) -> None:
+    if credential is None:
+        return
+    credential.last_used_at = utcnow()
+    await session.commit()
+
+
 class GenerateMetaReportUseCase:
     def __init__(self, *, session: AsyncSession, date_range_service, report_service: MetaReportService) -> None:
         self.session = session
@@ -104,11 +136,46 @@ class GenerateTikTokAdsReportUseCase:
 
 
 class GenerateAutoVerdictUseCase:
-    def __init__(self, *, llm_proxy_service) -> None:
+    def __init__(self, *, session: AsyncSession, llm_proxy_service, encryption_service) -> None:
+        self.session = session
         self.llm_proxy_service = llm_proxy_service
+        self.encryption_service = encryption_service
+        self.key_repo = UserAIProviderKeyRepository(session)
 
-    async def execute(self, *, report_context: str, language: str) -> str:
-        return await self.llm_proxy_service.generate_auto_verdict(report_context=report_context, language=language)
+    async def execute(
+        self,
+        *,
+        user_id: str,
+        use_client_credentials: bool,
+        provider: str | None,
+        api_key: str | None,
+        model: str | None,
+        report_context: str,
+        language: str,
+    ) -> str:
+        if not use_client_credentials:
+            return await self.llm_proxy_service.generate_auto_verdict(
+                report_context=report_context,
+                language=language,
+            )
+
+        normalized_provider, resolved_api_key, credential = await _resolve_client_provider_credentials(
+            user_id=user_id,
+            provider=provider,
+            api_key=api_key,
+            key_repo=self.key_repo,
+            encryption_service=self.encryption_service,
+            llm_proxy_service=self.llm_proxy_service,
+        )
+        response_text = await self.llm_proxy_service.generate_auto_verdict(
+            report_context=report_context,
+            language=language,
+            provider=normalized_provider,
+            api_key=resolved_api_key,
+            model=model,
+        )
+        await _touch_used_provider_credential(session=self.session, credential=credential)
+        return response_text
 
 
 class ListSupportedAIProvidersUseCase:
@@ -207,18 +274,14 @@ class AskDashboardUseCase:
                 messages=messages,
             )
 
-        normalized_provider = self.llm_proxy_service.normalize_provider(provider or "gemini")
-        resolved_api_key = api_key.strip() if api_key else ""
-        credential = None
-
-        if not resolved_api_key:
-            credential = await self.key_repo.get_by_user_and_provider(user_id=user_id, provider=normalized_provider)
-            if credential is None:
-                raise LLMProxyError("Add an API key or save one for this provider")
-            try:
-                resolved_api_key = self.encryption_service.decrypt(credential.api_key_encrypted)
-            except Exception as exc:  # noqa: BLE001
-                raise LLMProxyError("Saved API key is unreadable, please save it again") from exc
+        normalized_provider, resolved_api_key, credential = await _resolve_client_provider_credentials(
+            user_id=user_id,
+            provider=provider,
+            api_key=api_key,
+            key_repo=self.key_repo,
+            encryption_service=self.encryption_service,
+            llm_proxy_service=self.llm_proxy_service,
+        )
 
         response_text = await self.llm_proxy_service.chat(
             provider=normalized_provider,
@@ -227,9 +290,5 @@ class AskDashboardUseCase:
             system_prompt=system_prompt,
             messages=messages,
         )
-
-        if credential is not None:
-            credential.last_used_at = utcnow()
-            await self.session.commit()
-
+        await _touch_used_provider_credential(session=self.session, credential=credential)
         return response_text

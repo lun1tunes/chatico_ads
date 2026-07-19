@@ -185,6 +185,7 @@ class Container(containers.DeclarativeContainer):
     generate_auto_verdict_use_case = providers.Factory(
         GenerateAutoVerdictUseCase,
         llm_proxy_service=llm_proxy_service,
+        encryption_service=encryption_service,
     )
     list_supported_ai_providers_use_case = providers.Factory(
         ListSupportedAIProvidersUseCase,

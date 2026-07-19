@@ -187,6 +187,8 @@ class TikTokAdsReportService:
             advertiser_info_list,
             current_summary,
             previous_summary,
+            current_daily_report,
+            previous_daily_report,
             current_campaign_report,
             previous_campaign_report,
             current_ad_report,
@@ -211,6 +213,24 @@ class TikTokAdsReportService:
                 access_token=access_token,
                 data_level="ADVERTISER",
                 dimensions=[],
+                metrics=self._REPORT_METRICS,
+                start_date=previous["since"],
+                end_date=previous["until"],
+            ),
+            self.tiktok_ads_client.get_integrated_report(
+                advertiser_id=advertiser.advertiser_id,
+                access_token=access_token,
+                data_level="ADVERTISER",
+                dimensions=["stat_time_day"],
+                metrics=self._REPORT_METRICS,
+                start_date=current["since"],
+                end_date=current["until"],
+            ),
+            self.tiktok_ads_client.get_integrated_report(
+                advertiser_id=advertiser.advertiser_id,
+                access_token=access_token,
+                data_level="ADVERTISER",
+                dimensions=["stat_time_day"],
                 metrics=self._REPORT_METRICS,
                 start_date=previous["since"],
                 end_date=previous["until"],
@@ -301,6 +321,10 @@ class TikTokAdsReportService:
                 ),
                 "active_campaigns": active_campaigns,
                 "total_campaigns": len(campaigns),
+            },
+            "trend": {
+                "current": self._build_trend_series(current_daily_report.get("rows") or []),
+                "previous": self._build_trend_series(previous_daily_report.get("rows") or []),
             },
             "campaigns": campaigns,
         }
@@ -511,6 +535,23 @@ class TikTokAdsReportService:
             "results": results,
             "cost_per_result": cost_per_result,
         }
+
+    def _build_trend_series(self, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        trend: list[dict[str, object]] = []
+        for row in rows:
+            point_date = self._dimension_value(row, "stat_time_day", "date")
+            if not point_date:
+                continue
+            metrics = self._extract_metrics(row)
+            trend.append(
+                {
+                    "date": point_date,
+                    "spend": float(metrics["spend"] or 0),
+                    "results": float(metrics["results"] or 0),
+                    "impressions": int(metrics["impressions"] or 0),
+                }
+            )
+        return sorted(trend, key=lambda item: str(item["date"]))
 
     @staticmethod
     def _zero_metrics() -> dict[str, float | int | None]:

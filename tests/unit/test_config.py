@@ -6,19 +6,19 @@ from core.config import AppSettings, AuthSettings, GoogleAdsSettings, LLMSetting
 
 
 @pytest.mark.unit
-def test_llm_settings_falls_back_to_usable_provider_when_preferred_key_is_placeholder():
+def test_llm_settings_keeps_explicit_internal_provider_when_key_is_placeholder():
     settings = LLMSettings(
         internal_ai_provider="gemini",
         internal_gemini_api_key="replace_with_server_gemini_key",
         internal_anthropic_api_key="real-anthropic-key",
     )
 
-    assert settings.resolved_internal_provider == "anthropic"
-    assert settings.resolve_internal_api_key() == "real-anthropic-key"
-    assert settings.resolve_internal_model() == "claude-sonnet-4-6"
-    assert settings.resolved_internal_chat_provider == "anthropic"
-    assert settings.resolve_internal_chat_api_key() == "real-anthropic-key"
-    assert settings.resolve_internal_chat_model() == "claude-sonnet-4-6"
+    assert settings.resolved_internal_provider == "gemini"
+    assert settings.resolve_internal_api_key() == ""
+    assert settings.resolve_internal_model() == "gemini-3.5-flash"
+    assert settings.resolved_internal_chat_provider == "gemini"
+    assert settings.resolve_internal_chat_api_key() == ""
+    assert settings.resolve_internal_chat_model() == "gemini-3.5-flash"
 
 
 @pytest.mark.unit
@@ -36,7 +36,7 @@ def test_llm_settings_returns_empty_internal_key_when_only_placeholders_are_pres
 
 
 @pytest.mark.unit
-def test_llm_settings_prefers_usable_gemini_key_for_internal_chat():
+def test_llm_settings_chat_respects_explicit_internal_provider():
     settings = LLMSettings(
         internal_ai_provider="anthropic",
         internal_gemini_api_key="real-gemini-key",
@@ -44,9 +44,9 @@ def test_llm_settings_prefers_usable_gemini_key_for_internal_chat():
     )
 
     assert settings.resolved_internal_provider == "anthropic"
-    assert settings.resolved_internal_chat_provider == "gemini"
-    assert settings.resolve_internal_chat_api_key() == "real-gemini-key"
-    assert settings.resolve_internal_chat_model() == "gemini-3.5-flash"
+    assert settings.resolved_internal_chat_provider == "anthropic"
+    assert settings.resolve_internal_chat_api_key() == "real-anthropic-key"
+    assert settings.resolve_internal_chat_model() == "claude-sonnet-4-6"
 
 
 @pytest.mark.unit

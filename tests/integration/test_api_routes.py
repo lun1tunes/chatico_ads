@@ -50,6 +50,58 @@ class FakeContainer:
         self.ask_dashboard_use_case = Mock()
 
 
+def _sample_auto_verdict_report() -> dict[str, object]:
+    return {
+        "account": {"name": "Main account", "account_id": "123", "currency": "USD", "timezone_name": "Asia/Almaty"},
+        "periods": {
+            "current": {"since": "2026-06-01", "until": "2026-06-30"},
+            "previous": {"since": "2026-05-01", "until": "2026-05-31"},
+        },
+        "summary": {
+            "primary_result_kind": "leads",
+            "metrics": {
+                "spend": {"current": 120.0, "previous": 100.0, "delta_pct": 20.0},
+                "reach": {"current": 1000, "previous": 900, "delta_pct": 11.1},
+                "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
+                "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
+                "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
+                "cpm": {"current": 10.0, "previous": 9.0, "delta_pct": 11.1},
+                "cpc": {"current": 1.0, "previous": 1.0, "delta_pct": 0.0},
+                "results": {"current": 10, "previous": 8, "delta_pct": 25.0},
+                "cost_per_result": {"current": 12.0, "previous": 12.5, "delta_pct": -4.0},
+            },
+            "active_campaigns": 2,
+            "total_campaigns": 2,
+        },
+        "campaigns": [
+            {
+                "id": "cmp-1",
+                "name": "Lead Gen Core",
+                "status": "ACTIVE",
+                "primary_result_kind": "leads",
+                "metrics": {
+                    "spend": {"current": 60.0, "previous": 45.0, "delta_pct": 33.3},
+                    "results": {"current": 7, "previous": 5, "delta_pct": 40.0},
+                    "cost_per_result": {"current": 8.57, "previous": 9.0, "delta_pct": -4.8},
+                },
+                "creatives": [],
+            },
+            {
+                "id": "cmp-2",
+                "name": "Retargeting Warm",
+                "status": "ACTIVE",
+                "primary_result_kind": "leads",
+                "metrics": {
+                    "spend": {"current": 60.0, "previous": 55.0, "delta_pct": 9.1},
+                    "results": {"current": 3, "previous": 3, "delta_pct": 0.0},
+                    "cost_per_result": {"current": 20.0, "previous": 18.33, "delta_pct": 9.1},
+                },
+                "creatives": [],
+            },
+        ],
+    }
+
+
 @pytest.mark.integration
 @pytest.mark.api
 async def test_health_endpoints(async_client):
@@ -709,3 +761,150 @@ async def test_auto_verdict_route_maps_internal_ai_configuration_error(async_cli
 
     assert response.status_code == 200
     assert response.json()["text"] == "Короткий вывод появится после настройки серверного AI-ключа."
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_returns_metric_fallback_when_internal_ai_times_out(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_auto_verdict_report()),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(side_effect=LLMProxyError("Gemini request failed: timed out")),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "ru"},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    assert "Серверный AI-ответ временно недоступен" in text
+    assert "Lead Gen Core" in text
+    assert "Retargeting Warm" in text
+    assert "Следующий шаг: сместить часть бюджета из Retargeting Warm в Lead Gen Core" in text
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_uses_internal_ai_defaults(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value={
+                "account": {"name": "Main account", "account_id": "123"},
+                "periods": {
+                    "current": {"since": "2026-06-01", "until": "2026-06-30"},
+                    "previous": {"since": "2026-05-01", "until": "2026-05-31"},
+                },
+                "summary": {
+                    "primary_result_kind": "leads",
+                    "metrics": {
+                        "spend": {"current": 120.0, "previous": 100.0, "delta_pct": 20.0},
+                        "reach": {"current": 1000, "previous": 900, "delta_pct": 11.1},
+                        "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
+                        "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
+                        "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
+                        "cpm": {"current": 10.0, "previous": 9.0, "delta_pct": 11.1},
+                        "cpc": {"current": 1.0, "previous": 1.0, "delta_pct": 0.0},
+                        "results": {"current": 10, "previous": 8, "delta_pct": 25.0},
+                        "cost_per_result": {"current": 12.0, "previous": 12.5, "delta_pct": -4.0},
+                    },
+                    "active_campaigns": 1,
+                    "total_campaigns": 1,
+                },
+                "campaigns": [],
+            }
+        ),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value="internal-verdict-ok"),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "en"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "internal-verdict-ok"
+    container.generate_auto_verdict_use_case.assert_called_once_with(session=None)
+    execute_call = container.generate_auto_verdict_use_case.return_value.execute.await_args.kwargs
+    assert execute_call["user_id"] == "user-1"
+    assert execute_call["use_client_credentials"] is False
+    assert execute_call["provider"] is None
+    assert execute_call["api_key"] is None
+    assert execute_call["model"] is None
+    assert execute_call["language"] == "en"
+    assert "Main account" in execute_call["report_context"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_accepts_client_credentials(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value={
+                "account": {"name": "Main account", "account_id": "123"},
+                "periods": {
+                    "current": {"since": "2026-06-01", "until": "2026-06-30"},
+                    "previous": {"since": "2026-05-01", "until": "2026-05-31"},
+                },
+                "summary": {
+                    "primary_result_kind": "leads",
+                    "metrics": {
+                        "spend": {"current": 120.0, "previous": 100.0, "delta_pct": 20.0},
+                        "reach": {"current": 1000, "previous": 900, "delta_pct": 11.1},
+                        "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
+                        "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
+                        "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
+                        "cpm": {"current": 10.0, "previous": 9.0, "delta_pct": 11.1},
+                        "cpc": {"current": 1.0, "previous": 1.0, "delta_pct": 0.0},
+                        "results": {"current": 10, "previous": 8, "delta_pct": 25.0},
+                        "cost_per_result": {"current": 12.0, "previous": 12.5, "delta_pct": -4.0},
+                    },
+                    "active_campaigns": 1,
+                    "total_campaigns": 1,
+                },
+                "campaigns": [],
+            }
+        ),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value="client-verdict-ok"),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={
+            "days": 30,
+            "language": "en",
+            "use_client_credentials": True,
+            "provider": "openai",
+            "api_key": "client-openai-key",
+            "model": "gpt-5-mini",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "client-verdict-ok"
+    execute_call = container.generate_auto_verdict_use_case.return_value.execute.await_args.kwargs
+    assert execute_call["use_client_credentials"] is True
+    assert execute_call["provider"] == "openai"
+    assert execute_call["api_key"] == "client-openai-key"
+    assert execute_call["model"] == "gpt-5-mini"

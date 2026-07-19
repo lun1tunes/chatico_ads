@@ -8,7 +8,10 @@ from core.dependencies import get_current_user, get_db_session, get_di_container
 from core.infrastructure.google_ads_api import GoogleAdsAPIError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.infrastructure.tiktok_ads_api import TikTokAdsAPIError
-from core.services.google_ads_report_service import GoogleAdsCustomerNotFoundError
+from core.services.google_ads_report_service import (
+    GoogleAdsCustomerNotFoundError,
+    GoogleAdsManagerAccountReportError,
+)
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from core.services.tiktok_ads_report_service import TikTokAdsAdvertiserNotFoundError
 
@@ -55,6 +58,8 @@ async def get_google_ads_report(
         )
     except GoogleAdsCustomerNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except GoogleAdsManagerAccountReportError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except GoogleAdsAPIError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

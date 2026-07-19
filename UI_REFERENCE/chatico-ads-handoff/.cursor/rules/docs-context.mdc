@@ -1,0 +1,18 @@
+---
+description: Учитывать документацию проекта в docs/ и ARCHITECTURE.md
+alwaysApply: true
+---
+
+# Контекст проекта Chatico ADS
+
+При работе с этим проектом всегда учитывай файлы в папке `docs/`.
+
+Если не уверен в архитектуре — проверь `docs/ARCHITECTURE.md`.
+
+Ключевые файлы:
+
+- `docs/PROJECT_OVERVIEW.md` — продукт и MVP
+- `docs/ARCHITECTURE.md` — архитектура фронтенда
+- `docs/CURRENT_STATUS.md` — текущий статус
+- `docs/TECH_STACK.md` — технологии
+- `docs/DESIGN_SYSTEM.md` — цвета, шрифты, UI-компоненты

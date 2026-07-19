@@ -22,6 +22,10 @@ class GoogleAdsCustomerNotFoundError(GoogleAdsReportError):
     pass
 
 
+class GoogleAdsManagerAccountReportError(GoogleAdsReportError):
+    pass
+
+
 def _mapping_value(mapping: dict[str, object] | None, *keys: str) -> object:
     if not isinstance(mapping, dict):
         return None
@@ -87,6 +91,10 @@ class GoogleAdsReportService:
         customer = await customer_repo.get_for_user(user_id=user_id, external_customer_id=external_customer_id)
         if customer is None:
             raise GoogleAdsCustomerNotFoundError("Google Ads customer not found")
+        if customer.is_manager:
+            raise GoogleAdsManagerAccountReportError(
+                "Metrics are not available for Google Ads manager (MCC) accounts. Select a client account instead."
+            )
 
         cache_key = self._cache_key(
             user_id=user_id,
@@ -173,6 +181,8 @@ class GoogleAdsReportService:
             campaign_rows,
             current_summary_row,
             previous_summary_row,
+            current_daily_rows,
+            previous_daily_rows,
             current_campaign_rows,
             previous_campaign_rows,
             current_ad_rows,
@@ -195,6 +205,20 @@ class GoogleAdsReportService:
                 login_customer_id=customer.login_customer_id,
             ),
             self.google_ads_client.get_customer_metrics(
+                customer_id=customer.external_customer_id,
+                access_token=access_token,
+                since=previous["since"],
+                until=previous["until"],
+                login_customer_id=customer.login_customer_id,
+            ),
+            self.google_ads_client.get_customer_daily_metrics(
+                customer_id=customer.external_customer_id,
+                access_token=access_token,
+                since=current["since"],
+                until=current["until"],
+                login_customer_id=customer.login_customer_id,
+            ),
+            self.google_ads_client.get_customer_daily_metrics(
                 customer_id=customer.external_customer_id,
                 access_token=access_token,
                 since=previous["since"],
@@ -264,6 +288,10 @@ class GoogleAdsReportService:
                 ),
                 "active_campaigns": active_campaigns,
                 "total_campaigns": len(campaigns),
+            },
+            "trend": {
+                "current": self._build_trend_series(current_daily_rows),
+                "previous": self._build_trend_series(previous_daily_rows),
             },
             "campaigns": campaigns,
         }
@@ -415,6 +443,23 @@ class GoogleAdsReportService:
             "results": results,
             "cost_per_result": cpr_rate,
         }
+
+    def _build_trend_series(self, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        trend: list[dict[str, object]] = []
+        for row in rows:
+            point_date = _optional_string(_mapping_value(_nested_mapping(row, "segments"), "date"))
+            if not point_date:
+                continue
+            metrics = self._extract_metrics(row)
+            trend.append(
+                {
+                    "date": point_date,
+                    "spend": float(metrics["spend"] or 0),
+                    "results": float(metrics["results"] or 0),
+                    "impressions": int(metrics["impressions"] or 0),
+                }
+            )
+        return sorted(trend, key=lambda item: str(item["date"]))
 
     @staticmethod
     def _zero_metrics() -> dict[str, float | int | None]:

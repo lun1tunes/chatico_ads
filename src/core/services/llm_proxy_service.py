@@ -98,26 +98,53 @@ class LLMProxyService:
 
         return normalized
 
-    async def generate_auto_verdict(self, *, report_context: str, language: str) -> str:
-        provider = settings.llm.resolved_internal_provider
-        api_key = settings.llm.resolve_internal_api_key()
-        if not api_key or api_key.startswith("replace_with_real_"):
-            raise LLMProxyError("Internal AI summary is not configured")
-
+    async def generate_auto_verdict(
+        self,
+        *,
+        report_context: str,
+        language: str,
+        provider: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> str:
+        normalized_language = (language or "ru").strip().lower() or "ru"
         prompt = (
-            f"You are a paid social analyst. Reply in language code '{language}'. "
+            f"You are a paid social analyst. Reply in language code '{normalized_language}'. "
             "Use only the provided dashboard context. Return concise Markdown with exactly two blocks separated by one blank line. "
             "Block 1: one short paragraph of 3-4 sentences, no heading, covering what works, what underperforms, and exactly one highest-leverage next action. "
             "Block 2: 2-4 short bullet points with the most important supporting details. "
             "Keep the whole answer under 120 words. No intro, no recap, no tables, no filler."
         )
-        return await self._client_for_provider(provider).generate(
-            api_key=api_key,
-            model=settings.llm.resolve_internal_model(),
-            system_prompt=prompt + "\n\nDashboard context:\n" + report_context,
-            messages=[{"role": "user", "content": "Give the automatic verdict for this advertising account."}],
-            max_tokens=min(settings.llm.max_tokens, 420),
-        )
+        system_prompt = prompt + "\n\nDashboard context:\n" + report_context
+        messages = [{"role": "user", "content": "Give the automatic verdict for this advertising account."}]
+
+        if provider is not None or api_key is not None:
+            return await self.chat(
+                provider=provider or "gemini",
+                api_key=api_key or "",
+                model=model,
+                system_prompt=system_prompt,
+                messages=messages,
+            )
+
+        available_providers = settings.llm.internal_auto_verdict_providers
+        if not available_providers:
+            raise LLMProxyError("Internal AI summary is not configured")
+
+        last_exc: LLMProxyError | None = None
+        for internal_provider in available_providers:
+            try:
+                return await self._client_for_provider(internal_provider).generate(
+                    api_key=settings.llm.resolve_internal_api_key_for_provider(internal_provider),
+                    model=settings.llm.resolve_internal_model_for_provider(internal_provider),
+                    system_prompt=system_prompt,
+                    messages=messages,
+                    max_tokens=min(settings.llm.max_tokens, 420),
+                )
+            except LLMProxyError as exc:
+                last_exc = exc
+
+        raise last_exc or LLMProxyError("Internal AI summary is not configured")
 
     async def chat_with_internal_credentials(
         self,

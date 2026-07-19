@@ -229,6 +229,8 @@ class MetaReportService:
             campaigns,
             current_account_insights,
             previous_account_insights,
+            current_account_daily_insights,
+            previous_account_daily_insights,
             current_campaign_insights,
             previous_campaign_insights,
             ads,
@@ -243,6 +245,18 @@ class MetaReportService:
                 until=current["until"],
             ),
             self.meta_client.get_account_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=previous["since"],
+                until=previous["until"],
+            ),
+            self.meta_client.get_account_daily_insights(
+                account_id=account.external_id,
+                access_token=access_token,
+                since=current["since"],
+                until=current["until"],
+            ),
+            self.meta_client.get_account_daily_insights(
                 account_id=account.external_id,
                 access_token=access_token,
                 since=previous["since"],
@@ -400,5 +414,26 @@ class MetaReportService:
             },
             "periods": periods,
             "summary": summary,
+            "trend": {
+                "current": self._build_trend_series(current_account_daily_insights),
+                "previous": self._build_trend_series(previous_account_daily_insights),
+            },
             "campaigns": campaign_payload,
         }
+
+    def _build_trend_series(self, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        trend: list[dict[str, object]] = []
+        for row in rows:
+            point_date = str(row.get("date_start") or row.get("date_stop") or "").strip()
+            if not point_date:
+                continue
+            _result_kind, results = extract_primary_result(row.get("actions"))
+            trend.append(
+                {
+                    "date": point_date,
+                    "spend": to_float(row.get("spend")),
+                    "results": results,
+                    "impressions": int(to_float(row.get("impressions"))),
+                }
+            )
+        return sorted(trend, key=lambda item: str(item["date"]))

@@ -166,26 +166,37 @@ class LLMSettings(BaseModel):
         return providers
 
     @property
+    def internal_auto_verdict_providers(self) -> list[str]:
+        provider = self.resolved_internal_provider
+        if self._usable_internal_api_key_for_provider(provider):
+            return [provider]
+        return []
+
+    @property
     def resolved_internal_provider(self) -> str:
-        if self.internal_ai_provider and self._usable_internal_api_key_for_provider(self.internal_ai_provider):
+        if self.internal_ai_provider:
             return self.internal_ai_provider
         available_providers = self._available_internal_providers()
         if available_providers:
             return available_providers[0]
-        return self.internal_ai_provider or "gemini"
+        return "gemini"
 
     def resolve_internal_api_key(self) -> str:
-        return self._usable_internal_api_key_for_provider(self.resolved_internal_provider) or ""
+        return self.resolve_internal_api_key_for_provider(self.resolved_internal_provider)
 
     def resolve_internal_model(self) -> str:
-        if self.resolved_internal_provider == "gemini":
+        return self.resolve_internal_model_for_provider(self.resolved_internal_provider)
+
+    def resolve_internal_api_key_for_provider(self, provider: str) -> str:
+        return self._usable_internal_api_key_for_provider(provider) or ""
+
+    def resolve_internal_model_for_provider(self, provider: str) -> str:
+        if provider == "gemini":
             return self.gemini_default_model
         return self.anthropic_model
 
     @property
     def resolved_internal_chat_provider(self) -> str:
-        if self._usable_internal_api_key_for_provider("gemini"):
-            return "gemini"
         return self.resolved_internal_provider
 
     def resolve_internal_chat_api_key(self) -> str:

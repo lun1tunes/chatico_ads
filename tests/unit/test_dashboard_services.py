@@ -67,6 +67,43 @@ class FakeMetaReportClient:
             "actions": [{"action_type": "lead", "value": "12"}],
         }
 
+    async def get_account_daily_insights(
+        self, *, account_id: str, access_token: str, since: str, until: str
+    ) -> list[dict[str, object]]:
+        if since == "2026-05-17":
+            return [
+                {
+                    "date_start": "2026-05-17",
+                    "date_stop": "2026-05-17",
+                    "spend": "45.0",
+                    "impressions": "4200",
+                    "actions": [{"action_type": "lead", "value": "4"}],
+                },
+                {
+                    "date_start": "2026-05-18",
+                    "date_stop": "2026-05-18",
+                    "spend": "105.0",
+                    "impressions": "7800",
+                    "actions": [{"action_type": "lead", "value": "11"}],
+                },
+            ]
+        return [
+            {
+                "date_start": "2026-04-17",
+                "date_stop": "2026-04-17",
+                "spend": "35.0",
+                "impressions": "3500",
+                "actions": [{"action_type": "lead", "value": "3"}],
+            },
+            {
+                "date_start": "2026-04-18",
+                "date_stop": "2026-04-18",
+                "spend": "85.0",
+                "impressions": "6500",
+                "actions": [{"action_type": "lead", "value": "9"}],
+            },
+        ]
+
     async def get_campaign_insights(self, *, account_id: str, access_token: str, since: str, until: str):
         self.campaign_insight_calls += 1
         if since == "2026-05-17":
@@ -275,6 +312,13 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     assert report["summary"]["active_campaigns"] == 1
     assert report["summary"]["metrics"]["spend"]["current"] == 150.0
     assert report["summary"]["metrics"]["results"]["current"] == 15
+    assert report["trend"]["current"][0] == {
+        "date": "2026-05-17",
+        "spend": 45.0,
+        "results": 4,
+        "impressions": 4200,
+    }
+    assert report["trend"]["previous"][-1]["date"] == "2026-04-18"
     assert report["campaigns"][0]["name"] == "Lead Gen"
     assert report["campaigns"][0]["creatives"][0]["name"] == "Creative A"
     assert report["campaigns"][0]["creatives"][1]["image_url"] == "https://cdn.test/creative-b-hq.jpg"

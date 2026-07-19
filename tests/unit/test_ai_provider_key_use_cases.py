@@ -11,6 +11,7 @@ from core.security.encryption_service import EncryptionService
 from core.use_cases.dashboard import (
     AskDashboardUseCase,
     DeleteAIProviderKeyUseCase,
+    GenerateAutoVerdictUseCase,
     ListSavedAIProviderKeysUseCase,
     SaveAIProviderKeyUseCase,
 )
@@ -20,6 +21,7 @@ class FakeLLMProxyService:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
         self.internal_calls: list[dict[str, object]] = []
+        self.auto_verdict_calls: list[dict[str, object]] = []
 
     def normalize_provider(self, provider: str) -> str:
         normalized = provider.strip().lower()
@@ -34,6 +36,10 @@ class FakeLLMProxyService:
     async def chat_with_internal_credentials(self, **kwargs):
         self.internal_calls.append(kwargs)
         return "internal-chat-ok"
+
+    async def generate_auto_verdict(self, **kwargs):
+        self.auto_verdict_calls.append(kwargs)
+        return "verdict-ok"
 
 
 @pytest.mark.unit
@@ -107,6 +113,37 @@ async def test_ask_dashboard_use_case_uses_internal_chat_when_client_credentials
 
 @pytest.mark.unit
 @pytest.mark.use_case
+async def test_generate_auto_verdict_use_case_uses_internal_credentials_when_client_credentials_disabled(db_session):
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="ru"))
+    await db_session.commit()
+
+    llm_proxy_service = FakeLLMProxyService()
+
+    text = await GenerateAutoVerdictUseCase(
+        session=db_session,
+        llm_proxy_service=llm_proxy_service,
+        encryption_service=EncryptionService(),
+    ).execute(
+        user_id="user-1",
+        use_client_credentials=False,
+        provider=None,
+        api_key=None,
+        model=None,
+        report_context="dashboard context",
+        language="ru",
+    )
+
+    assert text == "verdict-ok"
+    assert llm_proxy_service.auto_verdict_calls == [
+        {
+            "report_context": "dashboard context",
+            "language": "ru",
+        }
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
 async def test_ask_dashboard_use_case_uses_saved_provider_key_when_request_key_missing(db_session):
     db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="ru"))
     await db_session.commit()
@@ -139,6 +176,45 @@ async def test_ask_dashboard_use_case_uses_saved_provider_key_when_request_key_m
 
     assert text == "chat-ok"
     assert llm_proxy_service.calls[0]["api_key"] == "saved-gemini-key-123"
+    assert credential is not None
+    assert credential.last_used_at is not None
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_generate_auto_verdict_use_case_uses_saved_provider_key_when_request_key_missing(db_session):
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="ru"))
+    await db_session.commit()
+
+    llm_proxy_service = FakeLLMProxyService()
+    encryption_service = EncryptionService()
+    await SaveAIProviderKeyUseCase(
+        session=db_session,
+        encryption_service=encryption_service,
+        llm_proxy_service=llm_proxy_service,
+    ).execute(user_id="user-1", provider="gemini", api_key="saved-gemini-key-123")
+
+    text = await GenerateAutoVerdictUseCase(
+        session=db_session,
+        llm_proxy_service=llm_proxy_service,
+        encryption_service=encryption_service,
+    ).execute(
+        user_id="user-1",
+        use_client_credentials=True,
+        provider="gemini",
+        api_key=None,
+        model=None,
+        report_context="dashboard context",
+        language="ru",
+    )
+
+    credential = await UserAIProviderKeyRepository(db_session).get_by_user_and_provider(
+        user_id="user-1", provider="gemini"
+    )
+
+    assert text == "verdict-ok"
+    assert llm_proxy_service.auto_verdict_calls[0]["api_key"] == "saved-gemini-key-123"
+    assert llm_proxy_service.auto_verdict_calls[0]["provider"] == "gemini"
     assert credential is not None
     assert credential.last_used_at is not None
 

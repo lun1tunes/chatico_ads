@@ -162,6 +162,21 @@ class MetaGraphAPIClient:
         rows = data.get("data", [])
         return rows[0] if rows else None
 
+    async def get_account_daily_insights(
+        self, *, account_id: str, access_token: str, since: str, until: str
+    ) -> list[dict[str, object]]:
+        return await self._get_paginated(
+            f"{account_id}/insights",
+            params={
+                "fields": "date_start,date_stop,spend,impressions,clicks,reach,cpm,ctr,actions",
+                "level": "account",
+                "limit": 100,
+                "time_increment": 1,
+                "time_range": f'{{"since":"{since}","until":"{until}"}}',
+                "access_token": access_token,
+            },
+        )
+
     async def get_campaign_insights(
         self,
         *,

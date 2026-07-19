@@ -6,19 +6,23 @@ import httpx
 import pytest
 import respx
 
+from core.config import settings
 from core.infrastructure.llm_clients import AnthropicClient, GeminiClient, LLMProxyError, OpenAIClient
 from core.services.llm_proxy_service import LLMProxyService
-from core.use_cases.dashboard import GenerateAutoVerdictUseCase
 
 
 class FakeLLMClient:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, *, response: str | None = None, error: Exception | None = None) -> None:
         self.name = name
+        self.response = response or f"{name}-response"
+        self.error = error
         self.calls: list[dict[str, object]] = []
 
     async def generate(self, **kwargs):
         self.calls.append(kwargs)
-        return f"{self.name}-response"
+        if self.error is not None:
+            raise self.error
+        return self.response
 
 
 @pytest.mark.unit
@@ -33,9 +37,16 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
         gemini_client=gemini,
     )
 
-    auto_text = await GenerateAutoVerdictUseCase(llm_proxy_service=service).execute(
+    auto_text = await service.generate_auto_verdict(
         report_context="summary",
         language="kz",
+    )
+    client_auto_text = await service.generate_auto_verdict(
+        report_context="summary",
+        language="en",
+        provider="openai",
+        api_key="client-key",
+        model="gpt-custom-mini",
     )
     internal_chat_text = await service.chat_with_internal_credentials(
         system_prompt="prompt",
@@ -50,6 +61,7 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
     )
 
     assert auto_text == "gemini-response"
+    assert client_auto_text == "openai-response"
     assert internal_chat_text == "gemini-response"
     assert chat_text == "openai-response"
     assert gemini.calls[0]["api_key"] == "test-gemini-key"
@@ -59,7 +71,10 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
     assert gemini.calls[0]["max_tokens"] == 420
     assert gemini.calls[1]["api_key"] == "test-gemini-key"
     assert gemini.calls[1]["model"] == "gemini-3.5-flash"
-    assert openai.calls[0]["model"] == "gpt-5-mini"
+    assert openai.calls[0]["api_key"] == "client-key"
+    assert openai.calls[0]["model"] == "gpt-custom-mini"
+    assert "Dashboard context:\nsummary" in openai.calls[0]["system_prompt"]
+    assert openai.calls[1]["model"] == "gpt-5-mini"
     assert service.list_supported_providers() == [
         {
             "key": "gemini",
@@ -115,6 +130,32 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
             system_prompt="prompt",
             messages=[],
         )
+
+
+@pytest.mark.unit
+@pytest.mark.service
+async def test_llm_proxy_service_does_not_fall_back_from_configured_internal_provider(monkeypatch):
+    anthropic = FakeLLMClient("anthropic", response="anthropic-fallback")
+    openai = FakeLLMClient("openai")
+    gemini = FakeLLMClient("gemini", error=LLMProxyError("Gemini upstream failed"))
+    service = LLMProxyService(
+        anthropic_client=anthropic,
+        openai_client=openai,
+        gemini_client=gemini,
+    )
+
+    monkeypatch.setattr(settings.llm, "internal_gemini_api_key", "gemini-internal-key")
+    monkeypatch.setattr(settings.llm, "internal_anthropic_api_key", "anthropic-internal-key")
+    monkeypatch.setattr(settings.llm, "internal_ai_provider", "gemini")
+    monkeypatch.setattr(settings.llm, "gemini_default_model", "gemini-test-model")
+    monkeypatch.setattr(settings.llm, "anthropic_model", "claude-test-model")
+
+    with pytest.raises(LLMProxyError, match="Gemini upstream failed"):
+        await service.generate_auto_verdict(report_context="summary", language="en")
+
+    assert gemini.calls[0]["api_key"] == "gemini-internal-key"
+    assert gemini.calls[0]["model"] == "gemini-test-model"
+    assert anthropic.calls == []
 
 
 @pytest.mark.unit

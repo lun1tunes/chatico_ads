@@ -10,7 +10,10 @@ from core.models.google_ads_customer import GoogleAdsCustomer
 from core.models.user import User
 from core.security.encryption_service import EncryptionService
 from core.services.date_range_service import DateRangeService
-from core.services.google_ads_report_service import GoogleAdsReportService
+from core.services.google_ads_report_service import (
+    GoogleAdsManagerAccountReportError,
+    GoogleAdsReportService,
+)
 from core.use_cases.dashboard import GenerateGoogleAdsReportUseCase
 from core.utils.ai_context import build_report_context
 
@@ -97,6 +100,57 @@ class FakeGoogleAdsReportClient:
                 "conversions": "12",
             }
         }
+
+    async def get_customer_daily_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        if since == "2026-05-17":
+            return [
+                {
+                    "segments": {"date": "2026-05-17"},
+                    "metrics": {
+                        "costMicros": "50000000",
+                        "impressions": "4000",
+                        "clicks": "80",
+                        "conversions": "5",
+                    },
+                },
+                {
+                    "segments": {"date": "2026-05-18"},
+                    "metrics": {
+                        "costMicros": "130000000",
+                        "impressions": "12000",
+                        "clicks": "240",
+                        "conversions": "13",
+                    },
+                },
+            ]
+        return [
+            {
+                "segments": {"date": "2026-04-17"},
+                "metrics": {
+                    "costMicros": "40000000",
+                    "impressions": "3500",
+                    "clicks": "70",
+                    "conversions": "4",
+                },
+            },
+            {
+                "segments": {"date": "2026-04-18"},
+                "metrics": {
+                    "costMicros": "80000000",
+                    "impressions": "8500",
+                    "clicks": "170",
+                    "conversions": "8",
+                },
+            },
+        ]
 
     async def get_campaign_metrics(
         self,
@@ -244,6 +298,13 @@ async def test_generate_google_ads_report_use_case_builds_dashboard_payload(db_s
     assert report["summary"]["metrics"]["spend"]["current"] == 180.0
     assert report["summary"]["metrics"]["reach"]["current"] is None
     assert report["summary"]["metrics"]["results"]["current"] == 18.0
+    assert report["trend"]["current"][0] == {
+        "date": "2026-05-17",
+        "spend": 50.0,
+        "results": 5.0,
+        "impressions": 4000,
+    }
+    assert report["trend"]["previous"][-1]["date"] == "2026-04-18"
     assert report["campaigns"][0]["name"] == "Search US"
     assert report["campaigns"][0]["metrics"]["cpc"]["current"] == 150.0 / 260.0
     assert report["campaigns"][0]["creatives"][0]["name"] == "Responsive Search Ad #ad_1"
@@ -270,3 +331,49 @@ async def test_generate_google_ads_report_use_case_builds_dashboard_payload(db_s
     assert fake_client.summary_calls == 2
     assert fake_client.campaign_metric_calls == 2
     assert fake_client.ad_metric_calls == 1
+
+
+@pytest.mark.unit
+@pytest.mark.service
+async def test_generate_google_ads_report_rejects_manager_account(db_session):
+    encryption_service = EncryptionService()
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="en"))
+    db_session.add(
+        GoogleAdsConnection(
+            id="google-conn-1",
+            user_id="user-1",
+            refresh_token_encrypted=encryption_service.encrypt("google-refresh-token"),
+            access_token_encrypted=encryption_service.encrypt("stale-access-token"),
+            scopes="https://www.googleapis.com/auth/adwords",
+        )
+    )
+    db_session.add(
+        GoogleAdsCustomer(
+            id="google-manager-1",
+            connection_id="google-conn-1",
+            external_customer_id="9988776655",
+            resource_name="customers/9988776655",
+            descriptive_name="Manager account",
+            currency_code="USD",
+            time_zone="America/New_York",
+            is_manager=True,
+            is_directly_accessible=True,
+            hierarchy_level=0,
+            root_customer_id="9988776655",
+            manager_customer_id=None,
+            login_customer_id=None,
+        )
+    )
+    await db_session.commit()
+
+    use_case = GenerateGoogleAdsReportUseCase(
+        session=db_session,
+        date_range_service=FixedDateRangeService(),
+        report_service=GoogleAdsReportService(
+            google_ads_client=FakeGoogleAdsReportClient(),
+            encryption_service=encryption_service,
+        ),
+    )
+
+    with pytest.raises(GoogleAdsManagerAccountReportError):
+        await use_case.execute(user_id="user-1", customer_id="9988776655", days=30)

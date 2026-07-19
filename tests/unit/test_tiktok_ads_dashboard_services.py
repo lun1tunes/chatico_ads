@@ -71,6 +71,54 @@ class FakeTikTokAdsReportClient:
         assert "conversion" in metrics
 
         if data_level == "ADVERTISER":
+            if dimensions == ["stat_time_day"]:
+                if start_date == "2026-05-17":
+                    return {
+                        "rows": [
+                            {
+                                "dimensions": {"stat_time_day": "2026-05-17"},
+                                "metrics": {
+                                    "spend": "60.0",
+                                    "impressions": "3000",
+                                    "clicks": "100",
+                                    "conversion": "6",
+                                },
+                            },
+                            {
+                                "dimensions": {"stat_time_day": "2026-05-18"},
+                                "metrics": {
+                                    "spend": "120.0",
+                                    "impressions": "7000",
+                                    "clicks": "220",
+                                    "conversion": "12",
+                                },
+                            },
+                        ],
+                        "total_metrics": {},
+                    }
+                return {
+                    "rows": [
+                        {
+                            "dimensions": {"stat_time_day": "2026-04-17"},
+                            "metrics": {
+                                "spend": "50.0",
+                                "impressions": "2500",
+                                "clicks": "90",
+                                "conversion": "5",
+                            },
+                        },
+                        {
+                            "dimensions": {"stat_time_day": "2026-04-18"},
+                            "metrics": {
+                                "spend": "70.0",
+                                "impressions": "4500",
+                                "clicks": "150",
+                                "conversion": "7",
+                            },
+                        },
+                    ],
+                    "total_metrics": {},
+                }
             if start_date == "2026-05-17":
                 return {
                     "rows": [],
@@ -238,6 +286,13 @@ async def test_generate_tiktok_ads_report_use_case_builds_dashboard_payload(db_s
     assert report["summary"]["metrics"]["spend"]["current"] == 180.0
     assert report["summary"]["metrics"]["reach"]["current"] == 9000
     assert report["summary"]["metrics"]["results"]["current"] == 18.0
+    assert report["trend"]["current"][0] == {
+        "date": "2026-05-17",
+        "spend": 60.0,
+        "results": 6.0,
+        "impressions": 3000,
+    }
+    assert report["trend"]["previous"][-1]["date"] == "2026-04-18"
     assert report["campaigns"][0]["name"] == "Always On"
     assert report["campaigns"][0]["metrics"]["cpc"]["current"] == 150.0 / 260.0
     assert report["campaigns"][0]["creatives"][0]["name"] == "Spark Ad 1"

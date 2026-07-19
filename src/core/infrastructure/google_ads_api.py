@@ -415,6 +415,32 @@ class GoogleAdsAPIClient:
         )
         return rows[0] if rows else None
 
+    async def get_customer_daily_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        return await self.search(
+            customer_id=customer_id,
+            access_token=access_token,
+            query=(
+                "SELECT "
+                "segments.date, "
+                "metrics.cost_micros, "
+                "metrics.impressions, "
+                "metrics.clicks, "
+                "metrics.conversions "
+                "FROM customer "
+                f"WHERE segments.date BETWEEN '{since}' AND '{until}' "
+                "ORDER BY segments.date"
+            ),
+            login_customer_id=login_customer_id,
+        )
+
     async def get_campaign_metrics(
         self,
         *,

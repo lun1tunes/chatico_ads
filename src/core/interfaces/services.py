@@ -45,6 +45,10 @@ class IMetaGraphClient(Protocol):
         self, *, account_id: str, access_token: str, since: str, until: str
     ) -> dict[str, Any] | None: ...
 
+    async def get_account_daily_insights(
+        self, *, account_id: str, access_token: str, since: str, until: str
+    ) -> list[dict[str, Any]]: ...
+
     async def get_campaign_insights(
         self,
         *,
@@ -72,6 +76,62 @@ class IGoogleAdsClient(Protocol):
 
     async def list_customer_accounts(self, *, access_token: str) -> list[dict[str, Any]]: ...
 
+    async def get_customer(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        login_customer_id: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    async def list_campaigns(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def get_customer_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> dict[str, Any] | None: ...
+
+    async def get_customer_daily_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def get_campaign_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
+    async def get_ad_metrics(
+        self,
+        *,
+        customer_id: str,
+        access_token: str,
+        since: str,
+        until: str,
+        login_customer_id: str | None = None,
+    ) -> list[dict[str, Any]]: ...
+
 
 class ITikTokAdsClient(Protocol):
     def build_authorization_url(self, *, state: str) -> str: ...
@@ -88,6 +148,22 @@ class ITikTokAdsClient(Protocol):
         advertiser_ids: list[str],
         access_token: str,
     ) -> list[dict[str, Any]]: ...
+
+    async def list_campaigns(self, *, advertiser_id: str, access_token: str) -> list[dict[str, Any]]: ...
+
+    async def list_ads(self, *, advertiser_id: str, access_token: str) -> list[dict[str, Any]]: ...
+
+    async def get_integrated_report(
+        self,
+        *,
+        advertiser_id: str,
+        access_token: str,
+        data_level: str,
+        dimensions: list[str],
+        metrics: list[str],
+        start_date: str,
+        end_date: str,
+    ) -> dict[str, Any]: ...
 
 
 class IPublicCreativePreviewClient(Protocol):

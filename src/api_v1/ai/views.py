@@ -12,6 +12,7 @@ from core.infrastructure.tiktok_ads_api import TikTokAdsAPIError
 from core.services.google_ads_report_service import GoogleAdsCustomerNotFoundError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from core.services.tiktok_ads_report_service import TikTokAdsAdvertiserNotFoundError
+from core.utils.auto_verdict_fallback import build_auto_verdict_fallback_text
 from core.utils.ai_context import build_report_context
 from .schemas import (
     AutoVerdictRequest,
@@ -45,6 +46,46 @@ def _auto_verdict_unavailable_text(language: str) -> str:
     return "Короткий вывод появится после настройки серверного AI-ключа."
 
 
+def _should_use_auto_verdict_fallback(exc: LLMProxyError) -> bool:
+    if exc.status_code in {408, 429, 500, 502, 503, 504}:
+        return True
+
+    detail = str(exc).lower()
+    retryable_markers = (
+        "request failed",
+        "timeout",
+        "timed out",
+        "temporarily unavailable",
+        "high demand",
+        "service unavailable",
+        "did not contain text output",
+    )
+    return any(marker in detail for marker in retryable_markers)
+
+
+def _auto_verdict_error_response(
+    *,
+    exc: Exception,
+    payload: AutoVerdictRequest,
+    report: dict[str, object] | None,
+) -> TextResponse | None:
+    if payload.use_client_credentials or not isinstance(exc, LLMProxyError):
+        return None
+
+    detail = str(exc)
+    if detail == "Internal AI summary is not configured":
+        return TextResponse(text=_auto_verdict_unavailable_text(payload.language))
+    if report is not None and _should_use_auto_verdict_fallback(exc):
+        return TextResponse(
+            text=build_auto_verdict_fallback_text(
+                report,
+                language=payload.language,
+                reason="temporary_error",
+            )
+        )
+    return None
+
+
 def _raise_ai_http_error(exc: Exception) -> None:
     if isinstance(exc, (MetaAdAccountNotFoundError, GoogleAdsCustomerNotFoundError, TikTokAdsAdvertiserNotFoundError)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -66,6 +107,25 @@ def _raise_ai_http_error(exc: Exception) -> None:
             status_code = status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=status_code, detail=detail) from exc
     raise exc
+
+
+async def _generate_auto_verdict_text(
+    *,
+    user_id: str,
+    session: AsyncSession,
+    container: Container,
+    report_context: str,
+    payload: AutoVerdictRequest,
+) -> str:
+    return await container.generate_auto_verdict_use_case(session=session).execute(
+        user_id=user_id,
+        use_client_credentials=payload.use_client_credentials,
+        provider=payload.provider,
+        api_key=payload.api_key,
+        model=payload.model,
+        report_context=report_context,
+        language=payload.language,
+    )
 
 
 @router.get("/providers", response_model=list[ProviderCatalogResponse])
@@ -129,6 +189,7 @@ async def auto_verdict(
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
 ):
+    report: dict[str, object] | None = None
     try:
         report = await container.generate_meta_report_use_case(session=session).execute(
             user_id=user.id,
@@ -136,13 +197,18 @@ async def auto_verdict(
             days=payload.days,
         )
         context = build_report_context(report)
-        text = await container.generate_auto_verdict_use_case().execute(
-            report_context=context, language=payload.language
+        text = await _generate_auto_verdict_text(
+            user_id=user.id,
+            session=session,
+            container=container,
+            report_context=context,
+            payload=payload,
         )
         return TextResponse(text=text)
     except Exception as exc:  # noqa: BLE001
-        if isinstance(exc, LLMProxyError) and str(exc) == "Internal AI summary is not configured":
-            return TextResponse(text=_auto_verdict_unavailable_text(payload.language))
+        fallback_response = _auto_verdict_error_response(exc=exc, payload=payload, report=report)
+        if fallback_response is not None:
+            return fallback_response
         _raise_ai_http_error(exc)
 
 
@@ -154,6 +220,7 @@ async def google_auto_verdict(
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
 ):
+    report: dict[str, object] | None = None
     try:
         report = await container.generate_google_ads_report_use_case(session=session).execute(
             user_id=user.id,
@@ -161,13 +228,18 @@ async def google_auto_verdict(
             days=payload.days,
         )
         context = build_report_context(report)
-        text = await container.generate_auto_verdict_use_case().execute(
-            report_context=context, language=payload.language
+        text = await _generate_auto_verdict_text(
+            user_id=user.id,
+            session=session,
+            container=container,
+            report_context=context,
+            payload=payload,
         )
         return TextResponse(text=text)
     except Exception as exc:  # noqa: BLE001
-        if isinstance(exc, LLMProxyError) and str(exc) == "Internal AI summary is not configured":
-            return TextResponse(text=_auto_verdict_unavailable_text(payload.language))
+        fallback_response = _auto_verdict_error_response(exc=exc, payload=payload, report=report)
+        if fallback_response is not None:
+            return fallback_response
         _raise_ai_http_error(exc)
 
 
@@ -179,6 +251,7 @@ async def tiktok_auto_verdict(
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
 ):
+    report: dict[str, object] | None = None
     try:
         report = await container.generate_tiktok_ads_report_use_case(session=session).execute(
             user_id=user.id,
@@ -186,13 +259,18 @@ async def tiktok_auto_verdict(
             days=payload.days,
         )
         context = build_report_context(report)
-        text = await container.generate_auto_verdict_use_case().execute(
-            report_context=context, language=payload.language
+        text = await _generate_auto_verdict_text(
+            user_id=user.id,
+            session=session,
+            container=container,
+            report_context=context,
+            payload=payload,
         )
         return TextResponse(text=text)
     except Exception as exc:  # noqa: BLE001
-        if isinstance(exc, LLMProxyError) and str(exc) == "Internal AI summary is not configured":
-            return TextResponse(text=_auto_verdict_unavailable_text(payload.language))
+        fallback_response = _auto_verdict_error_response(exc=exc, payload=payload, report=report)
+        if fallback_response is not None:
+            return fallback_response
         _raise_ai_http_error(exc)
 
 

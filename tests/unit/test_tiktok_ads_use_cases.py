@@ -5,11 +5,14 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from core.models.db_helper import db_helper
+from core.models.tiktok_ads_advertiser import TikTokAdsAdvertiser
+from core.models.tiktok_ads_connection import TikTokAdsConnection
 from core.models.user import User
 from core.repositories.tiktok_ads_connection import TikTokAdsConnectionRepository
 from core.security.encryption_service import EncryptionService
 from core.use_cases.tiktok_ads import (
     BuildTikTokAdsOAuthUrlUseCase,
+    DisconnectTikTokAdsAdvertiserUseCase,
     HandleTikTokAdsOAuthCallbackUseCase,
     ListTikTokAdsAdvertisersUseCase,
 )
@@ -73,6 +76,14 @@ class FakeTikTokAdsClient:
             },
         }
         return [catalog[advertiser_id] for advertiser_id in advertiser_ids]
+
+
+class FakeReportService:
+    def __init__(self) -> None:
+        self.cleared_for: str | None = None
+
+    def clear_user_cache(self, *, user_id: str) -> None:
+        self.cleared_for = user_id
 
 
 @pytest.mark.unit
@@ -147,3 +158,47 @@ async def test_handle_tiktok_ads_oauth_callback_removes_stale_advertisers_on_res
         connection = await TikTokAdsConnectionRepository(verification_session).get_by_user(user_id="user-1")
         assert connection is not None
         assert [advertiser.advertiser_id for advertiser in connection.advertisers] == ["1234567890123456789"]
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_disconnect_tiktok_ads_advertiser_use_case_removes_last_advertiser_and_connection(db_session):
+    report_service = FakeReportService()
+
+    db_session.add_all(
+        [
+            User(id="user-1", email="owner@example.com", password_hash="hash", locale="ru"),
+            TikTokAdsConnection(
+                id="tiktok-conn-1",
+                user_id="user-1",
+                refresh_token_encrypted="refresh-token",
+                access_token_encrypted="access-token",
+                scopes="ads.read reporting",
+            ),
+            TikTokAdsAdvertiser(
+                id="tiktok-adv-1",
+                connection_id="tiktok-conn-1",
+                advertiser_id="1234567890123456789",
+                name="TikTok Main Advertiser",
+                currency="USD",
+                timezone_name="Asia/Almaty",
+                status="ACTIVE",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    removed = await DisconnectTikTokAdsAdvertiserUseCase(session=db_session, report_service=report_service).execute(
+        user_id="user-1",
+        external_advertiser_id="1234567890123456789",
+    )
+
+    async with db_helper.session_factory() as verification_session:
+        connection = await TikTokAdsConnectionRepository(verification_session).get_by_user(user_id="user-1")
+        advertisers = await ListTikTokAdsAdvertisersUseCase(session=verification_session).execute(user_id="user-1")
+
+        assert connection is None
+        assert advertisers == []
+
+    assert removed is True
+    assert report_service.cleared_for == "user-1"

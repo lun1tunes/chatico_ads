@@ -204,6 +204,8 @@ class MetaReportService:
             "object_type": creative.get("object_type") or "ad",
             "thumbnail_url": creative.get("thumbnail_url"),
             "image_url": await self._resolve_creative_preview(creative),
+            "ad_group_id": _optional_string(insight.get("adset_id")) or _optional_string(ad.get("adset_id")),
+            "ad_group_name": _optional_string(insight.get("adset_name")),
             "metrics": {
                 "spend": to_float(insight.get("spend")),
                 "impressions": int(to_float(insight.get("impressions"))),

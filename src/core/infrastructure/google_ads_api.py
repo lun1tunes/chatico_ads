@@ -481,6 +481,8 @@ class GoogleAdsAPIClient:
             query=(
                 "SELECT "
                 "campaign.id, "
+                "ad_group.id, "
+                "ad_group.name, "
                 "ad_group_ad.ad.id, "
                 "ad_group_ad.ad.type, "
                 "metrics.cost_micros, "

@@ -197,8 +197,9 @@ class FakeTikTokAdsReportClient:
         return {
             "rows": [
                 {
-                    "dimensions": {"campaign_id": "cmp_1", "ad_id": "ad_1"},
+                    "dimensions": {"campaign_id": "cmp_1", "adgroup_id": "grp_1", "ad_id": "ad_1"},
                     "metrics": {
+                        "adgroup_name": "Always On Broad",
                         "spend": "60.0",
                         "impressions": "6000",
                         "clicks": "120",
@@ -206,8 +207,9 @@ class FakeTikTokAdsReportClient:
                     },
                 },
                 {
-                    "dimensions": {"campaign_id": "cmp_1", "ad_id": "ad_2"},
+                    "dimensions": {"campaign_id": "cmp_1", "adgroup_id": "grp_1", "ad_id": "ad_2"},
                     "metrics": {
+                        "adgroup_name": "Always On Broad",
                         "spend": "40.0",
                         "impressions": "3000",
                         "clicks": "80",
@@ -215,8 +217,9 @@ class FakeTikTokAdsReportClient:
                     },
                 },
                 {
-                    "dimensions": {"campaign_id": "cmp_2", "ad_id": "ad_3"},
+                    "dimensions": {"campaign_id": "cmp_2", "adgroup_id": "grp_2", "ad_id": "ad_3"},
                     "metrics": {
+                        "adgroup_name": "Warm Retargeting",
                         "spend": "20.0",
                         "impressions": "3000",
                         "clicks": "40",
@@ -296,6 +299,8 @@ async def test_generate_tiktok_ads_report_use_case_builds_dashboard_payload(db_s
     assert report["campaigns"][0]["name"] == "Always On"
     assert report["campaigns"][0]["metrics"]["cpc"]["current"] == 150.0 / 260.0
     assert report["campaigns"][0]["creatives"][0]["name"] == "Spark Ad 1"
+    assert report["campaigns"][0]["creatives"][0]["ad_group_id"] == "grp_1"
+    assert report["campaigns"][0]["creatives"][0]["ad_group_name"] == "Always On Broad"
     assert report["campaigns"][0]["creatives"][0]["metrics"]["ctr"] == 2.0
     assert report["campaigns"][1]["creatives"][0]["object_type"] == "COLLECTION_AD"
 

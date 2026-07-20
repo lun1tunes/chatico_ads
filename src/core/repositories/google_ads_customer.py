@@ -21,7 +21,7 @@ class GoogleAdsCustomerRepository(BaseRepository[GoogleAdsCustomer]):
                 GoogleAdsConnection.user_id == user_id,
                 GoogleAdsCustomer.external_customer_id == external_customer_id,
             )
-            .options(selectinload(GoogleAdsCustomer.connection))
+            .options(selectinload(GoogleAdsCustomer.connection).selectinload(GoogleAdsConnection.customers))
         )
         return result.scalar_one_or_none()
 

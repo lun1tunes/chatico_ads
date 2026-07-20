@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { PropType } from 'vue'
 
 type Locale = 'ru' | 'kz' | 'en'
 type AuthMode = 'login' | 'register'
@@ -7,6 +8,9 @@ type AIProvider = 'anthropic' | 'openai' | 'gemini'
 type AppView = 'app' | 'privacy' | 'dataDeletion' | 'terms'
 type WorkspaceSection = 'overview' | 'campaign' | 'accounts' | 'settings'
 type OAuthProvider = 'meta' | 'google_ads' | 'tiktok_ads'
+type ConnectModalStage = 'intro' | 'loading' | 'accounts'
+type SettingsNotificationPreference = 'digest' | 'alerts' | 'connections'
+type AccountCardStatusTone = 'active' | 'paused'
 type MetricKey =
   | 'spend'
   | 'reach'
@@ -79,6 +83,8 @@ interface Creative {
   object_type: string
   thumbnail_url: string | null
   image_url: string | null
+  ad_group_id?: string | null
+  ad_group_name?: string | null
   metrics: {
     spend: number
     impressions: number
@@ -93,6 +99,7 @@ interface Campaign {
   id: string
   name: string
   status: string
+  objective?: string | null
   primary_result_kind: string
   metrics: MetricCollection
   creatives: Creative[]
@@ -236,7 +243,104 @@ interface WorkspaceAccountCard {
   currency: string
   timezone: string
   accent: 'meta' | 'google_ads' | 'tiktok_ads'
+  statusTone: AccountCardStatusTone
 }
+
+interface AccountPageCard extends WorkspaceAccountCard {
+  providerLabel: string
+  providerSubtitle: string
+  isActive: boolean
+  statusLabel: string
+}
+
+interface SettingsSummaryCard {
+  label: string
+  value: string
+  caption: string
+}
+
+interface AccountPageSnapshot {
+  status: 'loading' | 'ready' | 'error'
+  spend: number | null
+  results: number | null
+  resultKind: string
+  totalCampaigns: number | null
+}
+
+interface CampaignAdRow {
+  id: string
+  name: string
+  format: string
+  previewUrl: string
+  groupId: string
+  groupName: string
+  spend: number
+  impressions: number
+  clicks: number
+  ctr: number
+  results: number
+  resultKind: string
+  costPerResult: number | null
+  hasData: boolean
+}
+
+interface CampaignAdGroupRow {
+  id: string
+  name: string
+  context: string
+  spend: number
+  results: number
+  costPerResult: number | null
+  ads: readonly CampaignAdRow[]
+  bestAdId: string
+}
+
+const PlatformLogo = defineComponent({
+  name: 'PlatformLogo',
+  props: {
+    provider: {
+      type: String as PropType<OAuthProvider>,
+      required: true,
+    },
+  },
+  setup(props) {
+    return () => {
+      if (props.provider === 'google_ads') {
+        return h(
+          'svg',
+          { class: 'platform-logo-svg', fill: 'currentColor', viewBox: '0 0 24 24', 'aria-hidden': 'true' },
+          [
+            h('path', {
+              d: 'M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-6.887 4.114-4.694 0-8.511-3.817-8.511-8.514 0-4.697 3.817-8.514 8.511-8.514 2.03 0 3.887.77 5.316 2.034l3.146-3.146C18.187 1.95 15.42 1 12.24 1 5.48 1 0 6.48 0 13.24s5.48 12.24 12.24 12.24c6.76 0 12.24-5.48 12.24-12.24 0-.82-.07-1.63-.21-2.415H12.24z',
+            }),
+          ],
+        )
+      }
+
+      if (props.provider === 'tiktok_ads') {
+        return h(
+          'svg',
+          { class: 'platform-logo-svg', fill: 'currentColor', viewBox: '0 0 24 24', 'aria-hidden': 'true' },
+          [
+            h('path', {
+              d: 'M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.02 1.59 4.18 1.02 1.22 2.49 2.01 4.07 2.23v3.8c-1.42-.17-2.78-.74-3.91-1.58-.69-.51-1.27-1.15-1.72-1.89-.04 2.87-.02 5.74-.03 8.61-.05 1.56-.47 3.12-1.25 4.45-1.2 2.07-3.37 3.51-5.75 3.73-2.14.2-4.36-.37-5.99-1.77-1.83-1.56-2.73-4.01-2.31-6.38.35-2.02 1.63-3.86 3.48-4.78 1.48-.74 3.17-.92 4.78-.52v3.91c-1.11-.32-2.34-.1-3.26.58-.93.68-1.43 1.83-1.32 2.99.09 1.02.73 1.96 1.67 2.33.91.37 1.96.24 2.76-.35.63-.47.98-1.22 1.01-2.01.03-3.24.01-6.48.02-9.72z',
+            }),
+          ],
+        )
+      }
+
+      return h(
+        'svg',
+        { class: 'platform-logo-svg', fill: 'currentColor', viewBox: '0 0 24 24', 'aria-hidden': 'true' },
+        [
+          h('path', {
+            d: 'M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z',
+          }),
+        ],
+      )
+    }
+  },
+})
 
 function normalizeBasePath(value?: string): string {
   if (!value || value.trim() === '' || value.trim() === '/') {
@@ -264,6 +368,7 @@ const PRIVACY_CONTACT_EMAIL = 'support@chatico.cc'
 const PRIVACY_SERVICE_OPERATOR = 'Chatico Ads'
 const PRIVACY_SERVICE_URL = trimTrailingSlash(`${window.location.origin}${APP_BASE_PATH}`)
 const overviewMetricKeys: MetricKey[] = ['spend', 'results', 'cost_per_result', 'impressions']
+const overviewPeriodOptions = [7, 14, 30] as const
 const trendChartFrame = {
   width: 760,
   height: 320,
@@ -981,17 +1086,22 @@ const translations = {
     brand: 'Chatico Ads',
     authLead: 'Единая панель рекламы для владельца бизнеса: Meta, Google и TikTok.',
     authTitle: 'Подключайте кабинеты Meta, Google и TikTok — читайте рекламу простым языком.',
+    authLoginTitle: 'Вход в дашборд рекламной аналитики',
+    authRegisterTitle: 'Создайте рабочее пространство рекламной аналитики',
     authBody:
       'Сервис хранит доступы на сервере, собирает отчёты через API рекламных платформ и показывает AI-вывод без ручных токенов в браузере.',
     authFeaturePlatforms: 'Рекламные платформы',
     authModeLogin: 'Вход',
     authModeRegister: 'Регистрация',
+    connectAccount: 'Подключить кабинет',
+    manageAccounts: 'Управление кабинетами',
     email: 'Email',
     password: 'Пароль',
     locale: 'Язык интерфейса',
     signIn: 'Войти',
     signUp: 'Создать аккаунт',
     authHint: 'У каждого пользователя изолированные кабинеты, refresh-сессия хранится на сервере.',
+    backToPlatforms: 'Все платформы',
     workspace: 'Рабочая панель',
     connectMeta: 'Подключить Meta',
     disconnectMeta: 'Отвязать Meta',
@@ -1017,7 +1127,7 @@ const translations = {
     googleManagerNoReports: 'Метрики недоступны — выберите клиентский аккаунт',
     campaigns: 'Кампании',
     days: 'Период',
-    dayOptions: { 7: '7 дней', 30: '30 дней', 90: '90 дней' },
+    dayOptions: { 7: '7 дней', 14: '14 дней', 30: '30 дней' },
     noAccountsTitle: 'Подключите Meta, Google Ads или TikTok Ads',
     noAccountsBody:
       'После OAuth подключённые кабинеты появятся слева, а отчёт и AI-анализ загрузятся через серверный прокси.',
@@ -1035,23 +1145,55 @@ const translations = {
     aiConsultant: 'ИИ-консультант',
     aiConsultantOnline: 'Chatico AI · на связи',
     askAi: 'Спросить AI',
+    openAiPanel: 'Открыть ИИ-консультанта',
+    closeAiPanel: 'Свернуть консультанта',
     refreshData: 'Обновить отчёт',
     logout: 'Выйти',
     accountsPageTitle: 'Рекламные кабинеты',
     accountsPageLead: 'Управляйте подключёнными кабинетами Meta, Google Ads и TikTok Ads из одного места.',
     accountsPageEmptyTitle: 'Подключённых кабинетов пока нет',
     accountsPageEmptyBody: 'Подключите хотя бы одну рекламную платформу, чтобы переключаться между кабинетами и получать отчёты.',
+    accountCardActiveBadge: 'Активный',
     accountsPageSelect: 'Сделать активным',
     accountsPageSelected: 'Сейчас выбран',
     accountsPageConnected: 'Подключено кабинетов',
+    accountCardDisconnect: 'Отключить',
+    accountCardDisconnecting: 'Отключаем...',
+    accountCardDisconnectConfirm: 'Удалить этот кабинет из рабочего пространства?',
+    accountCardDisconnectDetail: 'Подключение к платформе сохранится, но кабинет исчезнет из списка.',
+    accountCardDisconnectSuccess: 'Кабинет отключён.',
     accountCardId: 'Идентификатор',
     accountCardCurrency: 'Валюта',
     accountCardTimezone: 'Часовой пояс',
+    accountCardSpendMonth: 'За 30 дней',
+    accountCardCampaigns: 'Кампаний',
+    accountCardMetricsWindow: 'Последние 30 дней',
     accountCardConnected: 'Подключено',
+    accountCardStatusActive: 'Показы идут',
+    accountCardStatusPaused: 'На паузе',
+    connectFlowHint: 'OAuth откроет страницу провайдера и после подтверждения вернёт вас в Chatico Ads со списком кабинетов.',
+    connectChooserTitle: 'Выберите рекламную платформу',
+    connectChooserLead: 'Подключение откроет официальный вход провайдера и вернёт вас с доступными кабинетами.',
+    continueWithMeta: 'Продолжить с Facebook',
+    continueWithGoogle: 'Продолжить с Google',
+    continueWithTikTok: 'Продолжить с TikTok',
+    connectMetaIntro: 'Войдите через Facebook, чтобы Chatico получил доступ к вашим рекламным кабинетам Meta.',
+    connectGoogleIntro: 'Войдите через Google, чтобы Chatico увидел ваши кабинеты Google Ads и MCC.',
+    connectTikTokIntro: 'Войдите через TikTok for Business, чтобы Chatico увидел доступные рекламные аккаунты.',
+    connectAvailableAccounts: 'Доступные кабинеты',
+    connectSelectAccountHint: 'Выберите кабинет, который должен стать активным в рабочей панели.',
     settingsPageTitle: 'Настройки',
-    settingsPageLead: 'Язык интерфейса, AI-провайдер и параметры аккаунта.',
+    settingsPageLead: 'Модуль M10 · Settings — язык, уведомления, профиль',
     settingsProfileTitle: 'Профиль',
     settingsProfileLead: 'Данные текущей сессии и быстрые действия.',
+    settingsNotificationsTitle: 'Уведомления',
+    settingsNotificationsLead: 'Какие сигналы Chatico будет показывать в рабочем пространстве.',
+    settingsNotificationDigest: 'AI-дайджест',
+    settingsNotificationDigestHint: 'Короткая сводка по результатам, стоимости и главному изменению за период.',
+    settingsNotificationAlerts: 'Аномалии',
+    settingsNotificationAlertsHint: 'Резкие изменения CPL, CPA, CTR и других ключевых метрик.',
+    settingsNotificationConnections: 'Статус подключений',
+    settingsNotificationConnectionsHint: 'Напоминать, если кабинет или токен требуют переподключения.',
     settingsLanguageTitle: 'Язык интерфейса',
     settingsLanguageLead: 'Меняет интерфейс и язык AI-резюме для текущего аккаунта.',
     settingsAiTitle: 'AI-настройки',
@@ -1066,12 +1208,18 @@ const translations = {
     campaignFocus: 'Выбранная кампания',
     creativeFocus: 'Креативы',
     aiVerdict: 'ИИ анализ',
+    aiVerdictCardTitle: 'ИИ-вердикт Chatico',
     aiVerdictHint: 'После загрузки данных сервис показывает короткий вывод: что работает, что проседает и что стоит сделать дальше.',
     aiVerdictInfoLabel: 'Что это',
     showVerdictDetails: 'Подробнее',
     hideVerdictDetails: 'Скрыть детали',
+    verdictStatusGood: 'Всё стабильно',
+    verdictStatusWarning: 'Есть нюанс',
     aiChat: 'AI-чат по данным',
+    aiWelcome: 'Задайте вопрос по выбранному рекламному кабинету, и Chatico кратко объяснит, что происходит с результатом, стоимостью и динамикой.',
+    aiChatDataMode: 'Ответы строятся на данных выбранного кабинета и текущего периода.',
     aiChatHint: 'Задайте вопрос по рекламным данным и получите короткий ответ.',
+    chatSuggestionLabel: 'Спросите, например',
     chatDefaultModeHint: 'По умолчанию чат использует встроенный Gemini 3.5 Flash.',
     useOwnApiKey: 'Использовать свой API ключ',
     hideOwnApiKey: 'Скрыть свой API ключ',
@@ -1082,6 +1230,7 @@ const translations = {
     replaceApiKey: 'Заменить ключ',
     removeApiKey: 'Удалить ключ',
     cancel: 'Отмена',
+    done: 'Готово',
     model: 'Модель',
     modelDefaultOption: 'Рекомендуемая',
     modelCustom: 'Своя модель',
@@ -1106,6 +1255,9 @@ const translations = {
     tiktokOauthError: 'Подключение TikTok Ads завершилось ошибкой.',
     chatKeyHint: 'Можно использовать ключ Anthropic, OpenAI или Gemini.',
     savedKeyHint: 'Ключ для выбранного провайдера уже сохранён на сервере и будет использоваться автоматически.',
+    connectReadyHint: 'Подключение уже активно. Откройте список кабинетов или переподключите платформу.',
+    connectLoadingAccounts: 'Получаем список ваших кабинетов...',
+    connectNoSyncedAccounts: 'После подключения здесь появятся доступные рекламные кабинеты.',
     apiKeySavedNotice: 'Ключ сохранён и теперь будет использоваться автоматически.',
     apiKeyRemovedNotice: 'Сохранённый ключ удалён.',
     creativeMetricLabels: {
@@ -1134,7 +1286,17 @@ const translations = {
     trendTitle: 'Расходы и результаты по дням',
     trendLead: 'Динамика за выбранный период',
     trendEmpty: 'Подневная динамика появится после следующего обновления отчёта.',
+    campaignGoalLabel: 'цель',
     campaignMetricsTitle: 'Показатели кампании',
+    campaignMetricsLead: 'Те же 4 главные метрики, что и на обзоре аккаунта.',
+    campaignAdGroupsTitle: 'Группы объявлений',
+    campaignAdsCount: 'Объявления',
+    campaignAdGroupDefaultName: 'Основная группа',
+    campaignAdGroupLead: 'Креативы кампании, отсортированные по стоимости результата и готовности к показам.',
+    campaignBestResult: 'Лучший результат',
+    campaignAwaitingDelivery: 'Показы ещё не начались — данные появятся после запуска.',
+    showMoreAds: 'Показать ещё',
+    collapseAds: 'Свернуть',
     campaignCreativesTitle: 'Объявления и креативы',
   },
   kz: {
@@ -1143,17 +1305,22 @@ const translations = {
     brand: 'Chatico Ads',
     authLead: 'Шағын бизнес иесі үшін Meta, Google және TikTok Ads панелі.',
     authTitle: 'Meta, Google және TikTok кабинеттерін қосып, жарнаманы түсінікті тілде бақылаңыз.',
+    authLoginTitle: 'Жарнама аналитикасы дашбордына кіру',
+    authRegisterTitle: 'Жарнама аналитикасына арналған жұмыс кеңістігін жасаңыз',
     authBody:
       'Сервис рұқсаттарды серверде сақтайды, жарнама платформалары API арқылы есепті өзі жинайды және браузерге токен шығармай AI-қорытынды береді.',
     authFeaturePlatforms: 'Жарнама платформалары',
     authModeLogin: 'Кіру',
     authModeRegister: 'Тіркелу',
+    connectAccount: 'Кабинет қосу',
+    manageAccounts: 'Кабинеттерді басқару',
     email: 'Email',
     password: 'Құпиясөз',
     locale: 'Интерфейс тілі',
     signIn: 'Кіру',
     signUp: 'Аккаунт ашу',
     authHint: 'Әр қолданушы тек өз кабинеттерін көреді, refresh-сессия серверде сақталады.',
+    backToPlatforms: 'Барлық платформалар',
     workspace: 'Жұмыс панелі',
     connectMeta: 'Meta қосу',
     disconnectMeta: 'Meta-ны ажырату',
@@ -1179,7 +1346,7 @@ const translations = {
     googleManagerNoReports: 'Метрикалар қолжетімсіз — клиенттік аккаунтты таңдаңыз',
     campaigns: 'Кампаниялар',
     days: 'Кезең',
-    dayOptions: { 7: '7 күн', 30: '30 күн', 90: '90 күн' },
+    dayOptions: { 7: '7 күн', 14: '14 күн', 30: '30 күн' },
     noAccountsTitle: 'Meta, Google Ads немесе TikTok Ads қосыңыз',
     noAccountsBody:
       'OAuth аяқталған соң қосылған кабинеттер сол жақта көрінеді, ал есеп пен AI-талдау серверлік прокси арқылы жүктеледі.',
@@ -1197,23 +1364,55 @@ const translations = {
     aiConsultant: 'AI-кеңесші',
     aiConsultantOnline: 'Chatico AI · байланыста',
     askAi: 'AI сұрау',
+    openAiPanel: 'AI-кеңесшіні ашу',
+    closeAiPanel: 'Кеңесшіні жабу',
     refreshData: 'Есепті жаңарту',
     logout: 'Шығу',
     accountsPageTitle: 'Жарнама кабинеттері',
     accountsPageLead: 'Meta, Google Ads және TikTok Ads кабинеттерін бір жерден басқарыңыз.',
     accountsPageEmptyTitle: 'Қосылған кабинет әлі жоқ',
     accountsPageEmptyBody: 'Кабинеттер арасында ауысу және есеп алу үшін кемінде бір жарнама платформасын қосыңыз.',
+    accountCardActiveBadge: 'Белсенді',
     accountsPageSelect: 'Белсенді ету',
     accountsPageSelected: 'Қазір таңдалған',
     accountsPageConnected: 'Қосылған кабинет саны',
+    accountCardDisconnect: 'Ажырату',
+    accountCardDisconnecting: 'Ажыратылып жатыр...',
+    accountCardDisconnectConfirm: 'Осы кабинетті жұмыс кеңістігінен өшіру керек пе?',
+    accountCardDisconnectDetail: 'Платформаға қосылу сақталады, бірақ кабинет тізімнен жоғалады.',
+    accountCardDisconnectSuccess: 'Кабинет ажыратылды.',
     accountCardId: 'Идентификатор',
     accountCardCurrency: 'Валюта',
     accountCardTimezone: 'Уақыт белдеуі',
+    accountCardSpendMonth: 'Соңғы 30 күн',
+    accountCardCampaigns: 'Кампания',
+    accountCardMetricsWindow: 'Соңғы 30 күн',
     accountCardConnected: 'Қосылған',
+    accountCardStatusActive: 'Көрсетілім жүріп тұр',
+    accountCardStatusPaused: 'Паузада',
+    connectFlowHint: 'OAuth провайдер бетіне апарады да, растаудан кейін кабинеттер тізімімен бірге Chatico Ads-ке қайтарады.',
+    connectChooserTitle: 'Жарнама платформасын таңдаңыз',
+    connectChooserLead: 'Қосылу провайдердің ресми кіру бетін ашады да, сізді қолжетімді кабинеттермен бірге қайтарады.',
+    continueWithMeta: 'Facebook арқылы жалғастыру',
+    continueWithGoogle: 'Google арқылы жалғастыру',
+    continueWithTikTok: 'TikTok арқылы жалғастыру',
+    connectMetaIntro: 'Chatico сіздің Meta жарнама кабинеттеріңізді көруі үшін Facebook арқылы кіріңіз.',
+    connectGoogleIntro: 'Chatico Google Ads және MCC кабинеттерін көруі үшін Google арқылы кіріңіз.',
+    connectTikTokIntro: 'Chatico қолжетімді жарнама аккаунттарын көруі үшін TikTok for Business арқылы кіріңіз.',
+    connectAvailableAccounts: 'Қолжетімді кабинеттер',
+    connectSelectAccountHint: 'Жұмыс панелінде белсенді болуы керек кабинетті таңдаңыз.',
     settingsPageTitle: 'Баптаулар',
-    settingsPageLead: 'Интерфейс тілі, AI-провайдер және аккаунт параметрлері.',
+    settingsPageLead: 'M10 · Settings модулі — тіл, хабарламалар, профиль',
     settingsProfileTitle: 'Профиль',
     settingsProfileLead: 'Ағымдағы сессия деректері және жылдам әрекеттер.',
+    settingsNotificationsTitle: 'Хабарламалар',
+    settingsNotificationsLead: 'Chatico жұмыс кеңістігінде қандай сигналдарды көрсету керегін таңдаңыз.',
+    settingsNotificationDigest: 'AI-дайджест',
+    settingsNotificationDigestHint: 'Нәтиже, құн және кезеңдегі басты өзгеріс туралы қысқа қорытынды.',
+    settingsNotificationAlerts: 'Аномалиялар',
+    settingsNotificationAlertsHint: 'CPL, CPA, CTR және басқа негізгі метрикалардың күрт өзгерісі.',
+    settingsNotificationConnections: 'Қосылым күйі',
+    settingsNotificationConnectionsHint: 'Кабинет немесе токен қайта қосуды қажет етсе, ескерту көрсету.',
     settingsLanguageTitle: 'Интерфейс тілі',
     settingsLanguageLead: 'Интерфейс пен AI-қорытынды тілін ағымдағы аккаунт үшін өзгертеді.',
     settingsAiTitle: 'AI баптаулары',
@@ -1228,12 +1427,18 @@ const translations = {
     campaignFocus: 'Таңдалған кампания',
     creativeFocus: 'Креативтер',
     aiVerdict: 'AI талдау',
+    aiVerdictCardTitle: 'Chatico AI қорытындысы',
     aiVerdictHint: 'Деректер жүктелгеннен кейін сервис не жұмыс істеп тұрғанын, не әлсірегенін және келесі қадамды қысқа түрде көрсетеді.',
     aiVerdictInfoLabel: 'Бұл не',
     showVerdictDetails: 'Толығырақ',
     hideVerdictDetails: 'Жасыру',
+    verdictStatusGood: 'Тұрақты',
+    verdictStatusWarning: 'Назар керек',
     aiChat: 'Дерекпен AI-чат',
+    aiWelcome: 'Таңдалған жарнама кабинеті бойынша сұрақ қойыңыз, ал Chatico нәтиже, құн және динамика туралы қысқаша түсіндіреді.',
+    aiChatDataMode: 'Жауаптар таңдалған кабинет пен ағымдағы кезең деректеріне сүйенеді.',
     aiChatHint: 'Жарнама деректері бойынша сұрақ қойып, қысқа жауап алыңыз.',
+    chatSuggestionLabel: 'Мысалы, мынаны сұраңыз',
     chatDefaultModeHint: 'Әдепкіде чат кіріктірілген Gemini 3.5 Flash моделін қолданады.',
     useOwnApiKey: 'Өз API кілтіңізді қолдану',
     hideOwnApiKey: 'Өз API кілтін жасыру',
@@ -1244,6 +1449,7 @@ const translations = {
     replaceApiKey: 'Кілтті ауыстыру',
     removeApiKey: 'Кілтті жою',
     cancel: 'Бас тарту',
+    done: 'Дайын',
     model: 'Модель',
     modelDefaultOption: 'Ұсынылатын',
     modelCustom: 'Өз моделі',
@@ -1268,6 +1474,9 @@ const translations = {
     tiktokOauthError: 'TikTok Ads қосу кезінде қате болды.',
     chatKeyHint: 'Anthropic, OpenAI немесе Gemini кілтін қолдануға болады.',
     savedKeyHint: 'Таңдалған провайдер кілті серверде сақталған және автоматты түрде қолданылады.',
+    connectReadyHint: 'Байланыс белсенді. Кабинеттер тізімін ашыңыз немесе платформаны қайта қосыңыз.',
+    connectLoadingAccounts: 'Кабинеттер тізімін алып жатырмыз...',
+    connectNoSyncedAccounts: 'Қосылғаннан кейін мұнда қолжетімді жарнама кабинеттері көрінеді.',
     apiKeySavedNotice: 'Кілт сақталды және енді автоматты түрде қолданылады.',
     apiKeyRemovedNotice: 'Сақталған кілт жойылды.',
     creativeMetricLabels: {
@@ -1296,7 +1505,17 @@ const translations = {
     trendTitle: 'Күндер бойынша шығын мен нәтиже',
     trendLead: 'Таңдалған кезеңдегі динамика',
     trendEmpty: 'Күндік динамика есеп келесі рет жаңарғанда көрінеді.',
+    campaignGoalLabel: 'мақсат',
     campaignMetricsTitle: 'Кампания көрсеткіштері',
+    campaignMetricsLead: 'Шот шолуындағыдай сол 4 негізгі метрика.',
+    campaignAdGroupsTitle: 'Жарнама топтары',
+    campaignAdsCount: 'Жарнамалар',
+    campaignAdGroupDefaultName: 'Негізгі топ',
+    campaignAdGroupLead: 'Кампания креативтері нәтиже құны мен жеткізілу дайындығы бойынша сұрыпталған.',
+    campaignBestResult: 'Ең жақсы нәтиже',
+    campaignAwaitingDelivery: 'Көрсетілім әлі басталмады — деректер іске қосылғаннан кейін көрінеді.',
+    showMoreAds: 'Тағы көрсету',
+    collapseAds: 'Жию',
     campaignCreativesTitle: 'Жарнамалар мен креативтер',
   },
   en: {
@@ -1305,17 +1524,22 @@ const translations = {
     brand: 'Chatico Ads',
     authLead: 'One ad analytics workspace for small business owners: Meta, Google, and TikTok.',
     authTitle: 'Connect Meta, Google, and TikTok ad accounts and read performance in plain language.',
+    authLoginTitle: 'Sign in to the ad analytics dashboard',
+    authRegisterTitle: 'Create your ad analytics workspace',
     authBody:
       'The app keeps access on the server, builds reports through Meta, Google Ads, and TikTok APIs, and adds AI commentary without exposing platform tokens in the browser.',
     authFeaturePlatforms: 'Ad platforms',
     authModeLogin: 'Login',
     authModeRegister: 'Register',
+    connectAccount: 'Connect account',
+    manageAccounts: 'Manage accounts',
     email: 'Email',
     password: 'Password',
     locale: 'Interface language',
     signIn: 'Sign in',
     signUp: 'Create account',
     authHint: 'Each user sees only their own ad accounts, and refresh sessions stay on the server.',
+    backToPlatforms: 'All platforms',
     workspace: 'Workspace',
     connectMeta: 'Connect Meta',
     disconnectMeta: 'Disconnect Meta',
@@ -1341,7 +1565,7 @@ const translations = {
     googleManagerNoReports: 'Metrics unavailable — select a client account',
     campaigns: 'Campaigns',
     days: 'Range',
-    dayOptions: { 7: '7 days', 30: '30 days', 90: '90 days' },
+    dayOptions: { 7: '7 days', 14: '14 days', 30: '30 days' },
     noAccountsTitle: 'Connect Meta, Google Ads, or TikTok Ads',
     noAccountsBody:
       'Start either OAuth flow. After approval, the connected accounts appear on the left and the dashboard plus AI analysis load through the backend proxy.',
@@ -1359,23 +1583,55 @@ const translations = {
     aiConsultant: 'AI consultant',
     aiConsultantOnline: 'Chatico AI · online',
     askAi: 'Ask AI',
+    openAiPanel: 'Open AI consultant',
+    closeAiPanel: 'Collapse consultant',
     refreshData: 'Refresh report',
     logout: 'Logout',
     accountsPageTitle: 'Ad accounts',
     accountsPageLead: 'Manage connected Meta, Google Ads, and TikTok Ads workspaces from one place.',
     accountsPageEmptyTitle: 'No connected ad accounts yet',
     accountsPageEmptyBody: 'Connect at least one ad platform to switch accounts and load reports.',
+    accountCardActiveBadge: 'Active',
     accountsPageSelect: 'Make active',
     accountsPageSelected: 'Currently selected',
     accountsPageConnected: 'Connected accounts',
+    accountCardDisconnect: 'Disconnect',
+    accountCardDisconnecting: 'Disconnecting...',
+    accountCardDisconnectConfirm: 'Remove this account from the workspace?',
+    accountCardDisconnectDetail: 'The platform connection will stay available, but this account will disappear from the list.',
+    accountCardDisconnectSuccess: 'The account has been disconnected.',
     accountCardId: 'ID',
     accountCardCurrency: 'Currency',
     accountCardTimezone: 'Timezone',
+    accountCardSpendMonth: 'Last 30 days',
+    accountCardCampaigns: 'Campaigns',
+    accountCardMetricsWindow: 'Last 30 days',
     accountCardConnected: 'Connected',
+    accountCardStatusActive: 'Delivery active',
+    accountCardStatusPaused: 'Paused',
+    connectFlowHint: 'OAuth opens the provider page and returns you to Chatico Ads with the synced account list after approval.',
+    connectChooserTitle: 'Choose an ad platform',
+    connectChooserLead: 'The connection opens the official provider sign-in flow and returns you with the available account list.',
+    continueWithMeta: 'Continue with Facebook',
+    continueWithGoogle: 'Continue with Google',
+    continueWithTikTok: 'Continue with TikTok',
+    connectMetaIntro: 'Sign in with Facebook so Chatico can access your Meta ad accounts.',
+    connectGoogleIntro: 'Sign in with Google so Chatico can access your Google Ads and MCC accounts.',
+    connectTikTokIntro: 'Sign in with TikTok for Business so Chatico can access your available advertiser accounts.',
+    connectAvailableAccounts: 'Available accounts',
+    connectSelectAccountHint: 'Choose which account should stay active in the workspace.',
     settingsPageTitle: 'Settings',
-    settingsPageLead: 'Interface language, AI provider, and account preferences.',
+    settingsPageLead: 'Module M10 · Settings - language, notifications, profile',
     settingsProfileTitle: 'Profile',
     settingsProfileLead: 'Current session details and quick actions.',
+    settingsNotificationsTitle: 'Notifications',
+    settingsNotificationsLead: 'Choose which Chatico signals should stay visible in the workspace.',
+    settingsNotificationDigest: 'AI digest',
+    settingsNotificationDigestHint: 'A short summary of performance, cost, and the main shift in the selected period.',
+    settingsNotificationAlerts: 'Anomalies',
+    settingsNotificationAlertsHint: 'Sharp movement in CPL, CPA, CTR, and other core metrics.',
+    settingsNotificationConnections: 'Connection status',
+    settingsNotificationConnectionsHint: 'Warn when an account or token needs to be reconnected.',
     settingsLanguageTitle: 'Interface language',
     settingsLanguageLead: 'Changes the interface and AI summary language for the current account.',
     settingsAiTitle: 'AI settings',
@@ -1390,12 +1646,18 @@ const translations = {
     campaignFocus: 'Selected campaign',
     creativeFocus: 'Creatives',
     aiVerdict: 'AI analysis',
+    aiVerdictCardTitle: 'Chatico AI verdict',
     aiVerdictHint: 'After the data loads, the app shows a short summary of what is working, what is slipping, and what to do next.',
     aiVerdictInfoLabel: 'What is this',
     showVerdictDetails: 'Show details',
     hideVerdictDetails: 'Hide details',
+    verdictStatusGood: 'Looking solid',
+    verdictStatusWarning: 'Needs attention',
     aiChat: 'AI chat with data',
+    aiWelcome: 'Ask about the selected ad account and Chatico will explain the result, cost, and trend in plain language.',
+    aiChatDataMode: 'Replies are grounded in the selected account and current period data.',
     aiChatHint: 'Ask about the ad data and get a short answer.',
+    chatSuggestionLabel: 'Try asking',
     chatDefaultModeHint: 'By default, chat uses the built-in Gemini 3.5 Flash.',
     useOwnApiKey: 'Use your own API key',
     hideOwnApiKey: 'Hide your API key',
@@ -1406,6 +1668,7 @@ const translations = {
     replaceApiKey: 'Replace key',
     removeApiKey: 'Delete key',
     cancel: 'Cancel',
+    done: 'Done',
     model: 'Model',
     modelDefaultOption: 'Recommended',
     modelCustom: 'Custom model',
@@ -1430,6 +1693,9 @@ const translations = {
     tiktokOauthError: 'TikTok Ads connection failed.',
     chatKeyHint: 'You can use an Anthropic, OpenAI, or Gemini key.',
     savedKeyHint: 'A key for the selected provider is already stored on the server and will be used automatically.',
+    connectReadyHint: 'The connection is already active. Open the account list or reconnect the platform.',
+    connectLoadingAccounts: 'Fetching your available accounts...',
+    connectNoSyncedAccounts: 'Available ad accounts will appear here after the connection is synced.',
     apiKeySavedNotice: 'The key has been saved and will now be used automatically.',
     apiKeyRemovedNotice: 'The saved key has been removed.',
     creativeMetricLabels: {
@@ -1458,7 +1724,17 @@ const translations = {
     trendTitle: 'Spend and results by day',
     trendLead: 'Trend for the selected period',
     trendEmpty: 'Daily trend will appear after the next report refresh.',
+    campaignGoalLabel: 'goal',
     campaignMetricsTitle: 'Campaign metrics',
+    campaignMetricsLead: 'The same four core metrics shown on the account overview.',
+    campaignAdGroupsTitle: 'Ad groups',
+    campaignAdsCount: 'Ads',
+    campaignAdGroupDefaultName: 'Primary group',
+    campaignAdGroupLead: 'Campaign creatives sorted by cost per result and delivery readiness.',
+    campaignBestResult: 'Best result',
+    campaignAwaitingDelivery: 'Delivery has not started yet. Metrics will appear after launch.',
+    showMoreAds: 'Show more',
+    collapseAds: 'Collapse',
     campaignCreativesTitle: 'Ads and creatives',
   },
 } as const
@@ -1521,28 +1797,26 @@ const pageNotice = ref('')
 const authLoading = ref(false)
 const bootLoading = ref(true)
 const metaConnecting = ref(false)
-const metaDisconnecting = ref(false)
 const googleConnecting = ref(false)
-const googleDisconnecting = ref(false)
 const tiktokConnecting = ref(false)
-const tiktokDisconnecting = ref(false)
+const accountDisconnectingKey = ref('')
 const accountsLoading = ref(false)
 const googleAccountsLoading = ref(false)
 const tiktokAccountsLoading = ref(false)
 const reportLoading = ref(false)
 const verdictLoading = ref(false)
 const chatLoading = ref(false)
-const reportDays = ref(30)
+const reportDays = ref(7)
 const accounts = ref<MetaAccount[]>([])
 const googleAccounts = ref<GoogleAdsCustomer[]>([])
 const tiktokAccounts = ref<TikTokAdsAdvertiser[]>([])
 const selectedProvider = ref<OAuthProvider>('meta')
 const selectedAccountId = ref('')
 const report = ref<DashboardReport | null>(null)
+const accountPageSnapshots = ref<Record<string, AccountPageSnapshot>>({})
 const workspaceSection = ref<WorkspaceSection>(initialWorkspaceRoute.section)
 const selectedCampaignId = ref(initialWorkspaceRoute.campaignId)
 const autoVerdict = ref('')
-const autoVerdictExpanded = ref(false)
 const chatMessages = ref<ChatMessage[]>([])
 const chatDraft = ref('')
 const chatError = ref('')
@@ -1559,20 +1833,28 @@ const accountSwitcherOpen = ref(false)
 const platformMenuOpen = ref(false)
 const connectModalOpen = ref(false)
 const connectModalProvider = ref<OAuthProvider | null>(null)
+const connectModalStage = ref<ConnectModalStage>('intro')
+const settingsNotificationPreferences = ref<Record<SettingsNotificationPreference, boolean>>({
+  digest: true,
+  alerts: true,
+  connections: false,
+})
 const sidebarCollapsed = ref(false)
 const campaignsExpanded = ref(true)
+const campaignExpandedGroupIds = ref<string[]>([])
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 const aiPanelOpen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1280 : true)
 const accountSwitcherRef = ref<HTMLElement | null>(null)
 const platformMenuRef = ref<HTMLElement | null>(null)
 const localeUpdateRequestId = ref(0)
 const reportContextKey = ref('')
+const accountPageSnapshotRequestId = ref(0)
 const customModel = ref('')
 const selectedModelPreset = ref(
   fallbackProviderCatalog.find((providerOption) => providerOption.key === provider.value)?.default_model ?? '',
 )
 const appViewInitialized = ref(false)
-const AUTO_VERDICT_PREVIEW_BLOCKS = 2
+let connectModalStageTimer: ReturnType<typeof setTimeout> | null = null
 
 const copy = computed(() => translations[locale.value])
 const isAuthenticated = computed(() => user.value !== null)
@@ -1640,13 +1922,34 @@ const canSendChat = computed(() => {
   return canUseSavedProviderKey.value || Boolean(clientApiKey.value.trim())
 })
 const autoVerdictBlocks = computed(() => splitAutoVerdictBlocks(autoVerdict.value))
-const visibleAutoVerdictBlocks = computed(() => {
-  if (autoVerdictExpanded.value) {
-    return autoVerdictBlocks.value
+const autoVerdictDisplay = computed(() => autoVerdictBlocks.value.join('\n\n').trim())
+const visibleChatMessages = computed<ChatMessage[]>(() => {
+  if (chatMessages.value.length > 0) {
+    return chatMessages.value
   }
-  return autoVerdictBlocks.value.slice(0, AUTO_VERDICT_PREVIEW_BLOCKS)
+  return [{ role: 'assistant', content: copy.value.aiWelcome }]
 })
-const hasCollapsedAutoVerdict = computed(() => autoVerdictBlocks.value.length > AUTO_VERDICT_PREVIEW_BLOCKS)
+const hasUserChatMessages = computed(() => chatMessages.value.some((message) => message.role === 'user'))
+const showChatSuggestions = computed(() => !hasUserChatMessages.value && !chatLoading.value)
+const settingsNotificationRows = computed<
+  Array<{ key: SettingsNotificationPreference; label: string; hint: string }>
+>(() => [
+  {
+    key: 'digest',
+    label: copy.value.settingsNotificationDigest,
+    hint: copy.value.settingsNotificationDigestHint,
+  },
+  {
+    key: 'alerts',
+    label: copy.value.settingsNotificationAlerts,
+    hint: copy.value.settingsNotificationAlertsHint,
+  },
+  {
+    key: 'connections',
+    label: copy.value.settingsNotificationConnections,
+    hint: copy.value.settingsNotificationConnectionsHint,
+  },
+])
 const hasAnyConnectedAccounts = computed(
   () => accounts.value.length > 0 || googleAccounts.value.length > 0 || tiktokAccounts.value.length > 0,
 )
@@ -1711,9 +2014,151 @@ const selectedProviderLabel = computed(() => {
   }
   return 'Meta'
 })
+const campaignRailCaption = computed(() => {
+  if (locale.value === 'kz') {
+    if (selectedProvider.value === 'google_ads') {
+      return 'Google Ads науқандарыңыз'
+    }
+    if (selectedProvider.value === 'tiktok_ads') {
+      return 'TikTok Ads науқандарыңыз'
+    }
+    return 'Facebook науқандарыңыз'
+  }
+
+  if (locale.value === 'en') {
+    if (selectedProvider.value === 'google_ads') {
+      return 'Your Google Ads campaigns'
+    }
+    if (selectedProvider.value === 'tiktok_ads') {
+      return 'Your TikTok Ads campaigns'
+    }
+    return 'Your Facebook campaigns'
+  }
+
+  if (selectedProvider.value === 'google_ads') {
+    return 'Ваши кампании Google Ads'
+  }
+  if (selectedProvider.value === 'tiktok_ads') {
+    return 'Ваши кампании TikTok Ads'
+  }
+  return 'Ваши кампании Facebook'
+})
 const selectedCampaign = computed(() => {
   const campaigns = report.value?.campaigns ?? []
   return campaigns.find((campaign) => campaign.id === selectedCampaignId.value) ?? null
+})
+const selectedCampaignAds = computed<readonly CampaignAdRow[]>(() => {
+  if (!selectedCampaign.value) {
+    return []
+  }
+
+  return selectedCampaign.value.creatives
+    .map((creative) => {
+      const spend = Number(creative.metrics.spend || 0)
+      const results = Number(creative.metrics.results || 0)
+      const impressions = Number(creative.metrics.impressions || 0)
+      const clicks = Number(creative.metrics.clicks || 0)
+      const ctr = Number(creative.metrics.ctr || 0)
+      return {
+        id: creative.id,
+        name: creativeTitle(creative),
+        format: creativeTypeLabel(creative),
+        previewUrl: creativePreview(creative),
+        groupId: creative.ad_group_id?.trim() || '',
+        groupName: creative.ad_group_name?.trim() || '',
+        spend,
+        impressions,
+        clicks,
+        ctr,
+        results,
+        resultKind: creative.metrics.result_kind || selectedCampaign.value?.primary_result_kind || 'result',
+        costPerResult: results > 0 ? spend / results : null,
+        hasData: spend > 0 || results > 0 || impressions > 0 || clicks > 0,
+      }
+    })
+    .sort((left, right) => {
+      if (left.costPerResult !== null && right.costPerResult !== null && left.costPerResult !== right.costPerResult) {
+        return left.costPerResult - right.costPerResult
+      }
+      if (left.costPerResult !== null && right.costPerResult === null) {
+        return -1
+      }
+      if (left.costPerResult === null && right.costPerResult !== null) {
+        return 1
+      }
+      if (right.spend !== left.spend) {
+        return right.spend - left.spend
+      }
+      return left.name.localeCompare(right.name, locale.value)
+    })
+})
+const selectedCampaignAdGroups = computed<readonly CampaignAdGroupRow[]>(() => {
+  if (!selectedCampaign.value || selectedCampaignAds.value.length === 0) {
+    return []
+  }
+
+  const grouped = new Map<string, { name: string; ads: CampaignAdRow[] }>()
+  for (const ad of selectedCampaignAds.value) {
+    const groupId = ad.groupId || `${selectedCampaign.value.id}-primary-group`
+    const existing = grouped.get(groupId)
+    if (existing) {
+      if (!existing.name && ad.groupName) {
+        existing.name = ad.groupName
+      }
+      existing.ads.push(ad)
+      continue
+    }
+    grouped.set(groupId, {
+      name: ad.groupName,
+      ads: [ad],
+    })
+  }
+
+  const groups = Array.from(grouped.entries()).map(([groupId, group]) => {
+    const spend = group.ads.reduce((sum, ad) => sum + ad.spend, 0)
+    const results = group.ads.reduce((sum, ad) => sum + ad.results, 0)
+    return {
+      id: groupId,
+      name: group.name,
+      context: buildCampaignAdGroupContext(group.ads),
+      spend,
+      results,
+      costPerResult: results > 0 ? spend / results : null,
+      ads: group.ads,
+      bestAdId: group.ads.find((ad) => ad.costPerResult !== null)?.id ?? '',
+    }
+  })
+
+  groups.sort((left, right) => {
+    if (right.spend !== left.spend) {
+      return right.spend - left.spend
+    }
+    if (right.results !== left.results) {
+      return right.results - left.results
+    }
+    return left.id.localeCompare(right.id, locale.value)
+  })
+
+  return groups.map((group, index) => ({
+    ...group,
+    name:
+      group.name ||
+      (groups.length === 1 ? copy.value.campaignAdGroupDefaultName : `${copy.value.campaignAdGroupDefaultName} ${index + 1}`),
+  }))
+})
+const selectedCampaignBreakdownLine = computed(() => {
+  if (!selectedCampaign.value) {
+    return ''
+  }
+
+  const parts: string[] = []
+  if (selectedCampaignAdGroups.value.length > 0) {
+    parts.push(formatCampaignAdGroupsCount(selectedCampaignAdGroups.value.length))
+  }
+  if (selectedCampaignAds.value.length > 0) {
+    parts.push(formatCampaignAdsCount(selectedCampaignAds.value.length))
+  }
+  return parts.join(' · ')
 })
 const workspaceMode = computed<WorkspaceSection>(() => {
   if (isAccountsSection.value) {
@@ -1753,11 +2198,32 @@ const providerOptions = computed<readonly WorkspaceProviderOption[]>(() => [
 const currentProviderOption = computed(() => {
   return providerOptions.value.find((providerOption) => providerOption.key === selectedProvider.value) ?? providerOptions.value[0]
 })
-const connectModalProviders = computed(() => {
+const platformMenuVisible = computed(() => sidebarCollapsed.value || platformMenuOpen.value)
+const connectModalProviderOption = computed(() => {
   if (connectModalProvider.value === null) {
-    return providerOptions.value
+    return null
   }
-  return providerOptions.value.filter((providerOption) => providerOption.key === connectModalProvider.value)
+  return providerOptions.value.find((providerOption) => providerOption.key === connectModalProvider.value) ?? null
+})
+const activeConnectModalProvider = computed<OAuthProvider>(() => connectModalProviderOption.value?.key ?? 'meta')
+const connectModalPrimaryLabel = computed(() => {
+  if (!connectModalProviderOption.value) {
+    return ''
+  }
+  return connectModalProviderOption.value.connected ? copy.value.yourAccounts : providerContinueLabel(connectModalProviderOption.value.key)
+})
+const connectModalHeading = computed(() => copy.value.connectAccount)
+const connectModalHeadNote = computed(() => {
+  if (!connectModalProviderOption.value) {
+    return ''
+  }
+  if (connectModalStage.value === 'accounts') {
+    return copy.value.connectSelectAccountHint
+  }
+  if (connectModalStage.value === 'loading') {
+    return copy.value.connectLoadingAccounts
+  }
+  return copy.value.connectFlowHint
 })
 const currentProviderAccounts = computed<readonly WorkspaceAccountOption[]>(() => {
   if (selectedProvider.value === 'google_ads') {
@@ -1785,23 +2251,35 @@ const currentProviderAccounts = computed<readonly WorkspaceAccountOption[]>(() =
 })
 const currentProviderHasAccounts = computed(() => currentProviderAccounts.value.length > 0)
 const accountSwitcherLabel = computed(() => selectedAccount.value?.name || copy.value.accountSwitcherEmpty)
-const accountSwitcherSubtitle = computed(() => {
-  if (selectedProvider.value === 'google_ads') {
-    return selectedGoogleAccount.value ? formatGoogleCustomerLabel(selectedGoogleAccount.value) : copy.value.accountSwitcherHint
-  }
-  if (selectedProvider.value === 'tiktok_ads') {
-    return selectedTikTokAccount.value ? formatTikTokAdvertiserLabel(selectedTikTokAccount.value) : copy.value.accountSwitcherHint
-  }
-  return selectedMetaAccount.value?.account_id || copy.value.accountSwitcherHint
+const settingsSummaryCards = computed<readonly SettingsSummaryCard[]>(() => {
+  const activeModelLabel = resolvedModel.value || activeProviderConfig.value?.default_model || '—'
+  const providerLabel = activeProviderConfig.value?.label || provider.value
+
+  return [
+    {
+      label: copy.value.settingsProfileTitle,
+      value: user.value?.email || copy.value.brand,
+      caption: accountSwitcherLabel.value,
+    },
+    {
+      label: copy.value.platforms,
+      value: currentProviderOption.value.label,
+      caption: currentProviderOption.value.subtitle,
+    },
+    {
+      label: copy.value.settingsLanguageTitle,
+      value: localeDisplayName(locale.value),
+      caption: copy.value.settingsLanguageLead,
+    },
+    {
+      label: copy.value.settingsAiTitle,
+      value: activeModelLabel,
+      caption: `${providerLabel} · ${hasSavedProviderKey.value ? copy.value.settingsSavedKey : copy.value.settingsNoSavedKey}`,
+    },
+  ]
 })
 const currentProviderEmptyMessage = computed(() => {
-  if (selectedProvider.value === 'google_ads') {
-    return copy.value.googleAccountsEmpty
-  }
-  if (selectedProvider.value === 'tiktok_ads') {
-    return copy.value.tiktokAccountsEmpty
-  }
-  return copy.value.noAccountsBody
+  return providerEmptyMessage(selectedProvider.value)
 })
 const overviewMetrics = computed<SurfaceMetricCard[]>(() => {
   if (!report.value) {
@@ -1815,12 +2293,30 @@ const campaignSummaryMetrics = computed<SurfaceMetricCard[]>(() => {
   }
   return buildSurfaceMetricCards(selectedCampaign.value.metrics, selectedCampaign.value.primary_result_kind)
 })
+const overviewVerdictTone = computed(() => {
+  if (!report.value) {
+    return 'warning'
+  }
+  return verdictToneFromMetrics(report.value.summary.metrics)
+})
+const campaignVerdictTone = computed(() => {
+  if (!selectedCampaign.value) {
+    return 'warning'
+  }
+  return verdictToneFromMetrics(selectedCampaign.value.metrics)
+})
 const overviewTrendPoints = computed<TrendPoint[]>(() => report.value?.trend?.current ?? [])
 const overviewTrendResultLabel = computed(() => {
   if (!report.value) {
     return copy.value.metricCopy.results[0]
   }
   return resultKindLabel(report.value.summary.primary_result_kind || 'result')
+})
+const overviewCurrentRangeLabel = computed(() => {
+  if (!report.value) {
+    return ''
+  }
+  return `${report.value.periods.current.since} - ${report.value.periods.current.until}`
 })
 const overviewTrendChart = computed<TrendChartModel>(() => buildTrendChartModel(overviewTrendPoints.value))
 const workspaceNotice = computed(() => {
@@ -1865,7 +2361,15 @@ const legalUpdatedLabel = computed(() =>
   isTermsView.value ? copy.value.termsUpdatedLabel : copy.value.privacyUpdatedLabel,
 )
 const legalUpdatedOn = computed(() => (isTermsView.value ? copy.value.termsUpdatedOn : copy.value.privacyUpdatedOn))
-const userInitial = computed(() => user.value?.email.trim().charAt(0).toUpperCase() || 'C')
+const workspaceUserLabel = computed(() => {
+  const email = user.value?.email.trim() || ''
+  if (!email) {
+    return copy.value.brand
+  }
+  const localPart = email.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || email
+  return localPart
+})
+const userInitial = computed(() => workspaceUserLabel.value.charAt(0).toUpperCase() || 'C')
 const topbarContextLine = computed(() => {
   if (isLegalView.value) {
     return `${legalUpdatedLabel.value}: ${legalUpdatedOn.value}`
@@ -1905,6 +2409,7 @@ const connectedAccountGroups = computed<
       currency: account.currency || '—',
       timezone: account.timezone_name || '—',
       accent: 'meta' as const,
+      statusTone: metaAccountStatusTone(account),
     })),
   },
   {
@@ -1920,6 +2425,7 @@ const connectedAccountGroups = computed<
       currency: customer.currency_code || '—',
       timezone: customer.time_zone || '—',
       accent: 'google_ads' as const,
+      statusTone: googleAccountStatusTone(customer),
     })),
   },
   {
@@ -1935,10 +2441,54 @@ const connectedAccountGroups = computed<
       currency: advertiser.currency || '—',
       timezone: advertiser.timezone_name || '—',
       accent: 'tiktok_ads' as const,
+      statusTone: tiktokAccountStatusTone(advertiser),
     })),
   },
 ])
 const connectedAccountCount = computed(() => connectedAccountGroups.value.reduce((sum, group) => sum + group.cards.length, 0))
+const accountPageCards = computed<readonly AccountPageCard[]>(() => {
+  const providerRank: Record<OAuthProvider, number> = {
+    meta: 0,
+    google_ads: 1,
+    tiktok_ads: 2,
+  }
+
+  return connectedAccountGroups.value
+    .flatMap((group) =>
+      group.cards.map((card) => ({
+        ...card,
+        providerLabel: group.label,
+        providerSubtitle: group.subtitle,
+        isActive: selectedProvider.value === group.provider && selectedAccountId.value === card.id,
+        statusLabel: accountCardStatusLabel(card.statusTone),
+      })),
+    )
+    .sort((left, right) => {
+      if (left.isActive !== right.isActive) {
+        return left.isActive ? -1 : 1
+      }
+      if (providerRank[left.provider] !== providerRank[right.provider]) {
+        return providerRank[left.provider] - providerRank[right.provider]
+      }
+      return left.name.localeCompare(right.name, locale.value)
+    })
+})
+const accountPageSnapshotSourceKey = computed(() => {
+  return connectedAccountGroups.value
+    .flatMap((group) => group.cards.map((card) => buildAccountSnapshotKey(group.provider, card.id)))
+    .sort()
+    .join('|')
+})
+const connectModalGroup = computed(() => {
+  if (connectModalProvider.value === null) {
+    return null
+  }
+  return connectedAccountGroups.value.find((group) => group.provider === connectModalProvider.value) ?? null
+})
+const connectModalCards = computed(() => connectModalGroup.value?.cards ?? [])
+const accountsPageContextLine = computed(() => {
+  return `${copy.value.accountsPageConnected}: ${connectedAccountCount.value}. ${copy.value.accountsPageLead}`
+})
 
 function resolveCurrentView(pathname: string): AppView {
   const normalized = normalizePathname(pathname)
@@ -2055,6 +2605,7 @@ function openDataDeletion() {
 }
 
 function openOverview() {
+  campaignExpandedGroupIds.value = []
   navigateToWorkspace('overview')
 }
 
@@ -2305,13 +2856,11 @@ function splitAutoVerdictBlocks(value: string) {
 
 function resetAutoVerdict() {
   autoVerdict.value = ''
-  autoVerdictExpanded.value = false
 }
 
 function triggerAutoVerdictLoad() {
   void loadAutoVerdict().catch((error) => {
     autoVerdict.value = formatUnexpectedError(error)
-    autoVerdictExpanded.value = false
     verdictLoading.value = false
   })
 }
@@ -2530,6 +3079,10 @@ function buildReportContextKey(provider: OAuthProvider, accountId: string, days:
   return `${provider}:${accountId}:${days}`
 }
 
+function buildAccountSnapshotKey(provider: OAuthProvider, accountId: string) {
+  return `${provider}:${accountId}`
+}
+
 function buildDashboardReportPath(provider: OAuthProvider, accountId: string, query: string) {
   if (provider === 'google_ads') {
     return `/dashboard/google-ads/customers/${accountId}/report?${query}`
@@ -2588,6 +3141,7 @@ async function syncSelectedAccount(options: { preferredProvider?: OAuthProvider 
 
 function resetSession() {
   localeUpdateRequestId.value += 1
+  accountPageSnapshotRequestId.value += 1
   accessToken.value = ''
   user.value = null
   oauthStatus.value = null
@@ -2597,15 +3151,14 @@ function resetSession() {
   selectedProvider.value = 'meta'
   selectedAccountId.value = ''
   clearReportState()
+  accountPageSnapshots.value = {}
   useClientCredentials.value = false
   savedProviderKeys.value = {}
   clientApiKey.value = ''
   authLoading.value = false
   metaConnecting.value = false
-  metaDisconnecting.value = false
-  googleDisconnecting.value = false
   tiktokConnecting.value = false
-  tiktokDisconnecting.value = false
+  accountDisconnectingKey.value = ''
   providerKeyLoading.value = false
   providerKeyEditing.value = false
   providerKeyError.value = ''
@@ -2906,6 +3459,98 @@ async function loadTikTokAccounts() {
   }
 }
 
+async function loadAccountPageSnapshots() {
+  if (!user.value) {
+    accountPageSnapshots.value = {}
+    return
+  }
+
+  const cards = accountPageCards.value
+  if (cards.length === 0) {
+    accountPageSnapshots.value = {}
+    return
+  }
+
+  const validKeys = new Set(cards.map((card) => buildAccountSnapshotKey(card.provider, card.id)))
+  const cachedEntries = Object.entries(accountPageSnapshots.value).filter(([key]) => validKeys.has(key))
+  const nextCache = Object.fromEntries(cachedEntries) as Record<string, AccountPageSnapshot>
+  const cardsToLoad = cards.filter((card) => {
+    const snapshot = nextCache[buildAccountSnapshotKey(card.provider, card.id)]
+    return !snapshot || snapshot.status === 'error'
+  })
+
+  accountPageSnapshots.value = nextCache
+  if (cardsToLoad.length === 0) {
+    return
+  }
+
+  const requestId = ++accountPageSnapshotRequestId.value
+  const loadingCache = { ...nextCache }
+  for (const card of cardsToLoad) {
+    const key = buildAccountSnapshotKey(card.provider, card.id)
+    loadingCache[key] = {
+      status: 'loading',
+      spend: null,
+      results: null,
+      resultKind: 'result',
+      totalCampaigns: null,
+    }
+  }
+  accountPageSnapshots.value = loadingCache
+
+  const results = await Promise.all(
+    cardsToLoad.map(async (card) => {
+      const key = buildAccountSnapshotKey(card.provider, card.id)
+
+      try {
+        const payload =
+          selectedProvider.value === card.provider &&
+          selectedAccountId.value === card.id &&
+          reportDays.value === 30 &&
+          report.value
+            ? report.value
+            : await apiRequest<DashboardReport>(
+                buildDashboardReportPath(card.provider, card.id, new URLSearchParams({ days: '30' }).toString()),
+              )
+
+        return {
+          key,
+          snapshot: {
+            status: 'ready' as const,
+            spend: payload.summary.metrics.spend.current,
+            results: payload.summary.metrics.results.current,
+            resultKind: payload.summary.primary_result_kind || 'result',
+            totalCampaigns: payload.summary.total_campaigns ?? payload.campaigns.length,
+          },
+        }
+      } catch {
+        return {
+          key,
+          snapshot: {
+            status: 'error' as const,
+            spend: null,
+            results: null,
+            resultKind: 'result',
+            totalCampaigns: null,
+          },
+        }
+      }
+    }),
+  )
+
+  if (requestId !== accountPageSnapshotRequestId.value) {
+    return
+  }
+
+  const mergedCache = { ...accountPageSnapshots.value }
+  for (const item of results) {
+    if (validKeys.has(item.key)) {
+      mergedCache[item.key] = item.snapshot
+    }
+  }
+  accountPageSnapshots.value = mergedCache
+}
+
 async function connectMeta() {
   metaConnecting.value = true
   pageError.value = ''
@@ -2917,29 +3562,6 @@ async function connectMeta() {
   } catch (error) {
     metaConnecting.value = false
     pageError.value = error instanceof Error ? error.message : 'Unexpected error'
-  }
-}
-
-async function disconnectMeta() {
-  if (metaDisconnecting.value || !window.confirm(copy.value.disconnectMetaConfirm)) {
-    return
-  }
-
-  metaDisconnecting.value = true
-  pageError.value = ''
-  pageNotice.value = ''
-
-  try {
-    await apiRequest('/meta/connections', { method: 'DELETE' })
-    oauthStatus.value = null
-    await loadAccounts()
-    await loadGoogleAccounts()
-    await syncSelectedAccount({ preferredProvider: 'google_ads', forceReload: true })
-    pageNotice.value = copy.value.metaDisconnectSuccess
-  } catch (error) {
-    pageError.value = formatUnexpectedError(error)
-  } finally {
-    metaDisconnecting.value = false
   }
 }
 
@@ -2957,29 +3579,6 @@ async function connectGoogle() {
   }
 }
 
-async function disconnectGoogle() {
-  if (googleDisconnecting.value || !window.confirm(copy.value.disconnectGoogleConfirm)) {
-    return
-  }
-
-  googleDisconnecting.value = true
-  pageError.value = ''
-  pageNotice.value = ''
-
-  try {
-    await apiRequest('/google-ads/connections', { method: 'DELETE' })
-    oauthStatus.value = null
-    await loadGoogleAccounts()
-    await loadAccounts()
-    await syncSelectedAccount({ preferredProvider: 'meta', forceReload: true })
-    pageNotice.value = copy.value.googleDisconnectSuccess
-  } catch (error) {
-    pageError.value = formatUnexpectedError(error)
-  } finally {
-    googleDisconnecting.value = false
-  }
-}
-
 async function connectTikTok() {
   tiktokConnecting.value = true
   pageError.value = ''
@@ -2994,27 +3593,53 @@ async function connectTikTok() {
   }
 }
 
-async function disconnectTikTok() {
-  if (tiktokDisconnecting.value || !window.confirm(copy.value.disconnectTikTokConfirm)) {
+function buildAccountDisconnectPath(providerOption: OAuthProvider, accountId: string) {
+  if (providerOption === 'google_ads') {
+    return `/google-ads/customers/${accountId}`
+  }
+  if (providerOption === 'tiktok_ads') {
+    return `/tiktok-ads/advertisers/${accountId}`
+  }
+  return `/meta/ad-accounts/${accountId}`
+}
+
+function buildAccountDisconnectConfirmMessage(accountName: string) {
+  return `${copy.value.accountCardDisconnectConfirm} "${accountName}"?\n\n${copy.value.accountCardDisconnectDetail}`
+}
+
+async function disconnectAccount(providerOption: OAuthProvider, accountId: string, accountName: string) {
+  if (accountDisconnectingKey.value || providerIsConnecting(providerOption)) {
+    return
+  }
+  if (!window.confirm(buildAccountDisconnectConfirmMessage(accountName))) {
     return
   }
 
-  tiktokDisconnecting.value = true
+  const disconnectKey = `${providerOption}:${accountId}`
+  const removedSelectedAccount = selectedProvider.value === providerOption && selectedAccountId.value === accountId
+  accountDisconnectingKey.value = disconnectKey
   pageError.value = ''
   pageNotice.value = ''
 
   try {
-    await apiRequest('/tiktok-ads/connections', { method: 'DELETE' })
+    await apiRequest(buildAccountDisconnectPath(providerOption, accountId), { method: 'DELETE' })
     oauthStatus.value = null
-    await loadTikTokAccounts()
-    await loadAccounts()
-    await loadGoogleAccounts()
-    await syncSelectedAccount({ preferredProvider: 'meta', forceReload: true })
-    pageNotice.value = copy.value.tiktokDisconnectSuccess
+    if (providerOption === 'google_ads') {
+      await loadGoogleAccounts()
+    } else if (providerOption === 'tiktok_ads') {
+      await loadTikTokAccounts()
+    } else {
+      await loadAccounts()
+    }
+    await syncSelectedAccount({
+      preferredProvider: removedSelectedAccount ? providerOption : selectedProvider.value,
+      forceReload: removedSelectedAccount,
+    })
+    pageNotice.value = copy.value.accountCardDisconnectSuccess
   } catch (error) {
     pageError.value = formatUnexpectedError(error)
   } finally {
-    tiktokDisconnecting.value = false
+    accountDisconnectingKey.value = ''
   }
 }
 
@@ -3065,12 +3690,10 @@ async function loadAutoVerdict() {
     const apiKey = useClientCredentials.value ? clientApiKey.value.trim() || null : null
     if (useClientCredentials.value && !apiKey && !canUseSavedProviderKey.value) {
       autoVerdict.value = copy.value.missingCustomKeyError
-      autoVerdictExpanded.value = false
       return
     }
 
     verdictLoading.value = true
-    autoVerdictExpanded.value = false
     const payload = await apiRequest<{ text: string }>(buildAutoVerdictPath(selectedProvider.value, selectedAccountId.value), {
       method: 'POST',
       body: {
@@ -3089,7 +3712,6 @@ async function loadAutoVerdict() {
     autoVerdict.value = payload.text
   } catch (error) {
     autoVerdict.value = formatUnexpectedError(error)
-    autoVerdictExpanded.value = false
   } finally {
     verdictLoading.value = false
   }
@@ -3226,44 +3848,130 @@ function closeAiPanel() {
   aiPanelOpen.value = false
 }
 
-function connectProvider(providerOption: OAuthProvider) {
+async function connectProvider(providerOption: OAuthProvider) {
   if (providerOption === 'google_ads') {
-    void connectGoogle()
+    await connectGoogle()
     return
   }
   if (providerOption === 'tiktok_ads') {
-    void connectTikTok()
+    await connectTikTok()
     return
   }
-  void connectMeta()
-}
-
-function disconnectProvider(providerOption: OAuthProvider) {
-  if (providerOption === 'google_ads') {
-    void disconnectGoogle()
-    return
-  }
-  if (providerOption === 'tiktok_ads') {
-    void disconnectTikTok()
-    return
-  }
-  void disconnectMeta()
+  await connectMeta()
 }
 
 function connectCurrentProvider() {
   openConnectModal(selectedProvider.value)
 }
 
-function disconnectCurrentProvider() {
-  disconnectProvider(selectedProvider.value)
+function clearConnectModalStageTimer() {
+  if (connectModalStageTimer !== null) {
+    clearTimeout(connectModalStageTimer)
+    connectModalStageTimer = null
+  }
 }
 
-function startProviderConnection(providerOption: OAuthProvider) {
-  openConnectModal(providerOption)
+function openConnectModalProvider(providerOption: OAuthProvider) {
+  clearConnectModalStageTimer()
+  connectModalProvider.value = providerOption
+  connectModalStage.value = 'intro'
+}
+
+function returnToConnectModalProviders() {
+  clearConnectModalStageTimer()
+  connectModalProvider.value = null
+  connectModalStage.value = 'intro'
+}
+
+function showConnectModalAccounts(delay = 420) {
+  clearConnectModalStageTimer()
+  connectModalStage.value = 'loading'
+  connectModalStageTimer = setTimeout(() => {
+    connectModalStage.value = 'accounts'
+    connectModalStageTimer = null
+  }, delay)
+}
+
+async function runConnectModalPrimaryAction() {
+  const providerOption = connectModalProviderOption.value
+  if (!providerOption) {
+    return
+  }
+
+  if (providerOption.connected) {
+    showConnectModalAccounts()
+    return
+  }
+
+  clearConnectModalStageTimer()
+  connectModalStage.value = 'loading'
+  await connectProvider(providerOption.key)
+
+  if (connectModalOpen.value && !providerIsConnecting(providerOption.key)) {
+    connectModalStage.value = 'intro'
+  }
 }
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
+  platformMenuOpen.value = false
+}
+
+function togglePlatformMenu() {
+  if (sidebarCollapsed.value) {
+    return
+  }
+  platformMenuOpen.value = !platformMenuOpen.value
+}
+
+function providerEmptyMessage(providerOption: OAuthProvider) {
+  if (providerOption === 'google_ads') {
+    return copy.value.googleAccountsEmpty
+  }
+  if (providerOption === 'tiktok_ads') {
+    return copy.value.tiktokAccountsEmpty
+  }
+  return copy.value.noAccountsBody
+}
+
+function connectModalIntroSummary(providerOption: WorkspaceProviderOption) {
+  if (providerOption.connected) {
+    return `${copy.value.accountsPageConnected}: ${providerOption.count}`
+  }
+  if (providerOption.key === 'google_ads') {
+    return copy.value.connectGoogleIntro
+  }
+  if (providerOption.key === 'tiktok_ads') {
+    return copy.value.connectTikTokIntro
+  }
+  return copy.value.connectMetaIntro
+}
+
+function connectChooserProviderLine(providerOption: WorkspaceProviderOption) {
+  if (providerOption.connected) {
+    return `${providerOption.label} · ${copy.value.accountsPageConnected}: ${providerOption.count}`
+  }
+  return `${providerOption.label} · ${providerOption.subtitle}`
+}
+
+function providerContinueLabel(providerOption: OAuthProvider) {
+  if (providerOption === 'google_ads') {
+    return copy.value.continueWithGoogle
+  }
+  if (providerOption === 'tiktok_ads') {
+    return copy.value.continueWithTikTok
+  }
+  return copy.value.continueWithMeta
+}
+
+function localeDisplayName(target: Locale) {
+  if (target === 'kz') {
+    return 'Қазақша'
+  }
+  if (target === 'en') {
+    return 'English'
+  }
+  return 'Русский'
 }
 
 function providerIsConnecting(providerOption: OAuthProvider) {
@@ -3273,7 +3981,11 @@ function providerIsConnecting(providerOption: OAuthProvider) {
   if (providerOption === 'tiktok_ads') {
     return tiktokConnecting.value
   }
-  return metaConnecting.value || metaDisconnecting.value
+  return metaConnecting.value
+}
+
+function isAccountDisconnecting(providerOption: OAuthProvider, accountId: string) {
+  return accountDisconnectingKey.value === `${providerOption}:${accountId}`
 }
 
 function providerConnectLabel(providerOption: OAuthProvider) {
@@ -3289,31 +4001,29 @@ function providerConnectLabel(providerOption: OAuthProvider) {
   return copy.value.connectMeta
 }
 
-function providerGlyph(providerOption: OAuthProvider) {
-  if (providerOption === 'google_ads') {
-    return 'G'
-  }
-  if (providerOption === 'tiktok_ads') {
-    return 'T'
-  }
-  return 'M'
-}
-
 function openConnectModal(providerOption: OAuthProvider | null = null) {
+  clearConnectModalStageTimer()
   connectModalProvider.value = providerOption
+  connectModalStage.value = 'intro'
   connectModalOpen.value = true
   accountSwitcherOpen.value = false
   platformMenuOpen.value = false
 }
 
 function closeConnectModal() {
+  clearConnectModalStageTimer()
   connectModalOpen.value = false
   connectModalProvider.value = null
+  connectModalStage.value = 'intro'
 }
 
-function connectFromModal(providerOption: OAuthProvider) {
+async function connectFromModal(providerOption: OAuthProvider) {
+  await connectProvider(providerOption)
+}
+
+function selectAccountFromModal(providerOption: OAuthProvider, accountId: string) {
   closeConnectModal()
-  connectProvider(providerOption)
+  selectAccount(providerOption, accountId)
 }
 
 function setWorkspaceProvider(provider: OAuthProvider) {
@@ -3355,6 +4065,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   }
 }
 
+function isSelectedWorkspaceAccount(provider: OAuthProvider, accountId: string) {
+  return selectedProvider.value === provider && selectedAccountId.value === accountId
+}
+
 function selectAccount(provider: OAuthProvider, accountId: string) {
   if (provider === 'google_ads') {
     const customer = googleAccounts.value.find((item) => item.external_customer_id === accountId)
@@ -3384,6 +4098,7 @@ function selectDays(days: number) {
 }
 
 function selectCampaign(campaignId: string) {
+  campaignExpandedGroupIds.value = []
   navigateToWorkspace('campaign', { campaignId })
 }
 
@@ -3407,6 +4122,29 @@ function formatMetricValue(key: MetricKey, value: number | null | undefined) {
 
   return new Intl.NumberFormat(locale.value, {
     maximumFractionDigits: key === 'results' ? 1 : 0,
+  }).format(value)
+}
+
+function formatCurrencyAmount(value: number | null | undefined, currency: string) {
+  if (value === null || value === undefined) {
+    return '—'
+  }
+
+  const normalizedCurrency = currency.trim().toUpperCase()
+  if (/^[A-Z]{3}$/.test(normalizedCurrency)) {
+    try {
+      return new Intl.NumberFormat(locale.value, {
+        style: 'currency',
+        currency: normalizedCurrency,
+        maximumFractionDigits: 2,
+      }).format(value)
+    } catch {
+      // Fall through to plain number formatting when the currency code is not supported.
+    }
+  }
+
+  return new Intl.NumberFormat(locale.value, {
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
   }).format(value)
 }
 
@@ -3458,6 +4196,80 @@ function accountCardInitials(value: string) {
     .slice(0, 2)
 }
 
+function accountPageSnapshot(card: WorkspaceAccountCard) {
+  return accountPageSnapshots.value[buildAccountSnapshotKey(card.provider, card.id)] ?? null
+}
+
+function isAccountPageSnapshotLoading(card: WorkspaceAccountCard) {
+  return accountPageSnapshot(card)?.status === 'loading'
+}
+
+function accountCardSpendValue(card: WorkspaceAccountCard) {
+  const snapshot = accountPageSnapshot(card)
+  if (!snapshot) {
+    return '—'
+  }
+  if (snapshot.status === 'loading' && snapshot.spend === null) {
+    return '...'
+  }
+  return formatCurrencyAmount(snapshot.spend, card.currency)
+}
+
+function accountCardResultsLabel(card: WorkspaceAccountCard) {
+  const snapshot = accountPageSnapshot(card)
+  return resultKindLabel(snapshot?.resultKind || 'result')
+}
+
+function accountCardResultsValue(card: WorkspaceAccountCard) {
+  const snapshot = accountPageSnapshot(card)
+  if (!snapshot) {
+    return '—'
+  }
+  if (snapshot.status === 'loading' && snapshot.results === null) {
+    return '...'
+  }
+  return formatMetricValue('results', snapshot.results)
+}
+
+function accountCardCampaignsValue(card: WorkspaceAccountCard) {
+  const snapshot = accountPageSnapshot(card)
+  if (!snapshot) {
+    return '—'
+  }
+  if (snapshot.status === 'loading' && snapshot.totalCampaigns === null) {
+    return '...'
+  }
+  return new Intl.NumberFormat(locale.value, {
+    maximumFractionDigits: 0,
+  }).format(snapshot.totalCampaigns ?? 0)
+}
+
+function metaAccountStatusTone(account: MetaAccount): AccountCardStatusTone {
+  return account.account_status === 1 ? 'active' : 'paused'
+}
+
+function googleAccountStatusTone(customer: GoogleAdsCustomer): AccountCardStatusTone {
+  return customer.is_directly_accessible ? 'active' : 'paused'
+}
+
+function tiktokAccountStatusTone(advertiser: TikTokAdsAdvertiser): AccountCardStatusTone {
+  const normalized = (advertiser.status || '').toUpperCase()
+  if (
+    normalized.includes('DISABLE') ||
+    normalized.includes('PAUSE') ||
+    normalized.includes('SUSPEND') ||
+    normalized.includes('INACTIVE') ||
+    normalized.includes('CLOSE')
+  ) {
+    return 'paused'
+  }
+  return 'active'
+}
+
+function accountCardStatusLabel(tone: AccountCardStatusTone) {
+  return tone === 'active' ? copy.value.accountCardStatusActive : copy.value.accountCardStatusPaused
+}
+
 function formatDelta(delta: number | null | undefined) {
   if (delta === null || delta === undefined) {
     return '—'
@@ -3491,6 +4303,24 @@ function metricSurfaceHint(key: MetricKey, delta: number | null | undefined) {
     return copy.value.metricTrendWarning
   }
   return copy.value.metricTrendNeutral
+}
+
+function verdictToneFromMetrics(metrics: MetricCollection) {
+  const resultTone = metricPerformanceTone('results', metrics.results.delta_pct)
+  const costTone = metricPerformanceTone('cost_per_result', metrics.cost_per_result.delta_pct)
+  const spendTone = metricPerformanceTone('spend', metrics.spend.delta_pct)
+
+  if (resultTone === 'warning' || costTone === 'warning') {
+    return 'warning'
+  }
+  if (resultTone === 'good' || costTone === 'good' || spendTone === 'good') {
+    return 'good'
+  }
+  return 'warning'
+}
+
+function verdictStatusLabel(tone: 'good' | 'warning') {
+  return tone === 'good' ? copy.value.verdictStatusGood : copy.value.verdictStatusWarning
 }
 
 function buildSurfaceMetricCards(metrics: MetricCollection, resultKind: string): SurfaceMetricCard[] {
@@ -3637,9 +4467,88 @@ function statusLabel(status: string) {
   return copy.value.status[tone]
 }
 
+function toggleSettingsNotification(preference: SettingsNotificationPreference) {
+  settingsNotificationPreferences.value[preference] = !settingsNotificationPreferences.value[preference]
+}
+
 function resultKindLabel(kind: string) {
   const normalized = kind as keyof (typeof translations)['ru']['resultKinds']
   return copy.value.resultKinds[normalized] ?? kind
+}
+
+function formatCampaignAdGroupsCount(count: number) {
+  if (locale.value === 'en') {
+    return `${count} ${count === 1 ? 'ad group' : 'ad groups'}`
+  }
+  if (locale.value === 'kz') {
+    return `${count} жарнама тобы`
+  }
+
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) {
+    return `${count} группа объявлений`
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} группы объявлений`
+  }
+  return `${count} групп объявлений`
+}
+
+function formatCampaignAdsCount(count: number) {
+  if (locale.value === 'en') {
+    return `${count} ${count === 1 ? 'ad' : 'ads'}`
+  }
+  if (locale.value === 'kz') {
+    return `${count} жарнама`
+  }
+
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) {
+    return `${count} объявление`
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} объявления`
+  }
+  return `${count} объявлений`
+}
+
+function showMoreAdsLabel(hiddenCount: number) {
+  return `${copy.value.showMoreAds} ${hiddenCount}`
+}
+
+function buildCampaignAdGroupContext(ads: readonly CampaignAdRow[]) {
+  const formats = Array.from(new Set(ads.map((ad) => ad.format).filter(Boolean)))
+  if (formats.length === 0) {
+    return copy.value.campaignAdGroupLead
+  }
+  const preview = formats.slice(0, 3).join(' · ')
+  const hidden = formats.length - 3
+  return hidden > 0 ? `${preview} +${hidden}` : preview
+}
+
+function isCampaignAdGroupExpanded(groupId: string) {
+  return campaignExpandedGroupIds.value.includes(groupId)
+}
+
+function visibleCampaignAds(group: CampaignAdGroupRow) {
+  if (group.ads.length < 4 || isCampaignAdGroupExpanded(group.id)) {
+    return group.ads
+  }
+  return group.ads.slice(0, 3)
+}
+
+function hiddenCampaignAdsCount(group: CampaignAdGroupRow) {
+  return Math.max(0, group.ads.length - 3)
+}
+
+function toggleCampaignAdGroup(groupId: string) {
+  if (isCampaignAdGroupExpanded(groupId)) {
+    campaignExpandedGroupIds.value = campaignExpandedGroupIds.value.filter((id) => id !== groupId)
+    return
+  }
+  campaignExpandedGroupIds.value = [...campaignExpandedGroupIds.value, groupId]
 }
 
 function creativePreview(creative: Creative) {
@@ -3654,39 +4563,44 @@ function creativeTitle(creative: Creative) {
   return creative.name?.trim() || creativeTypeLabel(creative)
 }
 
-function creativeStats(creative: Creative) {
-  return [
-    {
-      key: 'spend',
-      label: copy.value.creativeMetricLabels.spend,
-      value: formatMetricValue('spend', creative.metrics.spend),
-      tone: 'blue',
-    },
-    {
-      key: 'impressions',
-      label: copy.value.creativeMetricLabels.impressions,
-      value: formatCompactNumber(creative.metrics.impressions),
-      tone: '',
-    },
-    {
-      key: 'clicks',
-      label: copy.value.creativeMetricLabels.clicks,
-      value: formatCompactNumber(creative.metrics.clicks),
-      tone: '',
-    },
-    {
-      key: 'ctr',
-      label: copy.value.creativeMetricLabels.ctr,
-      value: formatMetricValue('ctr', creative.metrics.ctr),
-      tone: '',
-    },
-    {
-      key: 'results',
-      label: resultKindLabel(creative.metrics.result_kind),
-      value: formatCompactNumber(creative.metrics.results),
-      tone: 'green',
-    },
-  ]
+function creativePreviewKind(format: string) {
+  const normalized = format.trim().toLowerCase()
+  if (normalized.includes('reels') || normalized.includes('stories')) {
+    return 'vertical'
+  }
+  if (normalized.includes('video')) {
+    return 'video'
+  }
+  if (normalized.includes('carousel')) {
+    return 'carousel'
+  }
+  if (normalized.includes('lead')) {
+    return 'leadform'
+  }
+  return 'image'
+}
+
+const creativePreviewGradients = [
+  'linear-gradient(145deg, #5E44EB, #9B87F5)',
+  'linear-gradient(145deg, #2AABEE, #5E44EB)',
+  'linear-gradient(145deg, #EC4899, #8B5CF6)',
+  'linear-gradient(145deg, #F59E0B, #EF4444)',
+  'linear-gradient(145deg, #14B8A6, #22D3EE)',
+  'linear-gradient(145deg, #6366F1, #A855F7)',
+  'linear-gradient(145deg, #10B981, #84CC16)',
+] as const
+
+function hashString(value: string) {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0
+  }
+  return hash
+}
+
+function creativePreviewGradient(id: string, name: string) {
+  const seed = `${id}:${name}` || 'creative-preview'
+  return creativePreviewGradients[hashString(seed) % creativePreviewGradients.length]
 }
 
 watch(provider, () => {
@@ -3708,10 +4622,30 @@ watch(useClientCredentials, (enabled) => {
   }
 })
 
+watch(selectedCampaignId, () => {
+  campaignExpandedGroupIds.value = []
+})
+
 watch(
   () => [currentView.value, locale.value, isAuthenticated.value, workspaceScreenTitle.value],
   () => {
     updateDocumentTitle()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => [isAuthenticated.value, isAccountsSection.value, accountPageSnapshotSourceKey.value],
+  ([authenticated, isAccountsView]) => {
+    if (!authenticated) {
+      accountPageSnapshotRequestId.value += 1
+      accountPageSnapshots.value = {}
+      return
+    }
+    if (!isAccountsView) {
+      return
+    }
+    void loadAccountPageSnapshots()
   },
   { immediate: true },
 )
@@ -3729,6 +4663,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearConnectModalStageTimer()
   window.removeEventListener('popstate', handlePopState)
   window.removeEventListener('resize', handleViewportResize)
   window.removeEventListener('mousedown', handleGlobalPointer)
@@ -3741,19 +4676,17 @@ watch(currentView, (view) => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'app-shell-auth': !bootLoading && !isAuthenticated && !isLegalView }">
+  <div
+    class="app-shell"
+    :class="{
+      'app-shell-auth': !bootLoading && !isAuthenticated && !isLegalView,
+      'app-shell-workspace': !bootLoading && isAuthenticated && !isLegalView,
+    }"
+  >
     <header v-if="!bootLoading && isLegalView" class="topbar">
       <template>
         <div class="topbar-brand">
-          <div class="brand-lockup" aria-label="chatico ads">
-            <span class="brand-mark" aria-hidden="true">
-              <span class="brand-mark-bubble"></span>
-            </span>
-            <span class="brand-wordmark">
-              <span class="brand-wordmark-main">chatico</span>
-              <span class="brand-wordmark-sub">ads</span>
-            </span>
-          </div>
+          <img class="brand-logo-image topbar-logo-image" src="/logo-chatico-ads.png" alt="chatico ads" draggable="false" />
           <div class="topbar-copy">
             <p class="eyebrow">{{ copy.brand }}</p>
             <p class="topbar-subtitle">{{ topbarContextLine }}</p>
@@ -3867,21 +4800,17 @@ watch(currentView, (view) => {
 
     <main v-else-if="!isAuthenticated" class="auth-stage">
       <section class="auth-shell">
-        <div class="brand-lockup auth-shell-brand" aria-label="chatico ads">
-          <span class="brand-mark" aria-hidden="true">
-            <span class="brand-mark-bubble"></span>
-          </span>
-          <span class="brand-wordmark">
-            <span class="brand-wordmark-main">chatico</span>
-            <span class="brand-wordmark-sub">ads</span>
-          </span>
-        </div>
+        <img class="auth-shell-logo" src="/logo-chatico-ads.png" alt="chatico ads" draggable="false" />
 
-        <div class="auth-panel auth-shell-card">
-          <p class="auth-shell-eyebrow">Meta · Google · TikTok</p>
-          <p class="auth-shell-copy">{{ copy.authLead }}</p>
+        <div class="auth-shell-card">
+          <div class="auth-shell-copy">
+            <h1 class="auth-shell-title">
+              {{ authMode === 'register' ? copy.authRegisterTitle : copy.authLoginTitle }}
+            </h1>
+            <p class="auth-shell-lead">{{ copy.authLead }}</p>
+          </div>
 
-          <div class="panel-tabs">
+          <div class="panel-tabs auth-mode-tabs">
             <button
               type="button"
               class="panel-tab"
@@ -3900,7 +4829,7 @@ watch(currentView, (view) => {
             </button>
           </div>
 
-          <form class="auth-form" @submit.prevent="submitAuth">
+          <form class="auth-form auth-shell-form" @submit.prevent="submitAuth">
             <label>
               <span>{{ copy.email }}</span>
               <input v-model.trim="authForm.email" type="email" autocomplete="email" required />
@@ -3931,18 +4860,20 @@ watch(currentView, (view) => {
             </button>
           </form>
 
-          <p class="panel-hint auth-panel-hint">{{ copy.authHint }}</p>
           <p v-if="authError" class="message error">{{ authError }}</p>
           <p v-else-if="pageError" class="message error">{{ pageError }}</p>
 
-          <div class="auth-shell-links">
-            <button type="button" class="ghost-button compact-button" @click="openPrivacyPolicy">
-              {{ copy.privacyPolicy }}
-            </button>
-            <button type="button" class="ghost-button compact-button" @click="openTermsOfService">
-              {{ copy.termsOfService }}
-            </button>
-          </div>
+          <p class="auth-shell-footnote">{{ copy.authHint }}</p>
+        </div>
+
+        <div class="auth-shell-links">
+          <button type="button" class="auth-shell-link" @click="openPrivacyPolicy">
+            {{ copy.privacyPolicy }}
+          </button>
+          <span class="auth-shell-divider" aria-hidden="true">·</span>
+          <button type="button" class="auth-shell-link" @click="openTermsOfService">
+            {{ copy.termsOfService }}
+          </button>
         </div>
       </section>
     </main>
@@ -3967,16 +4898,7 @@ watch(currentView, (view) => {
         </button>
 
         <div class="workspace-brand-panel" :class="{ collapsed: sidebarCollapsed }">
-          <div class="brand-lockup" aria-label="chatico ads">
-            <span class="brand-mark" aria-hidden="true">
-              <span class="brand-mark-bubble"></span>
-            </span>
-            <span class="brand-wordmark">
-              <span class="brand-wordmark-main">chatico</span>
-              <span class="brand-wordmark-sub">ads</span>
-            </span>
-          </div>
-          <p v-if="!sidebarCollapsed" class="workspace-brand-note">{{ currentProviderOption.subtitle }}</p>
+          <img class="brand-logo-image workspace-brand-logo" src="/logo-chatico-ads.png" alt="chatico ads" draggable="false" />
         </div>
 
         <section ref="platformMenuRef" class="rail-section platform-section" :class="{ collapsed: sidebarCollapsed }">
@@ -3985,20 +4907,30 @@ watch(currentView, (view) => {
             type="button"
             class="platform-switcher"
             :class="{ collapsed: sidebarCollapsed }"
-            @click="platformMenuOpen = !platformMenuOpen"
+            :aria-label="sidebarCollapsed ? currentProviderOption.label : undefined"
+            @click="togglePlatformMenu"
           >
             <span class="platform-badge" :class="selectedProvider">
-              {{ providerGlyph(selectedProvider) }}
+              <PlatformLogo :provider="selectedProvider" />
             </span>
             <div v-if="!sidebarCollapsed" class="platform-switcher-copy">
               <strong>{{ currentProviderOption.label }}</strong>
-              <small>{{ currentProviderOption.subtitle }}</small>
             </div>
-            <span v-if="!sidebarCollapsed" class="platform-switcher-meta">{{ currentProviderOption.count }}</span>
-            <span v-else class="nav-tooltip">{{ currentProviderOption.label }}</span>
+            <svg
+              v-if="!sidebarCollapsed"
+              class="platform-switcher-chevron"
+              :class="{ open: platformMenuVisible && !sidebarCollapsed }"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
 
-          <div v-if="platformMenuOpen" class="platform-menu" :class="{ collapsed: sidebarCollapsed }">
+          <div v-if="platformMenuVisible" class="platform-menu" :class="{ collapsed: sidebarCollapsed }">
+            <p v-if="sidebarCollapsed" class="platform-menu-kicker">{{ copy.platforms }}</p>
             <button
               v-for="providerOption in providerOptions"
               :key="providerOption.key"
@@ -4008,13 +4940,11 @@ watch(currentView, (view) => {
               @click="setWorkspaceProvider(providerOption.key)"
             >
               <span class="platform-badge" :class="providerOption.key">
-                {{ providerGlyph(providerOption.key) }}
+                <PlatformLogo :provider="providerOption.key" />
               </span>
               <div class="platform-option-copy">
                 <strong>{{ providerOption.label }}</strong>
-                <small>{{ providerOption.subtitle }}</small>
               </div>
-              <span class="platform-option-state">{{ providerOption.count }}</span>
             </button>
           </div>
         </section>
@@ -4036,7 +4966,103 @@ watch(currentView, (view) => {
             <span v-if="!sidebarCollapsed">{{ copy.sidebarOverview }}</span>
             <span v-else class="nav-tooltip">{{ copy.sidebarOverview }}</span>
           </button>
+        </section>
 
+        <div class="rail-divider"></div>
+
+        <section v-if="!sidebarCollapsed" class="rail-section rail-campaigns">
+          <button
+            type="button"
+            class="overview-nav rail-campaigns-toggle"
+            :class="{ active: workspaceMode === 'campaign' }"
+            @click="campaignsExpanded = !campaignsExpanded"
+          >
+            <svg class="overview-nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"
+              />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"
+              />
+            </svg>
+            <span>{{ copy.campaigns }}</span>
+            <svg class="section-toggle-icon" :class="{ open: campaignsExpanded }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div v-if="campaignsExpanded" class="rail-campaigns-panel">
+            <p class="rail-campaigns-caption">{{ campaignRailCaption }}</p>
+            <div v-if="report?.campaigns?.length" class="campaign-tree">
+              <button
+                v-for="(campaign, index) in report.campaigns"
+                :key="campaign.id"
+                type="button"
+                class="campaign-nav"
+                :class="{ active: workspaceMode === 'campaign' && selectedCampaignId === campaign.id }"
+                @click="selectCampaign(campaign.id)"
+              >
+                <span class="campaign-tree-line" :class="{ last: index === report.campaigns.length - 1 }"></span>
+                <span class="campaign-tree-branch"></span>
+                <span v-if="workspaceMode === 'campaign' && selectedCampaignId === campaign.id" class="campaign-tree-marker"></span>
+                <strong>{{ campaign.name }}</strong>
+                <small>{{ formatMetricValue('spend', campaign.metrics.spend.current) }}</small>
+              </button>
+            </div>
+            <div v-else class="empty-note">{{ copy.emptyCampaigns }}</div>
+          </div>
+        </section>
+
+        <section v-else class="rail-section rail-campaigns-collapsed">
+          <div class="rail-campaigns-hover">
+            <button
+              type="button"
+              class="overview-nav icon-only rail-campaigns-icon-button"
+              :class="{ active: workspaceMode === 'campaign' }"
+            >
+              <svg class="overview-nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"
+                />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"
+                />
+              </svg>
+              <span class="nav-tooltip">{{ copy.campaigns }}</span>
+            </button>
+
+            <div class="campaign-rail-popover">
+              <p class="campaign-rail-popover-title">{{ copy.campaigns }}</p>
+              <div v-if="report?.campaigns?.length" class="campaign-rail-popover-tree">
+                <button
+                  v-for="(campaign, index) in report.campaigns"
+                  :key="`collapsed-${campaign.id}`"
+                  type="button"
+                  class="campaign-nav"
+                  :class="{ active: workspaceMode === 'campaign' && selectedCampaignId === campaign.id }"
+                  @click="selectCampaign(campaign.id)"
+                >
+                  <span class="campaign-tree-line" :class="{ last: index === report.campaigns.length - 1 }"></span>
+                  <span class="campaign-tree-branch"></span>
+                  <span v-if="workspaceMode === 'campaign' && selectedCampaignId === campaign.id" class="campaign-tree-marker"></span>
+                  <strong>{{ campaign.name }}</strong>
+                  <small>{{ formatMetricValue('spend', campaign.metrics.spend.current) }}</small>
+                </button>
+              </div>
+              <div v-else class="empty-note">{{ copy.emptyCampaigns }}</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rail-section rail-secondary-nav">
           <button
             type="button"
             class="overview-nav"
@@ -4055,39 +5081,14 @@ watch(currentView, (view) => {
           </button>
         </section>
 
-        <div class="rail-divider"></div>
-
-        <section v-if="!sidebarCollapsed" class="rail-section rail-campaigns">
-          <button type="button" class="section-head rail-section-toggle" @click="campaignsExpanded = !campaignsExpanded">
-            <span>{{ copy.campaigns }}</span>
-            <small>{{ report?.campaigns?.length ?? 0 }}</small>
-            <svg class="section-toggle-icon" :class="{ open: campaignsExpanded }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          <div v-if="campaignsExpanded && report?.campaigns?.length" class="campaign-tree">
-            <button
-              v-for="(campaign, index) in report.campaigns"
-              :key="campaign.id"
-              type="button"
-              class="campaign-nav"
-              :class="{ active: workspaceMode === 'campaign' && selectedCampaignId === campaign.id }"
-              @click="selectCampaign(campaign.id)"
-            >
-              <span class="campaign-tree-line" :class="{ last: index === report.campaigns.length - 1 }"></span>
-              <span class="campaign-tree-branch"></span>
-              <span v-if="workspaceMode === 'campaign' && selectedCampaignId === campaign.id" class="campaign-tree-marker"></span>
-              <strong>{{ campaign.name }}</strong>
-              <small>{{ formatMetricValue('spend', campaign.metrics.spend.current) }}</small>
-            </button>
-          </div>
-          <div v-else-if="campaignsExpanded" class="empty-note">{{ copy.emptyCampaigns }}</div>
-        </section>
-
         <div class="rail-spacer"></div>
 
-        <div class="rail-footer-links" :class="{ collapsed: sidebarCollapsed }">
+        <div class="rail-bottom" :class="{ collapsed: sidebarCollapsed }">
+          <div v-if="!sidebarCollapsed" class="rail-version-card">
+            <span>AI Analytics</span>
+            <strong>v0.3.0</strong>
+          </div>
+
           <button
             type="button"
             class="overview-nav rail-footer-nav"
@@ -4105,12 +5106,6 @@ watch(currentView, (view) => {
             <span v-if="!sidebarCollapsed">{{ copy.sidebarSettings }}</span>
             <span v-else class="nav-tooltip">{{ copy.sidebarSettings }}</span>
           </button>
-
-          <div v-if="!sidebarCollapsed" class="rail-meta-links">
-            <button type="button" class="rail-footer-link" @click="openPrivacyPolicy">{{ copy.privacyPolicy }}</button>
-            <button type="button" class="rail-footer-link" @click="openTermsOfService">{{ copy.termsOfService }}</button>
-            <button type="button" class="rail-footer-link" @click="logout">{{ copy.logout }}</button>
-          </div>
         </div>
       </aside>
 
@@ -4118,14 +5113,21 @@ watch(currentView, (view) => {
         <header class="topbar topbar-workspace workspace-stage-topbar">
           <div ref="accountSwitcherRef" class="account-switcher">
             <button type="button" class="account-switcher-trigger" @click="accountSwitcherOpen = !accountSwitcherOpen">
-              <span class="account-switcher-avatar">
-                {{ selectedAccount?.name?.trim().charAt(0).toUpperCase() || selectedProviderLabel.charAt(0) }}
-              </span>
-              <div class="account-switcher-copy">
-                <span>{{ copy.accountSwitcherLabel }}</span>
-                <strong>{{ accountSwitcherLabel }}</strong>
-                <small>{{ accountSwitcherSubtitle }}</small>
-              </div>
+              <template v-if="selectedAccount">
+                <span class="account-switcher-avatar-shell" :class="selectedProvider">
+                  <span class="account-switcher-avatar">
+                    {{ selectedAccount.name.trim().charAt(0).toUpperCase() || selectedProviderLabel.charAt(0) }}
+                  </span>
+                  <span class="account-switcher-avatar-badge" aria-hidden="true">
+                    <PlatformLogo :provider="selectedProvider" />
+                  </span>
+                </span>
+                <div class="account-switcher-copy">
+                  <span>{{ copy.accountSwitcherLabel }}</span>
+                  <strong>{{ selectedAccount.name }}</strong>
+                </div>
+              </template>
+              <span v-else class="account-switcher-empty">{{ copy.accountSwitcherEmpty }}</span>
               <svg
                 class="account-switcher-chevron"
                 :class="{ open: accountSwitcherOpen }"
@@ -4140,57 +5142,57 @@ watch(currentView, (view) => {
 
             <div v-if="accountSwitcherOpen" class="account-switcher-menu">
               <p class="account-switcher-eyebrow">{{ copy.yourAccounts }}</p>
-              <div v-if="currentProviderAccounts.length === 0" class="empty-note">
-                {{ currentProviderEmptyMessage }}
+              <div v-if="accountPageCards.length === 0" class="empty-note">
+                {{ copy.accountSwitcherEmpty }}
               </div>
-              <button
-                v-for="item in currentProviderAccounts"
-                :key="`${item.provider}:${item.id}`"
-                type="button"
-                class="account-switcher-option"
-                :class="{ active: selectedProvider === item.provider && selectedAccountId === item.id }"
-                @click="selectAccount(item.provider, item.id)"
-              >
-                <span class="account-switcher-option-avatar">{{ item.name.charAt(0).toUpperCase() }}</span>
-                <div class="account-switcher-option-copy">
-                  <strong>{{ item.name }}</strong>
-                  <small>{{ item.subtitle }}</small>
-                </div>
-                <svg
-                  v-if="selectedProvider === item.provider && selectedAccountId === item.id"
-                  class="account-switcher-check"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2.5"
+              <div v-if="accountPageCards.length > 0" class="account-switcher-menu-scroll">
+                <button
+                  v-for="item in accountPageCards"
+                  :key="`${item.provider}:${item.id}`"
+                  type="button"
+                  class="account-switcher-option"
+                  :class="{ active: isSelectedWorkspaceAccount(item.provider, item.id) }"
+                  @click="selectAccount(item.provider, item.id)"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
+                  <span class="account-switcher-option-avatar-shell" :class="item.provider">
+                    <span class="account-switcher-option-avatar">{{ item.name.charAt(0).toUpperCase() }}</span>
+                    <span class="account-switcher-avatar-badge" aria-hidden="true">
+                      <PlatformLogo :provider="item.provider" />
+                    </span>
+                  </span>
+                  <div class="account-switcher-option-copy">
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.providerLabel }} · {{ item.subtitle }}</small>
+                  </div>
+                  <svg
+                    v-if="isSelectedWorkspaceAccount(item.provider, item.id)"
+                    class="account-switcher-check"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+              </div>
 
               <div class="account-switcher-divider"></div>
 
-              <button type="button" class="menu-action" @click="connectCurrentProvider">
-                {{
-                  selectedProvider === 'google_ads'
-                    ? copy.connectGoogle
-                    : selectedProvider === 'tiktok_ads'
-                      ? copy.connectTikTok
-                      : copy.connectMeta
-                }}
-              </button>
-              <button v-if="currentProviderHasAccounts" type="button" class="menu-action muted" @click="disconnectCurrentProvider">
-                {{
-                  selectedProvider === 'google_ads'
-                    ? copy.disconnectGoogle
-                    : selectedProvider === 'tiktok_ads'
-                      ? copy.disconnectTikTok
-                      : copy.disconnectMeta
-                }}
-              </button>
-              <button type="button" class="menu-action muted" @click="openAccountsPage">
-                {{ copy.sidebarAccounts }}
-              </button>
+              <div class="account-switcher-menu-actions">
+                <button type="button" class="menu-action" @click="openConnectModal()">
+                  <svg class="menu-action-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  {{ copy.connectAccount }}
+                </button>
+                <button type="button" class="menu-action muted" @click="openAccountsPage">
+                  <svg class="menu-action-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  {{ copy.manageAccounts }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -4204,7 +5206,7 @@ watch(currentView, (view) => {
             <div v-if="!aiPanelOpen" class="workspace-toolbar-divider" aria-hidden="true"></div>
             <div v-if="user" class="workspace-user">
               <span class="user-avatar">{{ userInitial }}</span>
-              <span class="user-email">{{ user.email }}</span>
+              <span class="workspace-user-label" :title="user.email">{{ workspaceUserLabel }}</span>
             </div>
           </div>
         </header>
@@ -4215,324 +5217,344 @@ watch(currentView, (view) => {
         <div v-if="pageError" class="message error">{{ pageError }}</div>
 
         <template v-if="workspaceMode === 'settings'">
-          <section class="hero-strip dashboard-hero">
-            <div>
-              <p class="eyebrow">{{ copy.sidebarSettings }}</p>
-              <h2>{{ copy.settingsPageTitle }}</h2>
-              <p class="muted">{{ copy.settingsPageLead }}</p>
-            </div>
-          </section>
+          <section class="settings-stage">
+            <section class="reference-page-head settings-page-head">
+              <div class="reference-heading settings-intro">
+                <div class="reference-kicker">
+                  <span class="reference-kicker-bar"></span>
+                  <p class="eyebrow">{{ currentProviderOption.label }} · {{ accountSwitcherLabel }}</p>
+                </div>
+                <h2>{{ copy.settingsPageTitle }}</h2>
+                <p>{{ copy.settingsPageLead }}</p>
+              </div>
+            </section>
 
-          <section class="settings-grid">
-            <article class="settings-card">
-              <div class="section-head">
-                <div>
+            <section class="summary-band settings-summary-band">
+              <article v-for="item in settingsSummaryCards" :key="item.label" class="summary-chip settings-summary-chip">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+                <small>{{ item.caption }}</small>
+              </article>
+            </section>
+
+            <section class="settings-layout">
+              <article class="settings-card settings-profile-card">
+                <div class="settings-card-heading">
                   <span>{{ copy.settingsProfileTitle }}</span>
                   <p class="surface-note">{{ copy.settingsProfileLead }}</p>
                 </div>
-              </div>
-              <div class="profile-stack">
-                <div class="profile-row">
+
+                <div class="settings-profile-summary">
                   <span class="user-avatar large">{{ userInitial }}</span>
-                  <div>
+                  <div class="settings-profile-copy">
                     <strong>{{ user?.email || copy.brand }}</strong>
-                    <small>{{ currentProviderOption.label }} · {{ currentProviderOption.subtitle }}</small>
+                    <small>{{ currentProviderOption.label }} · {{ accountSwitcherLabel }}</small>
                   </div>
                 </div>
-                <button type="button" class="ghost-button compact-button" @click="logout">
-                  {{ copy.logout }}
-                </button>
-              </div>
-            </article>
 
-            <article class="settings-card">
-              <div class="section-head">
-                <div>
+                <div class="settings-pill-row settings-profile-pills">
+                  <span class="settings-badge">{{ accountSwitcherLabel }}</span>
+                  <span class="settings-badge">{{ currentProviderOption.label }}</span>
+                  <span class="settings-badge">{{ copy.accountsPageConnected }}: {{ connectedAccountCount }}</span>
+                </div>
+
+                <dl class="settings-detail-list">
+                  <div>
+                    <dt>{{ copy.accountSwitcherLabel }}</dt>
+                    <dd>{{ accountSwitcherLabel }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ copy.platforms }}</dt>
+                    <dd>{{ currentProviderOption.label }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ copy.accountsPageConnected }}</dt>
+                    <dd>{{ connectedAccountCount }}</dd>
+                  </div>
+                </dl>
+
+                <div class="settings-profile-actions">
+                  <button type="button" class="ghost-button compact-button settings-stage-logout" @click="logout">
+                    {{ copy.logout }}
+                  </button>
+                </div>
+              </article>
+
+              <article class="settings-card settings-language-card">
+                <div class="settings-card-heading">
                   <span>{{ copy.settingsLanguageTitle }}</span>
                   <p class="surface-note">{{ copy.settingsLanguageLead }}</p>
                 </div>
-              </div>
-              <div class="lang-switch settings-lang-switch" role="tablist" :aria-label="copy.locale">
-                <button
-                  v-for="lang in ['ru', 'kz', 'en']"
-                  :key="`settings-${lang}`"
-                  type="button"
-                  class="lang-pill"
-                  :class="{ active: locale === lang }"
-                  @click="void syncLocale(lang as Locale)"
-                >
-                  {{ lang.toUpperCase() }}
-                </button>
-              </div>
-            </article>
 
-            <article class="settings-card settings-card-wide">
-              <div class="section-head">
-                <div>
-                  <span>{{ copy.settingsAiTitle }}</span>
-                  <p class="surface-note">{{ copy.settingsAiLead }}</p>
-                </div>
-              </div>
-
-              <div class="settings-pill-row">
-                <span class="settings-badge">{{ activeProviderConfig?.label || provider }}</span>
-                <span class="settings-badge">{{ resolvedModel || activeProviderConfig?.default_model }}</span>
-                <span class="settings-badge" :class="{ muted: !hasSavedProviderKey }">
-                  {{ hasSavedProviderKey ? copy.settingsSavedKey : copy.settingsNoSavedKey }}
-                </span>
-              </div>
-
-              <div class="chat-advanced-toggle settings-toggle-row">
-                <button
-                  type="button"
-                  class="ghost-button compact-button"
-                  @click="useClientCredentials = !useClientCredentials"
-                >
-                  {{ useClientCredentials ? copy.hideOwnApiKey : copy.useOwnApiKey }}
-                </button>
-              </div>
-
-              <div class="chat-advanced settings-advanced">
-                <p class="surface-note">{{ copy.customAiSettingsHint }}</p>
-
-                <div class="control-grid">
-                  <label>
-                    <span>{{ copy.provider }}</span>
-                    <select v-model="provider">
-                      <option v-for="providerOption in providerCatalog" :key="providerOption.key" :value="providerOption.key">
-                        {{ providerOption.label }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label>
-                    <span>{{ copy.model }}</span>
-                    <select v-model="selectedModelPreset">
-                      <option v-for="preset in availableModelPresets" :key="preset.value" :value="preset.value">
-                        {{ presetLabel(preset) }}
-                      </option>
-                      <option v-if="activeProviderConfig?.supports_custom_model" :value="CUSTOM_MODEL_OPTION">
-                        {{ copy.modelCustomOption }}
-                      </option>
-                    </select>
-                  </label>
-                </div>
-
-                <label v-if="isCustomModelSelected">
-                  <span>{{ copy.modelCustom }}</span>
-                  <input v-model.trim="customModel" type="text" :placeholder="copy.modelCustomPlaceholder" />
-                </label>
-                <p class="surface-note">{{ modelSelectionHint }}</p>
-
-                <div class="provider-key-card">
-                  <div class="provider-key-head">
-                    <span>{{ copy.apiKey }}</span>
-                    <div v-if="hasSavedProviderKey && !showProviderKeyInput" class="provider-key-actions">
-                      <button type="button" class="ghost-button compact-button" @click="startProviderKeyEdit">
-                        {{ copy.replaceApiKey }}
-                      </button>
-                      <button
-                        type="button"
-                        class="ghost-button compact-button"
-                        :disabled="providerKeyLoading"
-                        @click="deleteProviderKey"
-                      >
-                        {{ copy.removeApiKey }}
-                      </button>
-                    </div>
+                <div class="settings-language-row">
+                  <div class="lang-switch settings-lang-switch" role="tablist" :aria-label="copy.locale">
+                    <button
+                      v-for="lang in ['ru', 'kz', 'en']"
+                      :key="`settings-${lang}`"
+                      type="button"
+                      class="lang-pill"
+                      :class="{ active: locale === lang }"
+                      @click="void syncLocale(lang as Locale)"
+                    >
+                      {{ lang.toUpperCase() }}
+                    </button>
                   </div>
+                  <p class="settings-language-current">{{ localeDisplayName(locale) }}</p>
+                </div>
+              </article>
 
-                  <p v-if="hasSavedProviderKey && !showProviderKeyInput" class="surface-note">
-                    {{ copy.savedKeyHint }}
-                  </p>
-
-                  <template v-if="showProviderKeyInput">
-                    <label class="provider-key-input">
-                      <input v-model="clientApiKey" type="password" placeholder="sk-..." />
-                    </label>
-                    <div class="provider-key-actions">
-                      <button
-                        type="button"
-                        class="ghost-button compact-button"
-                        :disabled="providerKeyLoading || !clientApiKey.trim()"
-                        @click="saveProviderKey"
-                      >
-                        {{ copy.saveApiKey }}
-                      </button>
-                      <button
-                        v-if="hasSavedProviderKey"
-                        type="button"
-                        class="ghost-button compact-button"
-                        :disabled="providerKeyLoading"
-                        @click="cancelProviderKeyEdit"
-                      >
-                        {{ copy.cancel }}
-                      </button>
-                    </div>
-                  </template>
+              <article class="settings-card settings-notifications-card">
+                <div class="settings-card-heading">
+                  <span>{{ copy.settingsNotificationsTitle }}</span>
+                  <p class="surface-note">{{ copy.settingsNotificationsLead }}</p>
                 </div>
 
-                <p class="surface-note">{{ copy.chatKeyHint }}</p>
-                <p v-if="providerKeyNotice" class="message success">{{ providerKeyNotice }}</p>
-                <p v-if="providerKeyError" class="message error">{{ providerKeyError }}</p>
-              </div>
-            </article>
+                <div class="settings-preference-list">
+                  <button
+                    v-for="item in settingsNotificationRows"
+                    :key="item.key"
+                    type="button"
+                    class="settings-toggle-row"
+                    :class="{ active: settingsNotificationPreferences[item.key] }"
+                    @click="toggleSettingsNotification(item.key)"
+                  >
+                    <div class="settings-toggle-copy">
+                      <strong>{{ item.label }}</strong>
+                      <small>{{ item.hint }}</small>
+                    </div>
+                    <span class="settings-toggle-pill" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </article>
 
-            <article class="settings-card">
-              <div class="section-head">
-                <div>
+              <article class="settings-card settings-legal-card">
+                <div class="settings-card-heading">
                   <span>{{ copy.settingsLegalTitle }}</span>
                   <p class="surface-note">{{ copy.settingsLegalLead }}</p>
                 </div>
-              </div>
-              <div class="settings-links">
-                <button type="button" class="ghost-button compact-button" @click="openPrivacyPolicy">
-                  {{ copy.privacyPolicy }}
-                </button>
-                <button type="button" class="ghost-button compact-button" @click="openTermsOfService">
-                  {{ copy.termsOfService }}
-                </button>
-              </div>
-            </article>
+
+                <div class="settings-links settings-links-stack">
+                  <button type="button" class="ghost-button compact-button" @click="openPrivacyPolicy">
+                    {{ copy.privacyPolicy }}
+                  </button>
+                  <button type="button" class="ghost-button compact-button" @click="openTermsOfService">
+                    {{ copy.termsOfService }}
+                  </button>
+                </div>
+              </article>
+
+              <article class="settings-card settings-ai-card settings-layout-wide">
+                <div class="settings-ai-head">
+                  <div class="settings-card-heading">
+                    <span>{{ copy.settingsAiTitle }}</span>
+                    <p class="surface-note">{{ copy.settingsAiLead }}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="ghost-button compact-button settings-ai-toggle"
+                    @click="useClientCredentials = !useClientCredentials"
+                  >
+                    {{ useClientCredentials ? copy.hideOwnApiKey : copy.useOwnApiKey }}
+                  </button>
+                </div>
+
+                <div class="settings-pill-row settings-status-row">
+                  <span class="settings-badge">{{ activeProviderConfig?.label || provider }}</span>
+                  <span class="settings-badge">{{ resolvedModel || activeProviderConfig?.default_model }}</span>
+                  <span class="settings-badge" :class="{ muted: !hasSavedProviderKey }">
+                    {{ hasSavedProviderKey ? copy.settingsSavedKey : copy.settingsNoSavedKey }}
+                  </span>
+                </div>
+
+                <div class="settings-ai-body">
+                  <p class="surface-note">{{ copy.customAiSettingsHint }}</p>
+
+                  <div class="control-grid settings-control-grid">
+                    <label>
+                      <span>{{ copy.provider }}</span>
+                      <select v-model="provider">
+                        <option v-for="providerOption in providerCatalog" :key="providerOption.key" :value="providerOption.key">
+                          {{ providerOption.label }}
+                        </option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span>{{ copy.model }}</span>
+                      <select v-model="selectedModelPreset">
+                        <option v-for="preset in availableModelPresets" :key="preset.value" :value="preset.value">
+                          {{ presetLabel(preset) }}
+                        </option>
+                        <option v-if="activeProviderConfig?.supports_custom_model" :value="CUSTOM_MODEL_OPTION">
+                          {{ copy.modelCustomOption }}
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label v-if="isCustomModelSelected" class="settings-inline-field">
+                    <span>{{ copy.modelCustom }}</span>
+                    <input v-model.trim="customModel" type="text" :placeholder="copy.modelCustomPlaceholder" />
+                  </label>
+                  <p class="surface-note">{{ modelSelectionHint }}</p>
+
+                  <div class="provider-key-card settings-provider-key-card">
+                    <div class="provider-key-head">
+                      <span>{{ copy.apiKey }}</span>
+                      <div v-if="hasSavedProviderKey && !showProviderKeyInput" class="provider-key-actions">
+                        <button type="button" class="ghost-button compact-button" @click="startProviderKeyEdit">
+                          {{ copy.replaceApiKey }}
+                        </button>
+                        <button
+                          type="button"
+                          class="ghost-button compact-button"
+                          :disabled="providerKeyLoading"
+                          @click="deleteProviderKey"
+                        >
+                          {{ copy.removeApiKey }}
+                        </button>
+                      </div>
+                    </div>
+
+                    <p v-if="hasSavedProviderKey && !showProviderKeyInput" class="surface-note">
+                      {{ copy.savedKeyHint }}
+                    </p>
+
+                    <template v-if="showProviderKeyInput">
+                      <label class="provider-key-input">
+                        <input v-model="clientApiKey" type="password" placeholder="sk-..." />
+                      </label>
+                      <div class="provider-key-actions">
+                        <button
+                          type="button"
+                          class="ghost-button compact-button"
+                          :disabled="providerKeyLoading || !clientApiKey.trim()"
+                          @click="saveProviderKey"
+                        >
+                          {{ copy.saveApiKey }}
+                        </button>
+                        <button
+                          v-if="hasSavedProviderKey"
+                          type="button"
+                          class="ghost-button compact-button"
+                          :disabled="providerKeyLoading"
+                          @click="cancelProviderKeyEdit"
+                        >
+                          {{ copy.cancel }}
+                        </button>
+                      </div>
+                    </template>
+                  </div>
+
+                  <p class="surface-note">{{ copy.chatKeyHint }}</p>
+                  <p v-if="providerKeyNotice" class="message success">{{ providerKeyNotice }}</p>
+                  <p v-if="providerKeyError" class="message error">{{ providerKeyError }}</p>
+                </div>
+              </article>
+            </section>
           </section>
         </template>
 
         <template v-else-if="workspaceMode === 'accounts'">
-          <section class="hero-strip dashboard-hero">
-            <div>
-              <p class="eyebrow">{{ copy.sidebarAccounts }}</p>
-              <h2>{{ copy.accountsPageTitle }}</h2>
-              <p class="muted">
-                {{ copy.accountsPageLead }}
-                <span> · {{ copy.accountsPageConnected }}: {{ connectedAccountCount }}</span>
-              </p>
-            </div>
-            <div class="hero-actions-stack">
-              <button type="button" class="primary-button compact" @click="openConnectModal()">
-                {{ copy.manageConnections }}
-              </button>
-            </div>
-          </section>
-
-          <section v-if="connectedAccountCount === 0" class="empty-surface">
-            <p class="eyebrow">{{ copy.accounts }}</p>
-            <h2>{{ copy.accountsPageEmptyTitle }}</h2>
-            <p>{{ copy.accountsPageEmptyBody }}</p>
-            <div class="empty-surface-actions">
-              <button type="button" class="primary-button" @click="openConnectModal()">
-                {{ copy.manageConnections }}
-              </button>
-            </div>
-          </section>
-
-          <section v-else class="account-page-grid">
-            <article v-for="group in connectedAccountGroups" :key="group.provider" class="account-page-section">
-              <div class="account-provider-head">
-                <div>
-                  <p class="eyebrow">{{ group.label }}</p>
-                  <h3>{{ group.subtitle }}</h3>
+          <section class="accounts-stage">
+            <header class="reference-page-head accounts-stage-header">
+              <div class="reference-heading accounts-stage-copy">
+                <div class="reference-kicker">
+                  <span class="reference-kicker-bar"></span>
+                  <p class="eyebrow">{{ copy.manageConnections }}</p>
                 </div>
-                <div class="section-actions">
-                  <button
-                    type="button"
-                    class="ghost-button compact-button"
-                    @click="startProviderConnection(group.provider)"
-                  >
-                    {{
-                      group.provider === 'google_ads'
-                        ? copy.connectGoogle
-                        : group.provider === 'tiktok_ads'
-                          ? copy.connectTikTok
-                          : copy.connectMeta
-                    }}
-                  </button>
-                  <button
-                    v-if="group.connected"
-                    type="button"
-                    class="ghost-button compact-button"
-                    @click="disconnectProvider(group.provider)"
-                  >
-                    {{
-                      group.provider === 'google_ads'
-                        ? copy.disconnectGoogle
-                        : group.provider === 'tiktok_ads'
-                          ? copy.disconnectTikTok
-                          : copy.disconnectMeta
-                    }}
-                  </button>
-                </div>
+                <h2>{{ copy.accountsPageTitle }}</h2>
+                <p class="muted">{{ accountsPageContextLine }}</p>
               </div>
 
-              <div v-if="group.cards.length === 0" class="empty-note">
-                {{
-                  group.provider === 'google_ads'
-                    ? copy.googleAccountsEmpty
-                    : group.provider === 'tiktok_ads'
-                      ? copy.tiktokAccountsEmpty
-                      : copy.noAccountsBody
-                }}
-              </div>
+              <button type="button" class="primary-button compact account-connect-button" @click="openConnectModal()">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                {{ copy.connectAccount }}
+              </button>
+            </header>
 
-              <div v-else class="account-card-grid">
-                <article
-                  v-for="card in group.cards"
-                  :key="`${group.provider}:${card.id}`"
-                  class="account-card"
-                  :class="[
-                    card.accent,
-                    { active: selectedProvider === group.provider && selectedAccountId === card.id },
-                  ]"
-                >
-                  <div class="account-card-head">
-                    <div class="account-card-profile">
+            <section v-if="connectedAccountCount === 0" class="empty-surface reference-surface account-empty-surface">
+              <p class="account-empty-surface-title">{{ copy.accountsPageEmptyTitle }}</p>
+              <p class="account-empty-surface-copy">{{ copy.accountsPageEmptyBody }}</p>
+              <div class="empty-surface-actions account-empty-surface-actions">
+                <button type="button" class="primary-button compact" @click="openConnectModal()">
+                  {{ copy.connectAccount }}
+                </button>
+              </div>
+            </section>
+
+            <section v-else class="account-reference-grid">
+              <article
+                v-for="card in accountPageCards"
+                :key="`${card.provider}:${card.id}`"
+                class="account-card reference-account-card"
+                :class="[card.accent, { active: card.isActive }]"
+              >
+                <div class="account-card-head">
+                  <div class="account-card-profile">
+                    <div class="account-card-avatar-shell">
                       <div class="account-card-avatar">{{ accountCardInitials(card.name) }}</div>
-                      <div class="account-card-copy">
-                        <div class="account-card-title-row">
-                          <strong>{{ card.name }}</strong>
-                          <span class="account-card-platform">{{ group.label }}</span>
-                        </div>
-                        <small>{{ card.subtitle }}</small>
-                        <span class="account-card-status">
-                          <i class="status-dot active"></i>
-                          {{ copy.accountCardConnected }}
+                      <span class="account-card-avatar-badge" aria-hidden="true">
+                        <PlatformLogo :provider="card.provider" />
+                      </span>
+                    </div>
+
+                    <div class="account-card-copy">
+                      <span class="account-card-kicker">{{ card.providerLabel }}</span>
+                      <div class="account-card-title-row">
+                        <strong>{{ card.name }}</strong>
+                        <span v-if="card.isActive" class="account-card-badge">{{ copy.accountCardActiveBadge }}</span>
+                      </div>
+                      <small class="account-card-handle">{{ card.subtitle }}</small>
+                      <div class="account-card-status-row">
+                        <span class="account-card-status" :class="card.statusTone">
+                          <i class="status-dot" :class="card.statusTone"></i>
+                          {{ card.statusLabel }}
                         </span>
+                        <span class="account-card-platform-note">{{ copy.accountCardMetricsWindow }}</span>
                       </div>
                     </div>
-                    <span v-if="selectedProvider === group.provider && selectedAccountId === card.id" class="account-card-badge">
-                      {{ copy.accountsPageSelected }}
-                    </span>
                   </div>
+                </div>
 
-                  <div class="account-card-stats">
-                    <div class="account-card-stat">
-                      <span>{{ copy.accountCardId }}</span>
-                      <strong>{{ card.subtitle }}</strong>
-                    </div>
-                    <div class="account-card-stat">
-                      <span>{{ copy.accountCardCurrency }}</span>
-                      <strong>{{ card.currency }}</strong>
-                    </div>
-                    <div class="account-card-stat">
-                      <span>{{ copy.accountCardTimezone }}</span>
-                      <strong>{{ card.timezone }}</strong>
-                    </div>
+                <div class="account-card-stats">
+                  <div class="account-card-stat">
+                    <span>{{ copy.accountCardSpendMonth }}</span>
+                    <strong :class="{ 'is-loading': isAccountPageSnapshotLoading(card) }">{{ accountCardSpendValue(card) }}</strong>
                   </div>
+                  <div class="account-card-stat">
+                    <span>{{ accountCardResultsLabel(card) }}</span>
+                    <strong :class="{ 'is-loading': isAccountPageSnapshotLoading(card) }">{{ accountCardResultsValue(card) }}</strong>
+                  </div>
+                  <div class="account-card-stat">
+                    <span>{{ copy.accountCardCampaigns }}</span>
+                    <strong :class="{ 'is-loading': isAccountPageSnapshotLoading(card) }">{{ accountCardCampaignsValue(card) }}</strong>
+                  </div>
+                </div>
 
+                <div class="account-card-actions">
                   <button
                     type="button"
                     class="primary-button compact account-card-action"
-                    :disabled="selectedProvider === group.provider && selectedAccountId === card.id"
-                    @click="selectAccount(group.provider, card.id)"
+                    :disabled="card.isActive || providerIsConnecting(card.provider) || Boolean(accountDisconnectingKey)"
+                    @click="selectAccount(card.provider, card.id)"
                   >
-                    {{
-                      selectedProvider === group.provider && selectedAccountId === card.id
-                        ? copy.accountsPageSelected
-                        : copy.accountsPageSelect
-                    }}
+                    {{ card.isActive ? copy.accountsPageSelected : copy.accountsPageSelect }}
                   </button>
-                </article>
-              </div>
-            </article>
+                  <button
+                    type="button"
+                    class="ghost-button compact-button account-card-secondary-action"
+                    :disabled="providerIsConnecting(card.provider) || Boolean(accountDisconnectingKey)"
+                    @click="disconnectAccount(card.provider, card.id, card.name)"
+                  >
+                    {{ isAccountDisconnecting(card.provider, card.id) ? copy.accountCardDisconnecting : copy.accountCardDisconnect }}
+                  </button>
+                </div>
+              </article>
+            </section>
           </section>
         </template>
 
@@ -4542,7 +5564,7 @@ watch(currentView, (view) => {
           <p>{{ copy.noAccountsBody }}</p>
           <div class="empty-surface-actions">
             <button type="button" class="primary-button" @click="openConnectModal()">
-              {{ copy.manageConnections }}
+              {{ copy.connectAccount }}
             </button>
           </div>
         </section>
@@ -4571,78 +5593,60 @@ watch(currentView, (view) => {
 
         <template v-else-if="report">
           <template v-if="workspaceMode === 'overview'">
-            <section class="hero-strip dashboard-hero reference-hero">
+            <section class="reference-page-head dashboard-page-head">
               <div class="reference-heading">
                 <div class="reference-kicker">
                   <span class="reference-kicker-bar"></span>
                   <p class="eyebrow">{{ currentProviderOption.label }} · {{ currentProviderOption.subtitle }}</p>
                 </div>
                 <h2>{{ copy.overviewAccount }}</h2>
-                <p class="muted">
+                <p class="muted dashboard-hero-copy">
                   {{ copy.overviewLead }}
-                  <span>
-                    · {{ report.periods.current.since }} - {{ report.periods.current.until }}
+                  <span v-if="overviewCurrentRangeLabel" class="dashboard-hero-range">
+                    {{ overviewCurrentRangeLabel }}
                   </span>
-                  <span v-if="report.account.timezone_name"> · {{ report.account.timezone_name }}</span>
                 </p>
               </div>
 
-              <div class="hero-actions hero-actions-stack reference-hero-actions">
-                <div class="range-grid range-grid-inline">
-                  <button
-                    v-for="days in [7, 30, 90]"
-                    :key="days"
-                    type="button"
-                    class="range-button"
-                    :class="{ active: reportDays === days }"
-                    @click="selectDays(days)"
-                  >
-                    {{ copy.dayOptions[days as 7 | 30 | 90] }}
-                  </button>
-                </div>
-                <button type="button" class="ghost-button" :disabled="reportLoading" @click="loadReport({ forceRefresh: true })">
-                  {{ copy.refreshData }}
+              <div class="dashboard-period-switcher" :aria-label="copy.days">
+                <button
+                  v-for="days in overviewPeriodOptions"
+                  :key="days"
+                  type="button"
+                  class="dashboard-period-button"
+                  :class="{ active: reportDays === days }"
+                  @click="selectDays(days)"
+                >
+                  {{ copy.dayOptions[days] }}
                 </button>
               </div>
             </section>
 
             <section class="ai-surface verdict-surface reference-surface reference-verdict-surface">
-              <div class="section-head">
-                <div class="verdict-title">
-                  <span>{{ copy.aiVerdict }}</span>
-                  <div class="info-tooltip">
-                    <button
-                      type="button"
-                      class="info-tooltip-trigger"
-                      :aria-label="copy.aiVerdictInfoLabel"
-                      aria-describedby="ai-verdict-tooltip"
-                    >
-                      i
-                    </button>
-                    <span id="ai-verdict-tooltip" class="info-tooltip-panel" role="tooltip">{{ copy.aiVerdictHint }}</span>
+              <div class="verdict-head">
+                <div class="verdict-label-row">
+                  <span class="verdict-icon-chip" aria-hidden="true">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"
+                      />
+                    </svg>
+                  </span>
+                  <div class="verdict-head-copy">
+                    <span>{{ copy.aiVerdictCardTitle }}</span>
+                    <p>{{ copy.aiVerdictHint }}</p>
                   </div>
                 </div>
+                <span class="verdict-status-pill" :class="overviewVerdictTone">{{ verdictStatusLabel(overviewVerdictTone) }}</span>
               </div>
               <p v-if="verdictLoading" class="empty-note">{{ copy.loadingVerdict }}</p>
               <div v-else class="verdict-body">
-                <article
-                  v-for="(block, index) in visibleAutoVerdictBlocks"
-                  :key="`overview-verdict-${index}`"
-                  class="verdict-message"
-                >
-                  <div class="verdict-text markdown-body" v-html="renderMarkdown(block)"></div>
+                <article class="verdict-message" :class="{ 'verdict-message-empty': !autoVerdictDisplay }">
+                  <div v-if="autoVerdictDisplay" class="verdict-text markdown-body" v-html="renderMarkdown(autoVerdictDisplay)"></div>
+                  <div v-else class="verdict-text markdown-body">—</div>
                 </article>
-                <article v-if="visibleAutoVerdictBlocks.length === 0" class="verdict-message verdict-message-empty">
-                  <div class="verdict-text markdown-body">—</div>
-                </article>
-                <button
-                  v-if="hasCollapsedAutoVerdict"
-                  type="button"
-                  class="ghost-button compact-button verdict-toggle"
-                  @click="autoVerdictExpanded = !autoVerdictExpanded"
-                >
-                  {{ autoVerdictExpanded ? copy.hideVerdictDetails : copy.showVerdictDetails }}
-                </button>
               </div>
             </section>
 
@@ -4704,64 +5708,6 @@ watch(currentView, (view) => {
               <p v-else class="empty-note">{{ copy.trendEmpty }}</p>
             </section>
 
-            <section class="summary-band reference-summary-band">
-              <div class="summary-chip">
-                <span>{{ copy.activeCampaigns }}</span>
-                <strong>{{ report.summary.active_campaigns ?? 0 }}</strong>
-              </div>
-              <div class="summary-chip">
-                <span>{{ copy.totalCampaigns }}</span>
-                <strong>{{ report.summary.total_campaigns ?? 0 }}</strong>
-              </div>
-              <div class="summary-chip">
-                <span>{{ resultKindLabel(report.summary.primary_result_kind || 'result') }}</span>
-                <strong>{{ formatCompactNumber(report.summary.metrics.results.current) }}</strong>
-              </div>
-            </section>
-
-            <section class="compare-strip reference-compare-strip">
-              <p class="eyebrow">{{ copy.periodCompare }}</p>
-              <p>
-                {{ report.periods.previous.since }} - {{ report.periods.previous.until }}
-                <span>vs</span>
-                {{ report.periods.current.since }} - {{ report.periods.current.until }}
-              </p>
-            </section>
-
-            <section class="list-surface reference-surface campaign-list-surface">
-              <div class="focus-head">
-                <div>
-                  <p class="eyebrow">{{ copy.campaigns }}</p>
-                  <h3>{{ report.account.name }}</h3>
-                </div>
-              </div>
-
-              <div v-if="report.campaigns.length === 0" class="empty-note">
-                {{ copy.emptyCampaigns }}
-              </div>
-              <div v-else class="campaign-list">
-                <button
-                  v-for="campaign in report.campaigns"
-                  :key="campaign.id"
-                  type="button"
-                  class="campaign-row"
-                  @click="selectCampaign(campaign.id)"
-                >
-                  <div class="campaign-row-main">
-                    <i class="status-dot" :class="statusTone(campaign.status)"></i>
-                    <div>
-                      <strong>{{ campaign.name }}</strong>
-                      <small>{{ resultKindLabel(campaign.primary_result_kind || 'result') }}</small>
-                    </div>
-                  </div>
-                  <div class="campaign-row-metrics">
-                    <span>{{ formatMetricValue('spend', campaign.metrics.spend.current) }}</span>
-                    <span>{{ formatMetricValue('ctr', campaign.metrics.ctr.current) }}</span>
-                    <span>{{ formatMetricValue('results', campaign.metrics.results.current) }}</span>
-                  </div>
-                </button>
-              </div>
-            </section>
           </template>
 
           <template v-else-if="selectedCampaign">
@@ -4772,11 +5718,15 @@ watch(currentView, (view) => {
               {{ copy.overviewAccount }}
             </button>
 
-            <section class="hero-strip campaign-hero reference-hero">
+            <section class="reference-page-head campaign-page-head">
               <div class="reference-heading">
                 <div class="reference-kicker">
                   <span class="reference-kicker-bar"></span>
-                  <p class="eyebrow">{{ copy.campaigns }} · {{ resultKindLabel(selectedCampaign.primary_result_kind || 'result') }}</p>
+                  <p class="eyebrow">
+                    {{ copy.campaigns }}
+                    <span v-if="selectedCampaign.objective"> · {{ copy.campaignGoalLabel }}: {{ selectedCampaign.objective }}</span>
+                    <span v-else> · {{ resultKindLabel(selectedCampaign.primary_result_kind || 'result') }}</span>
+                  </p>
                 </div>
                 <div class="campaign-hero-row">
                   <h2>{{ selectedCampaign.name }}</h2>
@@ -4785,56 +5735,40 @@ watch(currentView, (view) => {
                     {{ statusLabel(selectedCampaign.status) }}
                   </div>
                 </div>
-                <p class="muted">
-                  {{ report.account.name }}
-                  <span> · {{ report.periods.current.since }} - {{ report.periods.current.until }}</span>
-                  <span> · {{ copy.creativeFocus }}: {{ selectedCampaign.creatives.length }}</span>
-                </p>
+                <p v-if="selectedCampaignBreakdownLine" class="campaign-hero-stats-line">{{ selectedCampaignBreakdownLine }}</p>
               </div>
             </section>
 
             <section class="ai-surface verdict-surface reference-surface reference-verdict-surface">
-              <div class="section-head">
-                <div class="verdict-title">
-                  <span>{{ copy.aiVerdict }}</span>
-                  <div class="info-tooltip">
-                    <button
-                      type="button"
-                      class="info-tooltip-trigger"
-                      :aria-label="copy.aiVerdictInfoLabel"
-                      aria-describedby="campaign-ai-verdict-tooltip"
-                    >
-                      i
-                    </button>
-                    <span id="campaign-ai-verdict-tooltip" class="info-tooltip-panel" role="tooltip">{{ copy.aiVerdictHint }}</span>
+              <div class="verdict-head">
+                <div class="verdict-label-row">
+                  <span class="verdict-icon-chip" aria-hidden="true">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"
+                      />
+                    </svg>
+                  </span>
+                  <div class="verdict-head-copy">
+                    <span>{{ copy.aiVerdictCardTitle }}</span>
+                    <p>{{ copy.aiVerdictHint }}</p>
                   </div>
                 </div>
+                <span class="verdict-status-pill" :class="campaignVerdictTone">{{ verdictStatusLabel(campaignVerdictTone) }}</span>
               </div>
               <p v-if="verdictLoading" class="empty-note">{{ copy.loadingVerdict }}</p>
               <div v-else class="verdict-body">
-                <article
-                  v-for="(block, index) in visibleAutoVerdictBlocks"
-                  :key="`campaign-verdict-${index}`"
-                  class="verdict-message"
-                >
-                  <div class="verdict-text markdown-body" v-html="renderMarkdown(block)"></div>
+                <article class="verdict-message" :class="{ 'verdict-message-empty': !autoVerdictDisplay }">
+                  <div v-if="autoVerdictDisplay" class="verdict-text markdown-body" v-html="renderMarkdown(autoVerdictDisplay)"></div>
+                  <div v-else class="verdict-text markdown-body">—</div>
                 </article>
-                <article v-if="visibleAutoVerdictBlocks.length === 0" class="verdict-message verdict-message-empty">
-                  <div class="verdict-text markdown-body">—</div>
-                </article>
-                <button
-                  v-if="hasCollapsedAutoVerdict"
-                  type="button"
-                  class="ghost-button compact-button verdict-toggle"
-                  @click="autoVerdictExpanded = !autoVerdictExpanded"
-                >
-                  {{ autoVerdictExpanded ? copy.hideVerdictDetails : copy.showVerdictDetails }}
-                </button>
               </div>
             </section>
 
             <section class="campaign-summary-stack">
-              <div class="focus-head reference-section-head">
+              <div class="reference-section-head">
                 <div class="reference-kicker">
                   <span class="reference-kicker-bar"></span>
                   <p class="eyebrow">{{ copy.campaignMetricsTitle }}</p>
@@ -4856,42 +5790,154 @@ watch(currentView, (view) => {
               </div>
             </section>
 
-            <section class="focus-surface reference-surface campaign-creatives-surface">
-              <div class="section-head">
+            <section class="campaign-adsets-surface">
+              <div class="reference-section-head">
                 <div class="reference-kicker">
                   <span class="reference-kicker-bar"></span>
-                  <p class="eyebrow">{{ copy.campaignCreativesTitle }}</p>
+                  <p class="eyebrow">{{ copy.campaignAdGroupsTitle }} · {{ selectedCampaignAdGroups.length }}</p>
                 </div>
               </div>
 
-              <div v-if="selectedCampaign.creatives.length === 0" class="empty-note">
-                {{ copy.emptyCreatives }}
-              </div>
+              <article v-if="selectedCampaignAdGroups.length === 0" class="campaign-adsets-empty">
+                <p>{{ copy.emptyCreatives }}</p>
+              </article>
 
-              <div v-else class="creative-grid">
-                <article v-for="creative in selectedCampaign.creatives" :key="creative.id" class="creative-card">
-                  <img
-                    v-if="creativePreview(creative)"
-                    :src="creativePreview(creative)"
-                    :alt="creativeTitle(creative)"
-                    class="creative-image"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <div v-else class="creative-fallback">{{ creativeTypeLabel(creative) }}</div>
+              <div v-else class="campaign-adsets-stack">
+                <article v-for="group in selectedCampaignAdGroups" :key="group.id" class="campaign-adset-card">
+                  <div class="campaign-adset-head">
+                    <div class="campaign-adset-main">
+                      <div class="campaign-adset-title-row">
+                        <span class="campaign-adset-icon" aria-hidden="true">
+                          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14-4H5m14 8H5m14 4H5" />
+                          </svg>
+                        </span>
+                        <h3>{{ group.name }}</h3>
+                      </div>
+                      <div v-if="group.context" class="campaign-adset-context-line">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <p class="campaign-adset-context">{{ group.context }}</p>
+                      </div>
+                    </div>
 
-                  <div class="creative-copy">
-                    <div class="creative-headline">
-                      <small class="creative-type">{{ creativeTypeLabel(creative) }}</small>
-                      <p :title="creativeTitle(creative)">{{ creativeTitle(creative) }}</p>
+                    <div class="campaign-adset-summary">
+                      <div class="campaign-adset-chip">
+                        <span>{{ copy.creativeMetricLabels.spend }}</span>
+                        <strong>{{ formatMetricValue('spend', group.spend) }}</strong>
+                      </div>
+                      <div class="campaign-adset-chip">
+                        <span>{{ resultKindLabel(selectedCampaign.primary_result_kind || 'result') }}</span>
+                        <strong>{{ formatCompactNumber(group.results) }}</strong>
+                      </div>
+                      <div class="campaign-adset-chip">
+                        <span>{{ metricSurfaceLabel('cost_per_result', selectedCampaign.primary_result_kind || 'result') }}</span>
+                        <strong>{{ formatMetricValue('cost_per_result', group.costPerResult) }}</strong>
+                      </div>
                     </div>
                   </div>
 
-                  <div class="creative-stats">
-                    <div v-for="item in creativeStats(creative)" :key="item.key" class="cstat">
-                      <div class="cstat-l">{{ item.label }}</div>
-                      <div class="cstat-v" :class="item.tone">{{ item.value }}</div>
-                    </div>
+                  <div class="campaign-ads-list">
+                    <article
+                      v-for="ad in visibleCampaignAds(group)"
+                      :key="ad.id"
+                      class="campaign-ad-card"
+                      :class="{ best: ad.id === group.bestAdId }"
+                    >
+                      <span v-if="ad.id === group.bestAdId" class="campaign-best-edge" aria-hidden="true"></span>
+
+                      <div class="campaign-ad-card-body">
+                        <div
+                          class="campaign-ad-preview"
+                          :class="creativePreviewKind(ad.format)"
+                          :style="{ '--campaign-preview-gradient': creativePreviewGradient(ad.id, ad.name) }"
+                        >
+                          <img
+                            v-if="ad.previewUrl"
+                            :src="ad.previewUrl"
+                            :alt="ad.name"
+                            class="campaign-ad-preview-image"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                          <div v-else class="campaign-ad-preview-fallback">
+                            <div v-if="creativePreviewKind(ad.format) === 'video' || creativePreviewKind(ad.format) === 'vertical'" class="campaign-ad-preview-play">
+                              <svg fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </div>
+                            <div v-else-if="creativePreviewKind(ad.format) === 'carousel'" class="campaign-ad-preview-carousel">
+                              <span></span>
+                              <span></span>
+                              <span></span>
+                            </div>
+                            <div v-else-if="creativePreviewKind(ad.format) === 'leadform'" class="campaign-ad-preview-form">
+                              <i></i>
+                              <i></i>
+                              <i></i>
+                              <i></i>
+                            </div>
+                            <svg v-else fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9.5 9.5a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z" />
+                            </svg>
+                            <span v-if="creativePreviewKind(ad.format) === 'vertical'" class="campaign-ad-preview-frame" aria-hidden="true"></span>
+                          </div>
+                          <span class="campaign-ad-preview-badge">{{ ad.format }}</span>
+                        </div>
+
+                        <div class="campaign-ad-copy">
+                          <div class="campaign-ad-copy-head">
+                            <div class="campaign-ad-title-block">
+                              <p :title="ad.name">{{ ad.name }}</p>
+                            </div>
+                            <span v-if="ad.id === group.bestAdId" class="campaign-best-badge">
+                              {{ copy.campaignBestResult }}
+                            </span>
+                          </div>
+
+                          <div v-if="ad.hasData" class="campaign-ad-metrics">
+                            <div class="campaign-ad-stat">
+                              <span>{{ copy.creativeMetricLabels.spend }}</span>
+                              <strong>{{ formatMetricValue('spend', ad.spend) }}</strong>
+                            </div>
+                            <div class="campaign-ad-stat">
+                              <span>{{ resultKindLabel(ad.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                              <strong>{{ formatCompactNumber(ad.results) }}</strong>
+                            </div>
+                            <div class="campaign-ad-stat">
+                              <span>{{ metricSurfaceLabel('cost_per_result', ad.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                              <strong :class="{ accent: ad.id === group.bestAdId }">
+                                {{ formatMetricValue('cost_per_result', ad.costPerResult) }}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div v-else class="campaign-ad-empty">
+                            {{ copy.campaignAwaitingDelivery }}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+
+                    <button
+                      v-if="group.ads.length >= 4"
+                      type="button"
+                      class="campaign-ads-toggle"
+                      @click="toggleCampaignAdGroup(group.id)"
+                    >
+                      {{ isCampaignAdGroupExpanded(group.id) ? copy.collapseAds : showMoreAdsLabel(hiddenCampaignAdsCount(group)) }}
+                      <svg
+                        class="campaign-ads-toggle-icon"
+                        :class="{ rotated: isCampaignAdGroupExpanded(group.id) }"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
                   </div>
                 </article>
               </div>
@@ -4918,64 +5964,187 @@ watch(currentView, (view) => {
 
       <div v-if="aiPanelOpen && isAiOverlay" class="ai-overlay" @click="closeAiPanel"></div>
 
-      <button v-if="!aiPanelOpen" type="button" class="ai-fab" :aria-label="copy.askAi" @click="openAiPanel">
+      <button v-if="!aiPanelOpen" type="button" class="ai-fab" :aria-label="copy.openAiPanel" @click="openAiPanel">
         <svg class="ai-fab-icon" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
         </svg>
+        <span class="ai-fab-signal" aria-hidden="true">
+          <span class="ai-fab-ping"></span>
+          <span class="ai-fab-dot"></span>
+        </span>
       </button>
 
-      <div v-if="connectModalOpen" class="connect-modal-root">
+          <div v-if="connectModalOpen" class="connect-modal-root">
         <div class="connect-modal-backdrop" @click="closeConnectModal"></div>
-        <section class="connect-modal" role="dialog" :aria-label="copy.accountsPageTitle">
+        <section class="connect-modal" role="dialog" :aria-label="copy.connectAccount">
           <div class="connect-modal-head">
-            <div>
-              <p class="eyebrow">{{ copy.sidebarAccounts }}</p>
-              <h3>{{ copy.manageConnections }}</h3>
+            <div class="connect-modal-head-copy">
+              <h3>{{ connectModalHeading }}</h3>
+              <p v-if="connectModalHeadNote" class="connect-modal-head-note">{{ connectModalHeadNote }}</p>
             </div>
-            <button type="button" class="ghost-button compact-button" @click="closeConnectModal">
-              {{ copy.backToApp }}
-            </button>
+            <div class="connect-modal-head-actions">
+              <button
+                v-if="connectModalProviderOption && providerOptions.length > 1"
+                type="button"
+                class="ghost-button compact-button connect-modal-back"
+                @click="returnToConnectModalProviders"
+              >
+                {{ copy.backToPlatforms }}
+              </button>
+              <button type="button" class="connect-modal-close" :aria-label="copy.cancel" @click="closeConnectModal">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
-          <p class="surface-note connect-modal-note">{{ copy.accountsPageLead }}</p>
-
-          <div class="connect-modal-grid">
-            <article
-              v-for="providerOption in connectModalProviders"
-              :key="providerOption.key"
-              class="connect-provider-card"
-              :class="providerOption.key"
-            >
-              <div class="connect-provider-head">
-                <span class="platform-badge" :class="providerOption.key">
-                  {{ providerGlyph(providerOption.key) }}
-                </span>
-                <div class="connect-provider-copy">
-                  <strong>{{ providerOption.label }}</strong>
-                  <small>{{ providerOption.subtitle }}</small>
+          <div class="connect-modal-body">
+            <div v-if="!connectModalProviderOption" class="connect-modal-chooser">
+              <section class="connect-provider-stage-card connect-provider-stage-intro connect-modal-chooser-intro">
+                <div class="connect-modal-provider-constellation" aria-hidden="true">
+                  <span
+                    v-for="providerOption in providerOptions"
+                    :key="`chooser-${providerOption.key}`"
+                    class="platform-badge connect-modal-provider-orb"
+                    :class="providerOption.key"
+                  >
+                    <PlatformLogo :provider="providerOption.key" />
+                  </span>
                 </div>
-                <span class="settings-badge">{{ providerOption.count }}</span>
+                <h4>{{ copy.connectChooserTitle }}</h4>
+                <p class="connect-provider-intro-summary">{{ copy.connectChooserLead }}</p>
+                <p class="connect-provider-intro-note">{{ copy.connectFlowHint }}</p>
+              </section>
+
+              <div class="connect-modal-provider-tabs connect-modal-provider-actions">
+                <button
+                  v-for="providerOption in providerOptions"
+                  :key="providerOption.key"
+                  type="button"
+                  class="connect-modal-provider-tab connect-modal-provider-action-card"
+                  :class="providerOption.key"
+                  @click="openConnectModalProvider(providerOption.key)"
+                >
+                  <span class="platform-badge connect-modal-provider-badge" :class="providerOption.key">
+                    <PlatformLogo :provider="providerOption.key" />
+                  </span>
+                  <span class="connect-modal-provider-tab-copy">
+                    <strong>{{ providerContinueLabel(providerOption.key) }}</strong>
+                    <small>{{ connectChooserProviderLine(providerOption) }}</small>
+                  </span>
+                  <svg class="connect-modal-provider-arrow" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
               </div>
+            </div>
 
-              <p class="surface-note">
-                {{
-                  providerOption.key === 'google_ads'
-                    ? copy.googleAccountsEmpty
-                    : providerOption.key === 'tiktok_ads'
-                      ? copy.tiktokAccountsEmpty
-                      : copy.noAccountsBody
-                }}
-              </p>
-
-              <button
-                type="button"
-                class="primary-button compact connect-provider-action"
-                :disabled="providerIsConnecting(providerOption.key)"
-                @click="connectFromModal(providerOption.key)"
+            <div v-else class="connect-provider-stage">
+              <section
+                v-if="connectModalStage === 'intro'"
+                class="connect-provider-stage-card connect-provider-stage-intro"
+                :class="activeConnectModalProvider"
               >
-                {{ providerConnectLabel(providerOption.key) }}
-              </button>
-            </article>
+                <span class="platform-badge connect-provider-intro-badge" :class="activeConnectModalProvider">
+                  <PlatformLogo :provider="activeConnectModalProvider" />
+                </span>
+                <h4>{{ connectModalProviderOption.label }}</h4>
+                <p class="connect-provider-intro-summary">{{ connectModalIntroSummary(connectModalProviderOption) }}</p>
+                <p class="connect-provider-intro-note">{{ copy.connectFlowHint }}</p>
+
+                <div class="connect-provider-stage-actions">
+                  <button
+                    type="button"
+                    class="primary-button compact connect-provider-action connect-provider-primary"
+                    :class="activeConnectModalProvider"
+                    :disabled="providerIsConnecting(activeConnectModalProvider)"
+                    @click="runConnectModalPrimaryAction()"
+                  >
+                    <PlatformLogo :provider="activeConnectModalProvider" />
+                    {{ connectModalPrimaryLabel }}
+                  </button>
+                  <button
+                    v-if="connectModalProviderOption.connected"
+                    type="button"
+                    class="ghost-button compact-button connect-provider-secondary"
+                    :disabled="providerIsConnecting(activeConnectModalProvider)"
+                    @click="connectFromModal(activeConnectModalProvider)"
+                  >
+                    {{ providerConnectLabel(activeConnectModalProvider) }}
+                  </button>
+                </div>
+              </section>
+
+              <section v-else-if="connectModalStage === 'loading'" class="connect-provider-stage-card connect-provider-loading">
+                <div class="connect-provider-spinner" :class="activeConnectModalProvider" aria-hidden="true"></div>
+                <p class="connect-provider-loading-copy">{{ copy.connectLoadingAccounts }}</p>
+              </section>
+
+              <section v-else class="connect-provider-stage-card connect-provider-list-shell">
+                <div class="connect-provider-list-head">
+                  <p class="connect-provider-list-label">{{ copy.connectAvailableAccounts }}</p>
+                  <p class="connect-provider-list-hint">{{ copy.connectSelectAccountHint }}</p>
+                </div>
+
+                <div v-if="connectModalCards.length === 0" class="connect-provider-empty-state">
+                  <div class="connect-provider-empty-icon" aria-hidden="true">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p class="connect-provider-empty-title">{{ copy.connectNoSyncedAccounts }}</p>
+                </div>
+
+                <div v-else class="connect-provider-list">
+                  <article
+                    v-for="card in connectModalCards"
+                    :key="`${activeConnectModalProvider}:${card.id}`"
+                    class="connect-provider-row"
+                    :class="{ active: isSelectedWorkspaceAccount(activeConnectModalProvider, card.id) }"
+                  >
+                    <div class="connect-provider-row-main">
+                      <div class="account-switcher-option-avatar-shell connect-provider-row-avatar-shell" :class="activeConnectModalProvider">
+                        <div class="account-switcher-option-avatar">{{ accountCardInitials(card.name) }}</div>
+                        <span class="account-switcher-avatar-badge" aria-hidden="true">
+                          <PlatformLogo :provider="activeConnectModalProvider" />
+                        </span>
+                      </div>
+                      <div class="connect-provider-row-copy">
+                        <div class="connect-provider-row-headline">
+                          <strong>{{ card.name }}</strong>
+                          <span
+                            v-if="isSelectedWorkspaceAccount(activeConnectModalProvider, card.id)"
+                            class="connect-provider-row-badge"
+                          >
+                            {{ copy.accountsPageSelected }}
+                          </span>
+                        </div>
+                        <small>{{ card.subtitle }}</small>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      class="primary-button compact connect-provider-row-action"
+                      :class="{ active: isSelectedWorkspaceAccount(activeConnectModalProvider, card.id) }"
+                      :disabled="isSelectedWorkspaceAccount(activeConnectModalProvider, card.id)"
+                      @click="selectAccountFromModal(activeConnectModalProvider, card.id)"
+                    >
+                      {{
+                        isSelectedWorkspaceAccount(activeConnectModalProvider, card.id)
+                          ? copy.accountsPageSelected
+                          : copy.accountsPageSelect
+                      }}
+                    </button>
+                  </article>
+                </div>
+
+                <button type="button" class="ghost-button compact-button connect-provider-done" @click="closeConnectModal">
+                  {{ copy.done }}
+                </button>
+              </section>
+            </div>
           </div>
         </section>
       </div>
@@ -4987,161 +6156,95 @@ watch(currentView, (view) => {
               <svg class="ai-panel-icon" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
               </svg>
+              <span class="ai-panel-status-dot" aria-hidden="true"></span>
             </span>
-            <div>
+            <div class="ai-panel-title-copy">
               <strong>{{ copy.aiConsultant }}</strong>
               <small>{{ copy.aiConsultantOnline }}</small>
             </div>
           </div>
-          <button type="button" class="ai-panel-close" :aria-label="copy.askAi" @click="closeAiPanel">
+          <button type="button" class="ai-panel-close" :aria-label="copy.closeAiPanel" :title="copy.closeAiPanel" @click="closeAiPanel">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
             </svg>
           </button>
         </header>
 
-        <section class="ai-surface chat-surface">
-          <div class="section-head">
-            <span>{{ copy.aiChat }}</span>
-          </div>
-          <p class="surface-note">{{ copy.aiChatHint }}</p>
-          <p class="surface-note">{{ copy.chatDefaultModeHint }}</p>
-
-          <div class="chat-stream">
-            <article
-              v-for="(message, index) in chatMessages"
-              :key="index"
-              class="chat-bubble markdown-body"
-              :class="message.role"
-              v-html="renderMarkdown(message.content)"
-            ></article>
-            <p v-if="chatLoading" class="empty-note">{{ copy.loadingChat }}</p>
-          </div>
-
-          <div class="suggestion-row">
-            <button
-              v-for="suggestion in copy.helperQuestions"
-              :key="suggestion"
-              type="button"
-              class="chip"
-              @click="sendQuestion(suggestion)"
-            >
-              {{ suggestion }}
-            </button>
-          </div>
-
-          <div class="chat-compose">
-            <input
-              v-model="chatDraft"
-              type="text"
-              :placeholder="copy.askPlaceholder"
-              @keyup.enter.prevent="sendQuestion()"
-            />
-            <button
-              type="button"
-              class="primary-button compact"
-              :disabled="chatLoading || !canSendChat"
-              @click="sendQuestion()"
-            >
-              {{ copy.send }}
-            </button>
-          </div>
-
-          <p v-if="chatError" class="message error">{{ chatError }}</p>
-
-          <div class="chat-advanced-toggle">
-            <button
-              type="button"
-              class="ghost-button compact-button"
-              @click="useClientCredentials = !useClientCredentials"
-            >
-              {{ useClientCredentials ? copy.hideOwnApiKey : copy.useOwnApiKey }}
-            </button>
-          </div>
-
-          <div v-if="useClientCredentials" class="chat-advanced">
-            <p class="surface-note">{{ copy.customAiSettingsHint }}</p>
-
-            <div class="control-grid">
-              <label>
-                <span>{{ copy.provider }}</span>
-                <select v-model="provider">
-                  <option v-for="providerOption in providerCatalog" :key="providerOption.key" :value="providerOption.key">
-                    {{ providerOption.label }}
-                  </option>
-                </select>
-              </label>
-
-              <label>
-                <span>{{ copy.model }}</span>
-                <select v-model="selectedModelPreset">
-                  <option v-for="preset in availableModelPresets" :key="preset.value" :value="preset.value">
-                    {{ presetLabel(preset) }}
-                  </option>
-                  <option v-if="activeProviderConfig?.supports_custom_model" :value="CUSTOM_MODEL_OPTION">
-                    {{ copy.modelCustomOption }}
-                  </option>
-                </select>
-              </label>
-            </div>
-
-            <label v-if="isCustomModelSelected">
-              <span>{{ copy.modelCustom }}</span>
-              <input v-model.trim="customModel" type="text" :placeholder="copy.modelCustomPlaceholder" />
-            </label>
-            <p class="surface-note">{{ modelSelectionHint }}</p>
-
-            <div class="provider-key-card">
-              <div class="provider-key-head">
-                <span>{{ copy.apiKey }}</span>
-                <div v-if="hasSavedProviderKey && !showProviderKeyInput" class="provider-key-actions">
-                  <button type="button" class="ghost-button compact-button" @click="startProviderKeyEdit">
-                    {{ copy.replaceApiKey }}
-                  </button>
-                  <button
-                    type="button"
-                    class="ghost-button compact-button"
-                    :disabled="providerKeyLoading"
-                    @click="deleteProviderKey"
-                  >
-                    {{ copy.removeApiKey }}
-                  </button>
-                </div>
+        <section class="ai-surface chat-surface reference-chat-surface">
+          <div class="chat-scroll-region">
+            <div class="chat-stream">
+              <div
+                v-for="(message, index) in visibleChatMessages"
+                :key="index"
+                class="chat-row"
+                :class="message.role"
+              >
+                <span v-if="message.role === 'assistant'" class="chat-avatar" aria-hidden="true">
+                  <svg fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                  </svg>
+                </span>
+                <article
+                  class="chat-bubble markdown-body"
+                  :class="message.role"
+                  v-html="renderMarkdown(message.content)"
+                ></article>
               </div>
 
-              <p v-if="hasSavedProviderKey && !showProviderKeyInput" class="surface-note">
-                {{ copy.savedKeyHint }}
-              </p>
-
-              <template v-if="showProviderKeyInput">
-                <label class="provider-key-input">
-                  <input v-model="clientApiKey" type="password" placeholder="sk-..." />
-                </label>
-                <div class="provider-key-actions">
-                  <button
-                    type="button"
-                    class="ghost-button compact-button"
-                    :disabled="providerKeyLoading || !clientApiKey.trim()"
-                    @click="saveProviderKey"
-                  >
-                    {{ copy.saveApiKey }}
-                  </button>
-                  <button
-                    v-if="hasSavedProviderKey"
-                    type="button"
-                    class="ghost-button compact-button"
-                    :disabled="providerKeyLoading"
-                    @click="cancelProviderKeyEdit"
-                  >
-                    {{ copy.cancel }}
-                  </button>
+              <div v-if="chatLoading" class="chat-row assistant">
+                <span class="chat-avatar" aria-hidden="true">
+                  <svg fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                  </svg>
+                </span>
+                <div class="chat-bubble assistant chat-typing-bubble" :aria-label="copy.loadingChat">
+                  <span class="chat-typing-dot"></span>
+                  <span class="chat-typing-dot"></span>
+                  <span class="chat-typing-dot"></span>
                 </div>
-              </template>
+              </div>
             </div>
 
-            <p class="surface-note">{{ copy.chatKeyHint }}</p>
-            <p v-if="providerKeyNotice" class="message success">{{ providerKeyNotice }}</p>
-            <p v-if="providerKeyError" class="message error">{{ providerKeyError }}</p>
+            <div v-if="showChatSuggestions" class="chat-suggestions">
+              <p class="chat-suggestions-label">{{ copy.chatSuggestionLabel }}</p>
+              <div class="suggestion-row">
+                <button
+                  v-for="suggestion in copy.helperQuestions"
+                  :key="suggestion"
+                  type="button"
+                  class="chat-suggestion-chip"
+                  @click="sendQuestion(suggestion)"
+                >
+                  {{ suggestion }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-footer">
+            <div class="chat-compose">
+              <textarea
+                v-model="chatDraft"
+                rows="1"
+                :placeholder="copy.askPlaceholder"
+                @keydown.enter.exact.prevent="sendQuestion()"
+              />
+              <button
+                type="button"
+                class="chat-send-button"
+                :disabled="chatLoading || !canSendChat"
+                :aria-label="copy.send"
+                :title="copy.send"
+                @click="sendQuestion()"
+              >
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </button>
+            </div>
+
+            <p class="chat-meta-note">{{ copy.aiChatDataMode }}</p>
+            <p v-if="chatError" class="message error">{{ chatError }}</p>
           </div>
         </section>
       </aside>

@@ -133,3 +133,29 @@ class DisconnectMetaUseCase:
 
         if self.report_service is not None:
             self.report_service.clear_user_cache(user_id=user_id)
+
+
+class DisconnectMetaAdAccountUseCase:
+    def __init__(self, *, session: AsyncSession, report_service=None) -> None:
+        self.session = session
+        self.report_service = report_service
+        self.ad_account_repo = MetaAdAccountRepository(session)
+
+    async def execute(self, *, user_id: str, external_id: str) -> bool:
+        account = await self.ad_account_repo.get_for_user(user_id=user_id, external_id=external_id)
+        if account is None:
+            return False
+
+        connection = account.connection
+        should_remove_connection = connection is not None and len(connection.ad_accounts) <= 1
+
+        if should_remove_connection and connection is not None:
+            await self.session.delete(connection)
+        else:
+            await self.ad_account_repo.delete(account)
+
+        await self.session.commit()
+
+        if self.report_service is not None:
+            self.report_service.clear_user_cache(user_id=user_id)
+        return True

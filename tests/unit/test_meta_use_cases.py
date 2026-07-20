@@ -12,6 +12,7 @@ from core.repositories.meta_connection import MetaConnectionRepository
 from core.security.encryption_service import EncryptionService
 from core.use_cases.meta import (
     BuildMetaOAuthUrlUseCase,
+    DisconnectMetaAdAccountUseCase,
     DisconnectMetaUseCase,
     HandleMetaOAuthCallbackUseCase,
     ListMetaAdAccountsUseCase,
@@ -214,6 +215,83 @@ class FakeReportService:
 
     def clear_user_cache(self, *, user_id: str) -> None:
         self.cleared_for = user_id
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_disconnect_meta_ad_account_use_case_removes_only_requested_account_and_snapshot(db_session):
+    report_service = FakeReportService()
+    today = utcnow().date()
+
+    db_session.add_all(
+        [
+            User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"),
+            MetaConnection(
+                id="conn-1",
+                user_id="user-1",
+                meta_user_id="meta-user-1",
+                meta_user_name="Meta Owner",
+                access_token_encrypted="token-1",
+            ),
+            MetaAdAccount(
+                id="acc-1",
+                connection_id="conn-1",
+                external_id="act_1",
+                account_id="111",
+                name="Main account",
+            ),
+            MetaAdAccount(
+                id="acc-2",
+                connection_id="conn-1",
+                external_id="act_2",
+                account_id="222",
+                name="Backup account",
+            ),
+            MetaReportSnapshot(
+                id="snapshot-1",
+                meta_ad_account_id="acc-1",
+                requested_days=30,
+                current_since=today,
+                current_until=today,
+                previous_since=today,
+                previous_until=today,
+                payload={"account": {"id": "act_1"}},
+                source_fetched_at=utcnow(),
+                expires_at=utcnow(),
+            ),
+            MetaReportSnapshot(
+                id="snapshot-2",
+                meta_ad_account_id="acc-2",
+                requested_days=30,
+                current_since=today,
+                current_until=today,
+                previous_since=today,
+                previous_until=today,
+                payload={"account": {"id": "act_2"}},
+                source_fetched_at=utcnow(),
+                expires_at=utcnow(),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    removed = await DisconnectMetaAdAccountUseCase(session=db_session, report_service=report_service).execute(
+        user_id="user-1",
+        external_id="act_1",
+    )
+
+    remaining_accounts = await ListMetaAdAccountsUseCase(session=db_session).execute(user_id="user-1")
+    remaining_snapshots = (await db_session.execute(select(MetaReportSnapshot))).scalars().all()
+    connection = await MetaConnectionRepository(db_session).get_by_user_and_meta_user(
+        user_id="user-1",
+        meta_user_id="meta-user-1",
+    )
+
+    assert removed is True
+    assert [account.external_id for account in remaining_accounts] == ["act_2"]
+    assert [snapshot.id for snapshot in remaining_snapshots] == ["snapshot-2"]
+    assert connection is not None
+    assert report_service.cleared_for == "user-1"
 
 
 @pytest.mark.unit

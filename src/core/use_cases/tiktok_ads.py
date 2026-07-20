@@ -204,3 +204,30 @@ class DisconnectTikTokAdsUseCase:
         await self.session.delete(connection)
         await self.session.commit()
         self.report_service.clear_user_cache(user_id=user_id)
+
+
+class DisconnectTikTokAdsAdvertiserUseCase:
+    def __init__(self, *, session: AsyncSession, report_service: TikTokAdsReportService) -> None:
+        self.session = session
+        self.report_service = report_service
+        self.advertiser_repo = TikTokAdsAdvertiserRepository(session)
+
+    async def execute(self, *, user_id: str, external_advertiser_id: str) -> bool:
+        advertiser = await self.advertiser_repo.get_for_user(
+            user_id=user_id,
+            external_advertiser_id=external_advertiser_id,
+        )
+        if advertiser is None:
+            return False
+
+        connection = advertiser.connection
+        should_remove_connection = connection is not None and len(connection.advertisers) <= 1
+
+        if should_remove_connection and connection is not None:
+            await self.session.delete(connection)
+        else:
+            await self.advertiser_repo.delete(advertiser)
+
+        await self.session.commit()
+        self.report_service.clear_user_cache(user_id=user_id)
+        return True

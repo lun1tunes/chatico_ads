@@ -373,6 +373,7 @@ class GoogleAdsReportService:
         grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
         for row in rows:
             campaign = _nested_mapping(row, "campaign")
+            ad_group = _nested_mapping(row, "adGroup", "ad_group")
             ad_group_ad = _nested_mapping(row, "adGroupAd", "ad_group_ad")
             ad = _nested_mapping(ad_group_ad, "ad")
             campaign_id = _optional_string(_mapping_value(campaign, "id"))
@@ -389,6 +390,8 @@ class GoogleAdsReportService:
                     "object_type": ad_type,
                     "thumbnail_url": None,
                     "image_url": None,
+                    "ad_group_id": _optional_string(_mapping_value(ad_group, "id")),
+                    "ad_group_name": _optional_string(_mapping_value(ad_group, "name")),
                     "metrics": {
                         "spend": float(metrics["spend"] or 0),
                         "impressions": int(metrics["impressions"] or 0),

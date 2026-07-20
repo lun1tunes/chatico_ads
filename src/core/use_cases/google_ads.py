@@ -180,3 +180,30 @@ class DisconnectGoogleAdsUseCase:
         await self.session.delete(connection)
         await self.session.commit()
         self.report_service.clear_user_cache(user_id=user_id)
+
+
+class DisconnectGoogleAdsCustomerUseCase:
+    def __init__(self, *, session: AsyncSession, report_service: GoogleAdsReportService) -> None:
+        self.session = session
+        self.report_service = report_service
+        self.customer_repo = GoogleAdsCustomerRepository(session)
+
+    async def execute(self, *, user_id: str, external_customer_id: str) -> bool:
+        customer = await self.customer_repo.get_for_user(
+            user_id=user_id,
+            external_customer_id=external_customer_id,
+        )
+        if customer is None:
+            return False
+
+        connection = customer.connection
+        should_remove_connection = connection is not None and len(connection.customers) <= 1
+
+        if should_remove_connection and connection is not None:
+            await self.session.delete(connection)
+        else:
+            await self.customer_repo.delete(customer)
+
+        await self.session.commit()
+        self.report_service.clear_user_cache(user_id=user_id)
+        return True

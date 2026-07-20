@@ -215,6 +215,8 @@ class FakeMetaReportClient:
         return [
             {
                 "ad_id": "ad_1",
+                "adset_id": "adset_1",
+                "adset_name": "Prospecting",
                 "spend": "70.0",
                 "impressions": "5000",
                 "clicks": "150",
@@ -223,6 +225,8 @@ class FakeMetaReportClient:
             },
             {
                 "ad_id": "ad_2",
+                "adset_id": "adset_1",
+                "adset_name": "Prospecting",
                 "spend": "50.0",
                 "impressions": "4000",
                 "clicks": "70",
@@ -231,6 +235,8 @@ class FakeMetaReportClient:
             },
             {
                 "ad_id": "ad_3",
+                "adset_id": "adset_2",
+                "adset_name": "Retargeting",
                 "spend": "20.0",
                 "impressions": "1500",
                 "clicks": "35",
@@ -239,6 +245,8 @@ class FakeMetaReportClient:
             },
             {
                 "ad_id": "ad_4",
+                "adset_id": "adset_1",
+                "adset_name": "Prospecting",
                 "spend": "40.0",
                 "impressions": "2200",
                 "clicks": "42",
@@ -321,6 +329,8 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     assert report["trend"]["previous"][-1]["date"] == "2026-04-18"
     assert report["campaigns"][0]["name"] == "Lead Gen"
     assert report["campaigns"][0]["creatives"][0]["name"] == "Creative A"
+    assert report["campaigns"][0]["creatives"][0]["ad_group_id"] == "adset_1"
+    assert report["campaigns"][0]["creatives"][0]["ad_group_name"] == "Prospecting"
     assert report["campaigns"][0]["creatives"][1]["image_url"] == "https://cdn.test/creative-b-hq.jpg"
     low_res_creative = next(
         creative for creative in report["campaigns"][0]["creatives"] if creative["name"] == "Пока вы занимаетесь"

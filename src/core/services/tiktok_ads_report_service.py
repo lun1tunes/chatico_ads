@@ -257,8 +257,8 @@ class TikTokAdsReportService:
                 advertiser_id=advertiser.advertiser_id,
                 access_token=access_token,
                 data_level="AD",
-                dimensions=["campaign_id", "ad_id"],
-                metrics=self._REPORT_METRICS,
+                dimensions=["campaign_id", "adgroup_id", "ad_id"],
+                metrics=[*self._REPORT_METRICS, "adgroup_name"],
                 start_date=current["since"],
                 end_date=current["until"],
             ),
@@ -409,6 +409,9 @@ class TikTokAdsReportService:
                     "object_type": object_type,
                     "thumbnail_url": None,
                     "image_url": None,
+                    "ad_group_id": self._dimension_value(row, "adgroup_id", "adGroupId"),
+                    "ad_group_name": self._attribute_value(row, "adgroup_name", "adGroupName")
+                    or _optional_string(_mapping_value(ad_catalog, "adgroup_name", "adgroupName")),
                     "metrics": {
                         "spend": float(metrics["spend"] or 0),
                         "impressions": int(metrics["impressions"] or 0),
@@ -570,6 +573,15 @@ class TikTokAdsReportService:
     @staticmethod
     def _dimension_value(row: dict[str, object], *keys: str) -> str | None:
         for mapping in (row, _nested_mapping(row, "dimensions")):
+            for key in keys:
+                value = _optional_string(_mapping_value(mapping, key))
+                if value:
+                    return value
+        return None
+
+    @staticmethod
+    def _attribute_value(row: dict[str, object], *keys: str) -> str | None:
+        for mapping in (row, _nested_mapping(row, "metrics"), _nested_mapping(row, "dimensions")):
             for key in keys:
                 value = _optional_string(_mapping_value(mapping, key))
                 if value:

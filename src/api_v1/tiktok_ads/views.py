@@ -4,7 +4,7 @@ import logging
 from urllib.parse import urlencode
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -121,3 +121,20 @@ async def disconnect_tiktok_ads(
     container: Container = Depends(get_di_container),
 ):
     await container.disconnect_tiktok_ads_use_case(session=session).execute(user_id=user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/advertisers/{advertiser_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_tiktok_ads_advertiser(
+    advertiser_id: str,
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    container: Container = Depends(get_di_container),
+):
+    removed = await container.disconnect_tiktok_ads_advertiser_use_case(session=session).execute(
+        user_id=user.id,
+        external_advertiser_id=advertiser_id,
+    )
+    if not removed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="TikTok advertiser not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

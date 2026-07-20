@@ -217,6 +217,7 @@ class FakeGoogleAdsReportClient:
         return [
             {
                 "campaign": {"id": "cmp_1"},
+                "adGroup": {"id": "grp_1", "name": "Search Core"},
                 "adGroupAd": {"ad": {"id": "ad_1", "type": "RESPONSIVE_SEARCH_AD"}},
                 "metrics": {
                     "costMicros": "60000000",
@@ -227,6 +228,7 @@ class FakeGoogleAdsReportClient:
             },
             {
                 "campaign": {"id": "cmp_1"},
+                "adGroup": {"id": "grp_1", "name": "Search Core"},
                 "adGroupAd": {"ad": {"id": "ad_2", "type": "RESPONSIVE_SEARCH_AD"}},
                 "metrics": {
                     "costMicros": "40000000",
@@ -237,6 +239,7 @@ class FakeGoogleAdsReportClient:
             },
             {
                 "campaign": {"id": "cmp_2"},
+                "adGroup": {"id": "grp_2", "name": "Retargeting"},
                 "adGroupAd": {"ad": {"id": "ad_3", "type": "IMAGE_AD"}},
                 "metrics": {
                     "costMicros": "20000000",
@@ -308,6 +311,8 @@ async def test_generate_google_ads_report_use_case_builds_dashboard_payload(db_s
     assert report["campaigns"][0]["name"] == "Search US"
     assert report["campaigns"][0]["metrics"]["cpc"]["current"] == 150.0 / 260.0
     assert report["campaigns"][0]["creatives"][0]["name"] == "Responsive Search Ad #ad_1"
+    assert report["campaigns"][0]["creatives"][0]["ad_group_id"] == "grp_1"
+    assert report["campaigns"][0]["creatives"][0]["ad_group_name"] == "Search Core"
     assert report["campaigns"][0]["creatives"][0]["metrics"]["ctr"] == 2.0
     assert report["campaigns"][1]["creatives"][0]["object_type"] == "IMAGE_AD"
 

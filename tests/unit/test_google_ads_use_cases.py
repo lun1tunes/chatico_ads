@@ -6,12 +6,15 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from core.models.db_helper import db_helper
+from core.models.google_ads_connection import GoogleAdsConnection
+from core.models.google_ads_customer import GoogleAdsCustomer
 from core.models.user import User
 from core.repositories.google_ads_connection import GoogleAdsConnectionRepository
 from core.security.encryption_service import EncryptionService
 from core.infrastructure.google_ads_api import GoogleAdsAPIClient
 from core.use_cases.google_ads import (
     BuildGoogleAdsOAuthUrlUseCase,
+    DisconnectGoogleAdsCustomerUseCase,
     HandleGoogleAdsOAuthCallbackUseCase,
     ListGoogleAdsCustomersUseCase,
 )
@@ -95,6 +98,14 @@ class FakeGoogleAdsClient:
         return self.customers
 
 
+class FakeReportService:
+    def __init__(self) -> None:
+        self.cleared_for: str | None = None
+
+    def clear_user_cache(self, *, user_id: str) -> None:
+        self.cleared_for = user_id
+
+
 @pytest.mark.unit
 @pytest.mark.use_case
 async def test_build_google_ads_oauth_url_use_case():
@@ -169,6 +180,53 @@ async def test_handle_google_ads_oauth_callback_removes_stale_customers_on_resyn
         connection = await GoogleAdsConnectionRepository(verification_session).get_by_user(user_id="user-1")
         assert connection is not None
         assert [customer.external_customer_id for customer in connection.customers] == ["1234567890", "9988776655"]
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_disconnect_google_ads_customer_use_case_removes_last_customer_and_connection(db_session):
+    report_service = FakeReportService()
+
+    db_session.add_all(
+        [
+            User(id="user-1", email="owner@example.com", password_hash="hash", locale="ru"),
+            GoogleAdsConnection(
+                id="google-conn-1",
+                user_id="user-1",
+                refresh_token_encrypted="refresh-token",
+                access_token_encrypted="access-token",
+                scopes="https://www.googleapis.com/auth/adwords",
+            ),
+            GoogleAdsCustomer(
+                id="google-customer-1",
+                connection_id="google-conn-1",
+                external_customer_id="1234567890",
+                resource_name="customers/1234567890",
+                descriptive_name="Direct account",
+                currency_code="USD",
+                time_zone="Europe/Paris",
+                is_manager=False,
+                is_directly_accessible=True,
+                hierarchy_level=0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    removed = await DisconnectGoogleAdsCustomerUseCase(session=db_session, report_service=report_service).execute(
+        user_id="user-1",
+        external_customer_id="1234567890",
+    )
+
+    async with db_helper.session_factory() as verification_session:
+        connection = await GoogleAdsConnectionRepository(verification_session).get_by_user(user_id="user-1")
+        customers = await ListGoogleAdsCustomersUseCase(session=verification_session).execute(user_id="user-1")
+
+        assert connection is None
+        assert customers == []
+
+    assert removed is True
+    assert report_service.cleared_for == "user-1"
 
 
 @pytest.mark.unit

@@ -215,7 +215,7 @@ class MetaGraphAPIClient:
         return await self._get_paginated(
             f"{account_id}/insights",
             params={
-                "fields": "ad_id,ad_name,campaign_id,spend,impressions,clicks,reach,cpm,ctr,actions",
+                "fields": "ad_id,ad_name,adset_id,adset_name,campaign_id,spend,impressions,clicks,reach,cpm,ctr,actions",
                 "level": "ad",
                 "limit": 500,
                 "time_range": f'{{"since":"{since}","until":"{until}"}}',

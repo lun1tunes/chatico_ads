@@ -36,6 +36,7 @@ from .use_cases.dashboard import (
 from .use_cases.google_ads import (
     BuildGoogleAdsOAuthUrlUseCase,
     DisconnectGoogleAdsUseCase,
+    DisconnectGoogleAdsCustomerUseCase,
     HandleGoogleAdsOAuthCallbackUseCase,
     ListGoogleAdsCustomersUseCase,
 )
@@ -43,12 +44,14 @@ from .use_cases.meta_data_deletion import GetMetaDataDeletionStatusUseCase, Hand
 from .use_cases.meta import (
     BuildMetaOAuthUrlUseCase,
     DisconnectMetaUseCase,
+    DisconnectMetaAdAccountUseCase,
     HandleMetaOAuthCallbackUseCase,
     ListMetaAdAccountsUseCase,
 )
 from .use_cases.tiktok_ads import (
     BuildTikTokAdsOAuthUrlUseCase,
     DisconnectTikTokAdsUseCase,
+    DisconnectTikTokAdsAdvertiserUseCase,
     HandleTikTokAdsOAuthCallbackUseCase,
     ListTikTokAdsAdvertisersUseCase,
 )
@@ -129,6 +132,10 @@ class Container(containers.DeclarativeContainer):
         DisconnectMetaUseCase,
         report_service=meta_report_service,
     )
+    disconnect_meta_ad_account_use_case = providers.Factory(
+        DisconnectMetaAdAccountUseCase,
+        report_service=meta_report_service,
+    )
     handle_meta_data_deletion_callback_use_case = providers.Factory(
         HandleMetaDataDeletionCallbackUseCase,
         signed_request_service=meta_signed_request_service,
@@ -150,6 +157,10 @@ class Container(containers.DeclarativeContainer):
         DisconnectGoogleAdsUseCase,
         report_service=google_ads_report_service,
     )
+    disconnect_google_ads_customer_use_case = providers.Factory(
+        DisconnectGoogleAdsCustomerUseCase,
+        report_service=google_ads_report_service,
+    )
     build_tiktok_ads_oauth_url_use_case = providers.Factory(
         BuildTikTokAdsOAuthUrlUseCase,
         state_service=tiktok_ads_state_service,
@@ -164,6 +175,10 @@ class Container(containers.DeclarativeContainer):
     list_tiktok_ads_advertisers_use_case = providers.Factory(ListTikTokAdsAdvertisersUseCase)
     disconnect_tiktok_ads_use_case = providers.Factory(
         DisconnectTikTokAdsUseCase,
+        report_service=tiktok_ads_report_service,
+    )
+    disconnect_tiktok_ads_advertiser_use_case = providers.Factory(
+        DisconnectTikTokAdsAdvertiserUseCase,
         report_service=tiktok_ads_report_service,
     )
 

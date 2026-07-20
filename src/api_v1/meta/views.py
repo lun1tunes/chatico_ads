@@ -157,3 +157,19 @@ async def disconnect_meta(
 ):
     await container.disconnect_meta_use_case(session=session).execute(user_id=user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/ad-accounts/{ad_account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_meta_ad_account(
+    ad_account_id: str,
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    container: Container = Depends(get_di_container),
+):
+    removed = await container.disconnect_meta_ad_account_use_case(session=session).execute(
+        user_id=user.id,
+        external_id=ad_account_id,
+    )
+    if not removed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meta ad account not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

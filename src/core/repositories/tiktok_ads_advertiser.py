@@ -21,7 +21,7 @@ class TikTokAdsAdvertiserRepository(BaseRepository[TikTokAdsAdvertiser]):
                 TikTokAdsConnection.user_id == user_id,
                 TikTokAdsAdvertiser.advertiser_id == external_advertiser_id,
             )
-            .options(selectinload(TikTokAdsAdvertiser.connection))
+            .options(selectinload(TikTokAdsAdvertiser.connection).selectinload(TikTokAdsConnection.advertisers))
         )
         return result.scalar_one_or_none()
 

@@ -129,14 +129,16 @@ async def test_generate_auto_verdict_use_case_uses_internal_credentials_when_cli
         provider=None,
         api_key=None,
         model=None,
-        report_context="dashboard context",
+        system_prompt="system prompt",
+        messages=[{"role": "user", "content": "dashboard context"}],
         language="ru",
     )
 
     assert text == "verdict-ok"
     assert llm_proxy_service.auto_verdict_calls == [
         {
-            "report_context": "dashboard context",
+            "system_prompt": "system prompt",
+            "messages": [{"role": "user", "content": "dashboard context"}],
             "language": "ru",
         }
     ]
@@ -204,7 +206,8 @@ async def test_generate_auto_verdict_use_case_uses_saved_provider_key_when_reque
         provider="gemini",
         api_key=None,
         model=None,
-        report_context="dashboard context",
+        system_prompt="system prompt",
+        messages=[{"role": "user", "content": "dashboard context"}],
         language="ru",
     )
 

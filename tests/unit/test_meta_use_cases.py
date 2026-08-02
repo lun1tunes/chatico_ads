@@ -8,14 +8,17 @@ from core.models.meta_ad_account import MetaAdAccount
 from core.models.meta_connection import MetaConnection
 from core.models.meta_report_snapshot import MetaReportSnapshot
 from core.models.user import User
+from core.repositories.meta_ad_account import MetaAdAccountRepository
 from core.repositories.meta_connection import MetaConnectionRepository
 from core.security.encryption_service import EncryptionService
 from core.use_cases.meta import (
+    _sync_meta_connection_accounts,
     BuildMetaOAuthUrlUseCase,
     DisconnectMetaAdAccountUseCase,
     DisconnectMetaUseCase,
     HandleMetaOAuthCallbackUseCase,
     ListMetaAdAccountsUseCase,
+    RefreshMetaAdAccountsUseCase,
 )
 from core.utils.time import utcnow
 
@@ -209,12 +212,146 @@ async def test_handle_meta_oauth_callback_removes_stale_ad_accounts(db_session):
     assert [account.external_id for account in ad_accounts] == ["act_1"]
 
 
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_sync_meta_connection_accounts_handles_unloaded_relationship(db_session):
+    encryption_service = EncryptionService()
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"))
+    db_session.add(
+        MetaConnection(
+            id="conn-1",
+            user_id="user-1",
+            meta_user_id="meta-user-1",
+            meta_user_name="Meta Owner",
+            access_token_encrypted=encryption_service.encrypt("long-lived-token"),
+        )
+    )
+    db_session.add(
+        MetaAdAccount(
+            id="acc-1",
+            connection_id="conn-1",
+            external_id="act_legacy",
+            account_id="999",
+            name="Legacy account",
+        )
+    )
+    await db_session.commit()
+
+    connection = (
+        await db_session.execute(select(MetaConnection).where(MetaConnection.id == "conn-1"))
+    ).scalar_one()
+    assert "ad_accounts" not in connection.__dict__
+
+    result = await _sync_meta_connection_accounts(
+        connection=connection,
+        access_token="long-lived-token",
+        meta_client=FakeMetaClient(
+            ad_accounts=[
+                {
+                    "id": "act_1",
+                    "account_id": "111",
+                    "name": "Main account",
+                    "currency": "USD",
+                    "timezone_name": "Asia/Almaty",
+                    "account_status": 1,
+                }
+            ]
+        ),
+        ad_account_repo=MetaAdAccountRepository(db_session),
+    )
+
+    assert result == {
+        "connected_accounts": 1,
+        "added_accounts": 1,
+        "updated_accounts": 0,
+        "removed_accounts": 1,
+    }
+
+
 class FakeReportService:
     def __init__(self) -> None:
         self.cleared_for: str | None = None
 
     def clear_user_cache(self, *, user_id: str) -> None:
         self.cleared_for = user_id
+
+
+@pytest.mark.unit
+@pytest.mark.use_case
+async def test_refresh_meta_ad_accounts_use_case_syncs_new_and_stale_accounts(db_session):
+    encryption_service = EncryptionService()
+    db_session.add(User(id="user-1", email="owner@example.com", password_hash="hash", locale="kz"))
+    db_session.add(
+        MetaConnection(
+            id="conn-1",
+            user_id="user-1",
+            meta_user_id="meta-user-1",
+            meta_user_name="Meta Owner",
+            access_token_encrypted=encryption_service.encrypt("long-lived-token"),
+        )
+    )
+    db_session.add_all(
+        [
+            MetaAdAccount(
+                id="acc-1",
+                connection_id="conn-1",
+                external_id="act_1",
+                account_id="111",
+                name="Main account",
+            ),
+            MetaAdAccount(
+                id="acc-2",
+                connection_id="conn-1",
+                external_id="act_2",
+                account_id="222",
+                name="Legacy account",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    report_service = FakeReportService()
+    use_case = RefreshMetaAdAccountsUseCase(
+        session=db_session,
+        meta_client=FakeMetaClient(
+            ad_accounts=[
+                {
+                    "id": "act_1",
+                    "account_id": "111",
+                    "name": "Main account renamed",
+                    "currency": "USD",
+                    "timezone_name": "Asia/Almaty",
+                    "account_status": 1,
+                },
+                {
+                    "id": "act_3",
+                    "account_id": "333",
+                    "name": "New account",
+                    "currency": "EUR",
+                    "timezone_name": "Europe/Berlin",
+                    "account_status": 1,
+                },
+            ]
+        ),
+        encryption_service=encryption_service,
+        report_service=report_service,
+    )
+
+    result = await use_case.execute(user_id="user-1")
+
+    assert result == {
+        "refreshed_connections": 1,
+        "connected_accounts": 2,
+        "added_accounts": 1,
+        "updated_accounts": 1,
+        "removed_accounts": 1,
+    }
+    assert report_service.cleared_for == "user-1"
+
+    ad_accounts = await ListMetaAdAccountsUseCase(session=db_session).execute(user_id="user-1")
+    assert [account.external_id for account in ad_accounts] == ["act_1", "act_3"]
+    assert ad_accounts[0].name == "Main account renamed"
+    assert ad_accounts[1].currency == "EUR"
 
 
 @pytest.mark.unit

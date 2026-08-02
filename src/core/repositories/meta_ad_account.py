@@ -13,6 +13,14 @@ class MetaAdAccountRepository(BaseRepository[MetaAdAccount]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, MetaAdAccount)
 
+    async def list_for_connection(self, connection_id: str) -> list[MetaAdAccount]:
+        result = await self.session.execute(
+            select(MetaAdAccount)
+            .where(MetaAdAccount.connection_id == connection_id)
+            .order_by(MetaAdAccount.created_at.asc())
+        )
+        return list(result.scalars().all())
+
     async def list_for_user(self, user_id: str) -> list[MetaAdAccount]:
         result = await self.session.execute(
             select(MetaAdAccount)

@@ -11,7 +11,26 @@ from core.infrastructure.meta_graph_api import MetaGraphAPIClient, MetaGraphAPIE
 
 @pytest.mark.unit
 @pytest.mark.service
-def test_build_authorization_url_includes_config_id():
+def test_build_authorization_url_uses_standard_scope_parameters_only():
+    client = MetaGraphAPIClient(
+        graph_version="v24.0",
+        client_id="app-id",
+        client_secret="app-secret",
+        redirect_uri="http://localhost/callback",
+        oauth_scopes=["ads_read"],
+    )
+
+    url = client.build_authorization_url(state="signed-state")
+
+    assert "client_id=app-id" in url
+    assert "state=signed-state" in url
+    assert "scope=ads_read" in url
+    assert "config_id=" not in url
+
+
+@pytest.mark.unit
+@pytest.mark.service
+def test_build_authorization_url_uses_config_id_flow_when_present():
     client = MetaGraphAPIClient(
         graph_version="v24.0",
         client_id="app-id",
@@ -25,8 +44,10 @@ def test_build_authorization_url_includes_config_id():
 
     assert "client_id=app-id" in url
     assert "state=signed-state" in url
+    assert "response_type=code" in url
     assert "config_id=config-123" in url
-    assert "scope=ads_read" in url
+    assert "override_default_response_type=true" in url
+    assert "scope=ads_read" not in url
 
 
 @pytest.mark.unit
@@ -50,6 +71,7 @@ async def test_meta_graph_api_methods_share_common_get_transport():
             httpx.Response(200, json={"data": [{"id": "cmp_1"}]}),
             httpx.Response(200, json={"data": [{"spend": "10"}]}),
             httpx.Response(200, json={"data": [{"campaign_id": "cmp_1"}]}),
+            httpx.Response(200, json={"data": [{"id": "adset_1"}]}),
             httpx.Response(200, json={"data": [{"id": "ad_1"}]}),
             httpx.Response(200, json={"data": [{"ad_id": "ad_1"}]}),
         ]
@@ -76,6 +98,7 @@ async def test_meta_graph_api_methods_share_common_get_transport():
         since="2026-06-01",
         until="2026-06-15",
     ) == [{"campaign_id": "cmp_1"}]
+    assert await client.list_ad_sets(account_id="act_1", access_token="token-2") == [{"id": "adset_1"}]
     assert await client.list_ads(account_id="act_1", access_token="token-2") == [{"id": "ad_1"}]
     assert await client.get_ad_insights(
         account_id="act_1",
@@ -84,11 +107,12 @@ async def test_meta_graph_api_methods_share_common_get_transport():
         until="2026-06-15",
     ) == [{"ad_id": "ad_1"}]
 
-    assert len(route.calls) == 10
+    assert len(route.calls) == 11
     assert route.calls[0].request.url.params["code"] == "oauth-code"
     assert route.calls[6].request.url.params["level"] == "account"
-    assert "object_story_spec" in route.calls[8].request.url.params["fields"]
-    assert route.calls[9].request.url.params["level"] == "ad"
+    assert route.calls[8].request.url.params["fields"] == "id,name,campaign_id,effective_status,targeting"
+    assert "object_story_spec" in route.calls[9].request.url.params["fields"]
+    assert route.calls[10].request.url.params["level"] == "ad"
     await client.aclose()
 
 

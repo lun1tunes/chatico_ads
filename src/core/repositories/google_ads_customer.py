@@ -32,8 +32,9 @@ class GoogleAdsCustomerRepository(BaseRepository[GoogleAdsCustomer]):
             .where(GoogleAdsConnection.user_id == user_id)
             .options(selectinload(GoogleAdsCustomer.connection))
             .order_by(
-                GoogleAdsCustomer.is_manager.asc(),
+                GoogleAdsCustomer.is_manager.desc(),
                 GoogleAdsCustomer.is_directly_accessible.desc(),
+                GoogleAdsCustomer.hierarchy_level.asc(),
                 GoogleAdsCustomer.descriptive_name.asc(),
             )
         )

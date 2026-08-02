@@ -402,12 +402,13 @@ select:focus {
   display: block;
   width: auto;
   height: auto;
+  max-width: 100%;
   flex-shrink: 0;
   object-fit: contain;
 }
 
 .topbar-logo-image {
-  height: 1.7rem;
+  height: 1.8rem;
 }
 
 .brand-lockup {
@@ -899,12 +900,13 @@ select:focus {
   align-items: center;
   overflow: hidden;
   min-height: 4rem;
-  padding: 0.1rem 0.15rem 0.95rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
+  box-sizing: border-box;
 }
 
 .workspace-brand-logo {
-  height: 1.5rem;
+  height: 1.7rem;
 }
 
 .platform-section {
@@ -4042,11 +4044,13 @@ select:focus {
   background: transparent;
   color: var(--text);
   font: inherit;
-  line-height: 1.5;
+  font-size: 0.86rem;
+  line-height: 1.35;
 }
 
 .chat-compose textarea::placeholder {
   color: #99a1b1;
+  font-size: 0.86rem;
 }
 
 .chat-compose textarea:focus {
@@ -4459,8 +4463,8 @@ select:focus {
 .workspace-brand-panel.collapsed {
   justify-content: flex-start;
   width: 100%;
-  padding-bottom: 0.2rem;
-  border-bottom: 0;
+  padding: 0.75rem 0.8rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .rail-left.collapsed .workspace-brand-logo {
@@ -4668,18 +4672,19 @@ select:focus {
 
 .app-shell-workspace .sidebar-toggle {
   right: -0.88rem;
-  top: 1.45rem;
+  top: 0.75rem;
 }
 
 .app-shell-workspace .workspace-brand-panel {
-  min-height: 5rem;
-  padding: 0 1.5rem;
+  min-height: 4rem;
+  padding: 0.75rem 1.5rem;
+  align-items: flex-start;
   border-bottom: 1px solid var(--line);
   background: white;
 }
 
 .app-shell-workspace .workspace-brand-panel.collapsed {
-  padding: 0 0.75rem;
+  padding: 0.75rem;
   justify-content: center;
 }
 
@@ -4818,13 +4823,15 @@ select:focus {
 
 .app-shell-workspace .workspace-stage-topbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
   margin: 0 -1.5rem;
-  padding: 0.75rem 1.5rem;
+  padding: 0.5rem 1.5rem;
   min-height: 4rem;
+  border-bottom: 1px solid var(--line);
   background: white;
+  box-sizing: border-box;
 }
 
 .app-shell-workspace .account-switcher-trigger {
@@ -4868,6 +4875,7 @@ select:focus {
 
 .app-shell-workspace .workspace-toolbar {
   gap: 0.85rem;
+  align-items: flex-start;
 }
 
 .app-shell-workspace .ai-reopen-button {
@@ -4901,8 +4909,19 @@ select:focus {
   background: white;
 }
 
+.app-shell-workspace .ai-panel:not(.overlay) {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100svh;
+  max-height: 100svh;
+}
+
 .app-shell-workspace .ai-panel-header {
-  padding: 0.88rem 1rem;
+  min-height: 4rem;
+  padding: 0.75rem 1rem;
+  align-items: flex-start;
+  box-sizing: border-box;
 }
 
 .app-shell-workspace .chat-scroll-region {
@@ -5575,7 +5594,16 @@ select:focus {
 
   .app-shell-workspace .workspace-stage-topbar {
     margin: 0 -1rem;
-    padding: 0.85rem 1rem;
+    padding: 0.6rem 1rem;
+  }
+
+  .app-shell-workspace .sidebar-toggle {
+    top: 0.85rem;
+  }
+
+  .app-shell-workspace .workspace-brand-panel,
+  .app-shell-workspace .workspace-brand-panel.collapsed {
+    padding-block: 0.85rem;
   }
 
   .hero-actions-stack,
@@ -5656,6 +5684,15 @@ select:focus {
     padding: 0.8rem 0.75rem;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .app-shell-workspace .sidebar-toggle {
+    top: 0.8rem;
+  }
+
+  .app-shell-workspace .workspace-brand-panel,
+  .app-shell-workspace .workspace-brand-panel.collapsed {
+    padding: 0.8rem 0.75rem;
   }
 
   .verdict-status-pill {

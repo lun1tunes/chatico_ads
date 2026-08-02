@@ -38,11 +38,13 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
     )
 
     auto_text = await service.generate_auto_verdict(
-        report_context="summary",
+        system_prompt="auto prompt",
+        messages=[{"role": "user", "content": "summary"}],
         language="kz",
     )
     client_auto_text = await service.generate_auto_verdict(
-        report_context="summary",
+        system_prompt="client auto prompt",
+        messages=[{"role": "user", "content": "summary"}],
         language="en",
         provider="openai",
         api_key="client-key",
@@ -66,14 +68,15 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
     assert chat_text == "openai-response"
     assert gemini.calls[0]["api_key"] == "test-gemini-key"
     assert gemini.calls[0]["model"] == "gemini-3.5-flash"
-    assert "Reply in language code 'kz'" in gemini.calls[0]["system_prompt"]
-    assert "exactly two blocks separated by one blank line" in gemini.calls[0]["system_prompt"]
+    assert gemini.calls[0]["system_prompt"] == "auto prompt"
     assert gemini.calls[0]["max_tokens"] == 420
+    assert gemini.calls[0]["messages"] == [{"role": "user", "content": "summary"}]
     assert gemini.calls[1]["api_key"] == "test-gemini-key"
     assert gemini.calls[1]["model"] == "gemini-3.5-flash"
     assert openai.calls[0]["api_key"] == "client-key"
     assert openai.calls[0]["model"] == "gpt-custom-mini"
-    assert "Dashboard context:\nsummary" in openai.calls[0]["system_prompt"]
+    assert openai.calls[0]["system_prompt"] == "client auto prompt"
+    assert openai.calls[0]["messages"] == [{"role": "user", "content": "summary"}]
     assert openai.calls[1]["model"] == "gpt-5-mini"
     assert service.list_supported_providers() == [
         {
@@ -134,6 +137,54 @@ async def test_llm_proxy_service_selects_provider_and_default_model():
 
 @pytest.mark.unit
 @pytest.mark.service
+async def test_llm_proxy_service_normalizes_english_auto_verdict_labels_for_localized_output():
+    gemini = FakeLLMClient(
+        "gemini",
+        response="*What works:* В данный момент нет активной доставки.\n\n- *Next action:* Активируйте кампанию.",
+    )
+    service = LLMProxyService(
+        anthropic_client=FakeLLMClient("anthropic"),
+        openai_client=FakeLLMClient("openai"),
+        gemini_client=gemini,
+    )
+
+    text = await service.generate_auto_verdict(
+        system_prompt="auto prompt",
+        messages=[{"role": "user", "content": "summary"}],
+        language="ru",
+    )
+
+    assert text == "В данный момент нет активной доставки.\n\nАктивируйте кампанию."
+
+
+@pytest.mark.unit
+@pytest.mark.service
+async def test_llm_proxy_service_passes_auto_verdict_prompt_bundle_through_unchanged():
+    openai = FakeLLMClient("openai")
+    service = LLMProxyService(
+        anthropic_client=FakeLLMClient("anthropic"),
+        openai_client=openai,
+        gemini_client=FakeLLMClient("gemini"),
+    )
+
+    text = await service.generate_auto_verdict(
+        system_prompt="scope prompt",
+        messages=[{"role": "user", "content": "scope|ad_group|adset_1|Prospecting|Lead Gen\nsummary"}],
+        language="ru",
+        provider="openai",
+        api_key="client-key",
+        model="gpt-5-mini",
+    )
+
+    assert text == "openai-response"
+    assert openai.calls[0]["messages"] == [
+        {"role": "user", "content": "scope|ad_group|adset_1|Prospecting|Lead Gen\nsummary"}
+    ]
+    assert openai.calls[0]["system_prompt"] == "scope prompt"
+
+
+@pytest.mark.unit
+@pytest.mark.service
 async def test_llm_proxy_service_does_not_fall_back_from_configured_internal_provider(monkeypatch):
     anthropic = FakeLLMClient("anthropic", response="anthropic-fallback")
     openai = FakeLLMClient("openai")
@@ -151,7 +202,11 @@ async def test_llm_proxy_service_does_not_fall_back_from_configured_internal_pro
     monkeypatch.setattr(settings.llm, "anthropic_model", "claude-test-model")
 
     with pytest.raises(LLMProxyError, match="Gemini upstream failed"):
-        await service.generate_auto_verdict(report_context="summary", language="en")
+        await service.generate_auto_verdict(
+            system_prompt="auto prompt",
+            messages=[{"role": "user", "content": "summary"}],
+            language="en",
+        )
 
     assert gemini.calls[0]["api_key"] == "gemini-internal-key"
     assert gemini.calls[0]["model"] == "gemini-test-model"

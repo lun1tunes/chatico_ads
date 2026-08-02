@@ -10,6 +10,7 @@ from core.infrastructure.google_ads_api import GoogleAdsConfigurationError
 from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.infrastructure.tiktok_ads_api import TikTokAdsConfigurationError
+from core.services.ai_prompt_service import AIPromptService, PromptTemplateError
 from core.use_cases.meta_data_deletion import MetaDataDeletionUseCaseError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from main import app
@@ -31,6 +32,7 @@ class FakeContainer:
         self.handle_meta_data_deletion_callback_use_case = Mock()
         self.get_meta_data_deletion_status_use_case = Mock()
         self.list_meta_ad_accounts_use_case = Mock()
+        self.refresh_meta_ad_accounts_use_case = Mock()
         self.build_google_ads_oauth_url_use_case = Mock()
         self.handle_google_ads_oauth_callback_use_case = Mock()
         self.list_google_ads_customers_use_case = Mock()
@@ -48,6 +50,7 @@ class FakeContainer:
         self.save_ai_provider_key_use_case = Mock()
         self.delete_ai_provider_key_use_case = Mock()
         self.ask_dashboard_use_case = Mock()
+        self.ai_prompt_service = Mock(return_value=AIPromptService())
 
 
 def _sample_auto_verdict_report() -> dict[str, object]:
@@ -102,6 +105,58 @@ def _sample_auto_verdict_report() -> dict[str, object]:
     }
 
 
+def _sample_no_active_auto_verdict_report() -> dict[str, object]:
+    report = _sample_auto_verdict_report()
+    summary = report["summary"]
+    campaigns = report["campaigns"]
+
+    assert isinstance(summary, dict)
+    assert isinstance(campaigns, list)
+
+    summary["active_campaigns"] = 0
+    summary["metrics"] = {
+        "spend": {"current": 0.0, "previous": 20.0, "delta_pct": -100.0},
+        "reach": {"current": 0, "previous": 300, "delta_pct": -100.0},
+        "impressions": {"current": 0, "previous": 450, "delta_pct": -100.0},
+        "clicks": {"current": 0, "previous": 25, "delta_pct": -100.0},
+        "ctr": {"current": 0.0, "previous": 5.6, "delta_pct": -100.0},
+        "cpm": {"current": 0.0, "previous": 8.0, "delta_pct": -100.0},
+        "cpc": {"current": 0.0, "previous": 0.8, "delta_pct": -100.0},
+        "results": {"current": 0, "previous": 3, "delta_pct": -100.0},
+        "cost_per_result": {"current": 0.0, "previous": 6.67, "delta_pct": -100.0},
+    }
+
+    for campaign in campaigns:
+        assert isinstance(campaign, dict)
+        campaign["status"] = "PAUSED"
+        campaign["metrics"] = {
+            "spend": {"current": 0.0, "previous": 10.0, "delta_pct": -100.0},
+            "results": {"current": 0, "previous": 1, "delta_pct": -100.0},
+            "cost_per_result": {"current": 0.0, "previous": 10.0, "delta_pct": -100.0},
+        }
+
+    return report
+
+
+def _valid_auto_verdict_text(*, language: str) -> str:
+    if language == "ru":
+        return (
+            "Лиды растут быстрее расхода, поэтому общая динамика по аккаунту выглядит устойчивой. "
+            "Наиболее сильный вклад даёт кампания Lead Gen Core, а Retargeting Warm требует более внимательной проверки цены результата. "
+            "Есть смысл обсудить с маркетинговым специалистом, почему разрыв по эффективности между кампаниями сохраняется.\n\n"
+            "- Lead Gen Core приносит больше лидов при более низкой цене результата.\n"
+            "- Retargeting Warm держит объём, но обходится заметно дороже.\n"
+            "- Стоимость результата по аккаунту остаётся лучше прошлого периода."
+        )
+    return (
+        "Lead volume is improving faster than spend, so the overall account trend looks healthy for this period. "
+        "Lead Gen Core is carrying the strongest efficiency, while the weaker cost per result in other activity is worth reviewing with the marketing specialist.\n\n"
+        "- Results increased versus the previous period.\n"
+        "- Cost per result improved at the account level.\n"
+        "- One campaign still needs a closer efficiency review."
+    )
+
+
 @pytest.mark.integration
 @pytest.mark.api
 async def test_health_endpoints(async_client):
@@ -142,6 +197,17 @@ async def test_meta_routes(async_client):
             ]
         ),
     )
+    container.refresh_meta_ad_accounts_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value={
+                "refreshed_connections": 1,
+                "connected_accounts": 2,
+                "added_accounts": 1,
+                "updated_accounts": 1,
+                "removed_accounts": 0,
+            }
+        )
+    )
 
     app.dependency_overrides[get_current_user] = _override_current_user
     app.dependency_overrides[get_db_session] = _override_db_session
@@ -161,6 +227,16 @@ async def test_meta_routes(async_client):
     accounts_response = await async_client.get("/api/v1/meta/ad-accounts")
     assert accounts_response.status_code == 200
     assert accounts_response.json()[0]["external_id"] == "act_1"
+
+    refresh_response = await async_client.post("/api/v1/meta/ad-accounts/refresh")
+    assert refresh_response.status_code == 200
+    assert refresh_response.json() == {
+        "refreshed_connections": 1,
+        "connected_accounts": 2,
+        "added_accounts": 1,
+        "updated_accounts": 1,
+        "removed_accounts": 0,
+    }
 
     disconnect_response = await async_client.delete("/api/v1/meta/connections")
     assert disconnect_response.status_code == 204
@@ -614,6 +690,13 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     default_chat_call = container.ask_dashboard_use_case.return_value.execute.await_args_list[0].kwargs
     assert default_chat_call["use_client_credentials"] is False
     assert default_chat_call["provider"] is None
+    assert "CHATICO ADS — SHARED AI PHILOSOPHY" in default_chat_call["system_prompt"]
+    assert "Reply in language code: kz" in default_chat_call["system_prompt"]
+    assert "Мен тек осы жарнама кабинетіндегі жарнама мен көрсеткіштерді талдауға көмектесе аламын." in default_chat_call["system_prompt"]
+    assert "SPECIAL CASE: QUESTIONS ABOUT THE SPECIALIST" in default_chat_call["system_prompt"]
+    assert "Dashboard context:" in default_chat_call["messages"][0]["content"]
+    assert "User question:\ntest" in default_chat_call["messages"][0]["content"]
+    assert "fmt|sum/cmp metrics" in default_chat_call["messages"][0]["content"]
 
     google_default_chat_response = await async_client.post(
         "/api/v1/ai/google-ads/customers/1234567890/chat",
@@ -644,6 +727,20 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
     assert chat_response.status_code == 400
     assert chat_response.json()["detail"] == "Unsupported AI provider"
 
+    no_user_message_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "kz",
+            "use_client_credentials": True,
+            "provider": "anthropic",
+            "api_key": "1234567890-client-key",
+            "messages": [{"role": "assistant", "content": "prefill"}],
+        },
+    )
+    assert no_user_message_response.status_code == 400
+    assert no_user_message_response.json()["detail"] == "Add at least one user message before sending the chat request"
+
     container.ask_dashboard_use_case.return_value = SimpleNamespace(
         execute=AsyncMock(side_effect=LLMProxyError("The last chat message must come from the user")),
     )
@@ -656,7 +753,10 @@ async def test_dashboard_and_ai_routes_map_errors(async_client):
             "use_client_credentials": True,
             "provider": "anthropic",
             "api_key": "1234567890-client-key",
-            "messages": [{"role": "assistant", "content": "prefill"}],
+            "messages": [
+                {"role": "user", "content": "test"},
+                {"role": "assistant", "content": "prefill"},
+            ],
         },
     )
     assert invalid_chat_shape_response.status_code == 400
@@ -793,6 +893,96 @@ async def test_auto_verdict_route_returns_metric_fallback_when_internal_ai_times
 
 @pytest.mark.integration
 @pytest.mark.api
+async def test_auto_verdict_route_replaces_wrong_language_response_with_interface_language_fallback(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_auto_verdict_report()),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value="No performance (all 0s).\n\n* Conclusion:* All key metrics are zero."),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "ru"},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    assert "Ниже краткий вывод по метрикам в языке интерфейса" in text
+    assert "Lead Gen Core" in text
+    assert "Retargeting Warm" in text
+    assert "No performance" not in text
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_replaces_overlong_response_with_guardrail_fallback(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_auto_verdict_report()),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=" ".join(["Лиды"] * 121)),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "ru"},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    assert "Ниже краткий вывод по метрикам в языке интерфейса" in text
+    assert "Lead Gen Core" in text
+    assert "Retargeting Warm" in text
+    assert len(text.split()) <= 120
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_reports_no_active_delivery_with_guardrail_fallback(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_no_active_auto_verdict_report()),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(
+            return_value=(
+                "Аккаунт нуждается в дополнительном анализе по качеству трафика. "
+                "Стоит посмотреть, как кампании распределяли бюджет в этом периоде.\n\n"
+                "- Проверить кампании.\n"
+                "- Сверить расходы."
+            )
+        ),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "ru"},
+    )
+
+    assert response.status_code == 200
+    text = response.json()["text"]
+    assert "За этот период активного показа не было." in text
+    assert "Следующий шаг: активировать кампанию и убедиться, что показы и клики снова пошли." in text
+    assert len(text.split()) <= 120
+
+
+@pytest.mark.integration
+@pytest.mark.api
 async def test_auto_verdict_route_uses_internal_ai_defaults(async_client):
     container = FakeContainer()
     container.generate_meta_report_use_case.return_value = SimpleNamespace(
@@ -824,7 +1014,7 @@ async def test_auto_verdict_route_uses_internal_ai_defaults(async_client):
         ),
     )
     container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
-        execute=AsyncMock(return_value="internal-verdict-ok"),
+        execute=AsyncMock(return_value=_valid_auto_verdict_text(language="en")),
     )
 
     app.dependency_overrides[get_current_user] = _override_current_user
@@ -837,7 +1027,7 @@ async def test_auto_verdict_route_uses_internal_ai_defaults(async_client):
     )
 
     assert response.status_code == 200
-    assert response.json()["text"] == "internal-verdict-ok"
+    assert response.json()["text"] == _valid_auto_verdict_text(language="en")
     container.generate_auto_verdict_use_case.assert_called_once_with(session=None)
     execute_call = container.generate_auto_verdict_use_case.return_value.execute.await_args.kwargs
     assert execute_call["user_id"] == "user-1"
@@ -846,7 +1036,73 @@ async def test_auto_verdict_route_uses_internal_ai_defaults(async_client):
     assert execute_call["api_key"] is None
     assert execute_call["model"] is None
     assert execute_call["language"] == "en"
-    assert "Main account" in execute_call["report_context"]
+    assert "CHATICO ADS — AUTO VERDICT PROMPT" in execute_call["system_prompt"]
+    assert "Write every word, bullet, and emphasis marker in English." in execute_call["system_prompt"]
+    assert "If all key metrics are zero or there are no active campaigns, clearly state there is no active delivery." in execute_call["system_prompt"]
+    assert "Main account" in execute_call["messages"][0]["content"]
+    assert "Dashboard context:" in execute_call["messages"][0]["content"]
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_maps_prompt_configuration_error(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_auto_verdict_report()),
+    )
+    container.ai_prompt_service = Mock(
+        return_value=SimpleNamespace(
+            build_auto_verdict_bundle=Mock(side_effect=PromptTemplateError("AI prompt configuration is invalid")),
+        )
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={"days": 30, "language": "ru"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI prompt configuration is invalid"
+    container.generate_auto_verdict_use_case.assert_not_called()
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_auto_verdict_route_builds_campaign_scope_context_into_prompt_bundle(async_client):
+    container = FakeContainer()
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_auto_verdict_report()),
+    )
+    container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_valid_auto_verdict_text(language="ru")),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/auto-verdict",
+        json={
+            "days": 30,
+            "language": "ru",
+            "scope": "campaign",
+            "campaign_id": "cmp-2",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["text"] == _valid_auto_verdict_text(language="ru")
+    execute_call = container.generate_auto_verdict_use_case.return_value.execute.await_args.kwargs
+    assert "scope" not in execute_call
+    assert "Focus first on the selected campaign from the dashboard context." in execute_call["system_prompt"]
+    assert "scope|campaign|cmp-2|Retargeting Warm" in execute_call["messages"][0]["content"]
+    assert "cmp|Retargeting Warm|ACTIVE|leads" in execute_call["messages"][0]["content"]
+    assert "Lead Gen Core" not in execute_call["messages"][0]["content"]
 
 
 @pytest.mark.integration
@@ -882,7 +1138,7 @@ async def test_auto_verdict_route_accepts_client_credentials(async_client):
         ),
     )
     container.generate_auto_verdict_use_case.return_value = SimpleNamespace(
-        execute=AsyncMock(return_value="client-verdict-ok"),
+        execute=AsyncMock(return_value=_valid_auto_verdict_text(language="en")),
     )
 
     app.dependency_overrides[get_current_user] = _override_current_user
@@ -902,7 +1158,7 @@ async def test_auto_verdict_route_accepts_client_credentials(async_client):
     )
 
     assert response.status_code == 200
-    assert response.json()["text"] == "client-verdict-ok"
+    assert response.json()["text"] == _valid_auto_verdict_text(language="en")
     execute_call = container.generate_auto_verdict_use_case.return_value.execute.await_args.kwargs
     assert execute_call["use_client_credentials"] is True
     assert execute_call["provider"] == "openai"

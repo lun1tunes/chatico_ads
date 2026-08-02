@@ -38,10 +38,14 @@ class MetaGraphAPIClient:
             "redirect_uri": self.redirect_uri,
             "state": state,
             "response_type": "code",
-            "scope": ",".join(self.oauth_scopes),
         }
         if self.oauth_config_id:
             params["config_id"] = self.oauth_config_id
+            # Meta's config_id-based business login flow defaults to a token response
+            # unless we explicitly request an authorization code for server-side exchange.
+            params["override_default_response_type"] = "true"
+        elif self.oauth_scopes:
+            params["scope"] = ",".join(self.oauth_scopes)
         return f"{self.base_oauth_url}?{urlencode(params)}"
 
     async def _request_json(self, url: str, *, params: dict[str, object] | None = None) -> dict[str, object]:
@@ -146,6 +150,16 @@ class MetaGraphAPIClient:
             params={"fields": "id,name,status,effective_status", "limit": 500, "access_token": access_token},
         )
 
+    async def list_ad_sets(self, *, account_id: str, access_token: str) -> list[dict[str, object]]:
+        return await self._get_paginated(
+            f"{account_id}/adsets",
+            params={
+                "fields": "id,name,campaign_id,effective_status,targeting",
+                "limit": 500,
+                "access_token": access_token,
+            },
+        )
+
     async def get_account_insights(
         self, *, account_id: str, access_token: str, since: str, until: str
     ) -> dict[str, object] | None:
@@ -201,7 +215,7 @@ class MetaGraphAPIClient:
             f"{account_id}/ads",
             params={
                 "fields": (
-                    "id,name,campaign_id,effective_status,"
+                    "id,name,campaign_id,adset_id,effective_status,"
                     "creative{id,name,thumbnail_url,image_url,object_type,object_story_spec,instagram_permalink_url}"
                 ),
                 "limit": 500,

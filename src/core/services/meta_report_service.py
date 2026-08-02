@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 from copy import deepcopy
 from datetime import date, timedelta
 from time import monotonic
@@ -27,6 +28,22 @@ def _first_non_empty(*values: object) -> str | None:
         if isinstance(value, str) and value.strip():
             return value
     return None
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _resolve_creative_image_url(creative: dict[str, object]) -> str | None:
@@ -57,6 +74,239 @@ def _looks_like_low_res_preview(url: str | None) -> bool:
     stp = stp_values[0] if stp_values else ""
     low_res_tokens = ("p64x64", "p96x96", "p128x128")
     return any(token in stp for token in low_res_tokens)
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+
+    for value in values:
+        normalized = value.strip()
+        if not normalized:
+            continue
+        marker = normalized.casefold()
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append(normalized)
+
+    return unique
+
+
+def _extract_named_values(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    values: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            label = _first_non_empty(item.get("name"), item.get("label"), item.get("key"), item.get("id"))
+            if label:
+                values.append(label)
+        elif item is not None:
+            label = str(item).strip()
+            if label:
+                values.append(label)
+
+    return _dedupe_strings(values)
+
+
+def _extract_geo_summary(targeting: dict[str, object]) -> str | None:
+    geo_locations = targeting.get("geo_locations")
+    if not isinstance(geo_locations, dict):
+        return None
+
+    geo_values: list[str] = []
+    countries = geo_locations.get("countries")
+    if isinstance(countries, list):
+        geo_values.extend(str(item).strip() for item in countries if str(item).strip())
+
+    for key in ("country_groups", "regions", "cities", "zips"):
+        geo_values.extend(_extract_named_values(geo_locations.get(key)))
+
+    unique_values = _dedupe_strings(geo_values)
+    return ", ".join(unique_values) or None
+
+
+def _format_age_summary(targeting: dict[str, object]) -> str | None:
+    age_min = _optional_int(targeting.get("age_min"))
+    age_max = _optional_int(targeting.get("age_max"))
+
+    if age_min is None and age_max is None:
+        return None
+    if age_min is not None and age_max is not None:
+        return f"{age_min}-{age_max}"
+    if age_min is not None:
+        return f"{age_min}+"
+    return f"up to {age_max}"
+
+
+def _format_gender_summary(targeting: dict[str, object]) -> str | None:
+    genders = targeting.get("genders")
+    if not isinstance(genders, list):
+        return None
+
+    labels = []
+    for item in genders:
+        code = _optional_int(item)
+        if code == 1:
+            labels.append("male")
+        elif code == 2:
+            labels.append("female")
+
+    unique_labels = _dedupe_strings(labels)
+    if len(unique_labels) >= 2:
+        return None
+    return ", ".join(unique_labels) or None
+
+
+def _extract_flexible_spec_signals(targeting: dict[str, object]) -> list[str]:
+    flexible_spec = targeting.get("flexible_spec")
+    if not isinstance(flexible_spec, list):
+        return []
+
+    values: list[str] = []
+    for item in flexible_spec:
+        if not isinstance(item, dict):
+            continue
+        for nested in item.values():
+            values.extend(_extract_named_values(nested))
+
+    return _dedupe_strings(values)
+
+
+def _extract_signal_summary(targeting: dict[str, object]) -> str | None:
+    signals = _dedupe_strings(
+        [
+            *_extract_named_values(targeting.get("interests")),
+            *_extract_named_values(targeting.get("behaviors")),
+            *_extract_flexible_spec_signals(targeting),
+        ]
+    )
+    return ", ".join(signals) or None
+
+
+def _extract_audience_summary(targeting: dict[str, object]) -> str | None:
+    included = _extract_named_values(targeting.get("custom_audiences"))
+    excluded = _extract_named_values(targeting.get("excluded_custom_audiences"))
+
+    parts: list[str] = []
+    if included:
+        parts.append(f"incl:{', '.join(included)}")
+    if excluded:
+        parts.append(f"excl:{', '.join(excluded)}")
+    return " ".join(parts) or None
+
+
+def _extract_placement_summary(targeting: dict[str, object]) -> str | None:
+    placements: list[str] = []
+    placement_groups = (
+        ("facebook_positions", "facebook"),
+        ("instagram_positions", "instagram"),
+        ("messenger_positions", "messenger"),
+        ("audience_network_positions", "audience_network"),
+        ("whatsapp_positions", "whatsapp"),
+    )
+
+    for key, prefix in placement_groups:
+        values = _extract_named_values(targeting.get(key))
+        placements.extend(f"{prefix}:{value}" for value in values)
+
+    if placements:
+        return ", ".join(_dedupe_strings(placements))
+
+    publisher_platforms = _extract_named_values(targeting.get("publisher_platforms"))
+    if publisher_platforms:
+        return ", ".join(publisher_platforms)
+
+    return None
+
+
+def _extract_device_summary(targeting: dict[str, object]) -> str | None:
+    devices = _extract_named_values(targeting.get("device_platforms"))
+    return ", ".join(devices) or None
+
+
+def _normalize_targeting(targeting_spec: object) -> dict[str, str | None]:
+    targeting = targeting_spec if isinstance(targeting_spec, dict) else {}
+    normalized = {
+        "geo": _extract_geo_summary(targeting),
+        "age": _format_age_summary(targeting),
+        "gender": _format_gender_summary(targeting),
+        "audience": _extract_audience_summary(targeting),
+        "signal": _extract_signal_summary(targeting),
+        "placement": _extract_placement_summary(targeting),
+        "device": _extract_device_summary(targeting),
+    }
+
+    summary_parts = [
+        f"geo={normalized['geo']}" if normalized["geo"] else None,
+        f"age={normalized['age']}" if normalized["age"] else None,
+        f"gender={normalized['gender']}" if normalized["gender"] else None,
+        f"aud={normalized['audience']}" if normalized["audience"] else None,
+        f"sig={normalized['signal']}" if normalized["signal"] else None,
+        f"pl={normalized['placement']}" if normalized["placement"] else None,
+        f"dev={normalized['device']}" if normalized["device"] else None,
+    ]
+    normalized["summary"] = "; ".join(part for part in summary_parts if part) or None
+    return normalized
+
+
+def _merge_action_totals(action_totals: dict[str, int], actions: object) -> None:
+    if not isinstance(actions, list):
+        return
+
+    for item in actions:
+        if not isinstance(item, dict):
+            continue
+        action_type = _optional_string(item.get("action_type"))
+        if not action_type:
+            continue
+        action_totals[action_type] = action_totals.get(action_type, 0) + int(to_float(item.get("value")))
+
+
+def _serialize_action_totals(action_totals: dict[str, int]) -> list[dict[str, object]]:
+    return [{"action_type": key, "value": value} for key, value in action_totals.items()]
+
+
+def _build_ad_group_metrics_map(ad_insights: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    grouped: dict[str, dict[str, object]] = {}
+
+    for insight in ad_insights:
+        ad_group_id = _optional_string(insight.get("adset_id"))
+        if not ad_group_id:
+            continue
+
+        grouped.setdefault(
+            ad_group_id,
+            {
+                "id": ad_group_id,
+                "campaign_id": _optional_string(insight.get("campaign_id")),
+                "name": _optional_string(insight.get("adset_name")),
+                "spend": 0.0,
+                "impressions": 0,
+                "clicks": 0,
+                "action_totals": {},
+            },
+        )
+        group = grouped[ad_group_id]
+        group["campaign_id"] = group.get("campaign_id") or _optional_string(insight.get("campaign_id"))
+        group["name"] = group.get("name") or _optional_string(insight.get("adset_name"))
+        group["spend"] = float(group.get("spend") or 0) + to_float(insight.get("spend"))
+        group["impressions"] = int(group.get("impressions") or 0) + int(to_float(insight.get("impressions")))
+        group["clicks"] = int(group.get("clicks") or 0) + int(to_float(insight.get("clicks")))
+        _merge_action_totals(group["action_totals"], insight.get("actions"))
+
+    return grouped
+
+
+def _ad_group_sort_key(ad_group: dict[str, object]) -> tuple[float, float, str]:
+    metrics = ad_group.get("metrics", {})
+    return (
+        float(metrics.get("spend") or 0),
+        float(metrics.get("results") or 0),
+        str(ad_group.get("name") or ""),
+    )
 
 
 class MetaReportService:
@@ -229,6 +479,7 @@ class MetaReportService:
         (
             account_info,
             campaigns,
+            ad_sets,
             current_account_insights,
             previous_account_insights,
             current_account_daily_insights,
@@ -240,6 +491,7 @@ class MetaReportService:
         ) = await asyncio.gather(
             self.meta_client.get_ad_account(account_id=account.external_id, access_token=access_token),
             self.meta_client.list_campaigns(account_id=account.external_id, access_token=access_token),
+            self.meta_client.list_ad_sets(account_id=account.external_id, access_token=access_token),
             self.meta_client.get_account_insights(
                 account_id=account.external_id,
                 access_token=access_token,
@@ -289,6 +541,18 @@ class MetaReportService:
         previous_campaign_map = {str(item.get("campaign_id")): item for item in previous_campaign_insights}
         ad_insight_map = {str(item.get("ad_id")): item for item in ad_insights}
         ads_by_campaign = group_ads_by_campaign(ads)
+        ad_sets_by_id = {str(item.get("id")): item for item in ad_sets}
+        ad_set_ids_by_campaign: dict[str, set[str]] = defaultdict(set)
+        for ad_set in ad_sets:
+            campaign_id = _optional_string(ad_set.get("campaign_id"))
+            ad_set_id = _optional_string(ad_set.get("id"))
+            if campaign_id and ad_set_id:
+                ad_set_ids_by_campaign[campaign_id].add(ad_set_id)
+        ad_group_metrics_map = _build_ad_group_metrics_map(ad_insights)
+        for ad_group_id, metrics in ad_group_metrics_map.items():
+            campaign_id = _optional_string(metrics.get("campaign_id"))
+            if campaign_id:
+                ad_set_ids_by_campaign[campaign_id].add(ad_group_id)
 
         current_result_kind, current_result_count = extract_primary_result(
             current_account_insights.get("actions") if current_account_insights else None
@@ -356,6 +620,40 @@ class MetaReportService:
             campaign_clicks = int(to_float(current_campaign.get("clicks")))
             previous_campaign_spend = to_float(previous_campaign.get("spend"))
             previous_campaign_clicks = int(to_float(previous_campaign.get("clicks")))
+            ad_groups: list[dict[str, object]] = []
+
+            for ad_group_id in ad_set_ids_by_campaign.get(campaign_id, set()):
+                ad_set = ad_sets_by_id.get(ad_group_id, {})
+                ad_group_metrics = ad_group_metrics_map.get(ad_group_id, {})
+                action_totals = ad_group_metrics.get("action_totals", {})
+                actions = _serialize_action_totals(action_totals) if isinstance(action_totals, dict) else []
+                ad_group_result_kind, ad_group_results = extract_primary_result(actions)
+                ad_group_impressions = int(ad_group_metrics.get("impressions") or 0)
+                ad_group_clicks = int(ad_group_metrics.get("clicks") or 0)
+                ad_group_targeting = _normalize_targeting(ad_set.get("targeting"))
+
+                ad_groups.append(
+                    {
+                        "id": ad_group_id,
+                        "name": _first_non_empty(
+                            ad_group_metrics.get("name"),
+                            ad_set.get("name"),
+                            f"Ad set {ad_group_id}",
+                        ),
+                        "targeting": ad_group_targeting,
+                        "targeting_summary": ad_group_targeting.get("summary"),
+                        "metrics": {
+                            "spend": float(ad_group_metrics.get("spend") or 0),
+                            "impressions": ad_group_impressions,
+                            "clicks": ad_group_clicks,
+                            "ctr": ((ad_group_clicks / ad_group_impressions) * 100.0) if ad_group_impressions else 0.0,
+                            "results": ad_group_results,
+                            "result_kind": ad_group_result_kind,
+                        },
+                    }
+                )
+
+            ad_groups.sort(key=_ad_group_sort_key, reverse=True)
 
             creatives = await asyncio.gather(
                 *(
@@ -401,6 +699,7 @@ class MetaReportService:
                             (previous_campaign_spend / previous_results) if previous_results else None,
                         ),
                     },
+                    "ad_groups": ad_groups,
                     "creatives": creatives,
                 }
             )

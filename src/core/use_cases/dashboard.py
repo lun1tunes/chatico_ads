@@ -150,12 +150,14 @@ class GenerateAutoVerdictUseCase:
         provider: str | None,
         api_key: str | None,
         model: str | None,
-        report_context: str,
+        system_prompt: str,
+        messages: list[dict[str, str]],
         language: str,
     ) -> str:
         if not use_client_credentials:
             return await self.llm_proxy_service.generate_auto_verdict(
-                report_context=report_context,
+                system_prompt=system_prompt,
+                messages=messages,
                 language=language,
             )
 
@@ -168,7 +170,8 @@ class GenerateAutoVerdictUseCase:
             llm_proxy_service=self.llm_proxy_service,
         )
         response_text = await self.llm_proxy_service.generate_auto_verdict(
-            report_context=report_context,
+            system_prompt=system_prompt,
+            messages=messages,
             language=language,
             provider=normalized_provider,
             api_key=resolved_api_key,

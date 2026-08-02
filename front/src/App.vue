@@ -45,6 +45,14 @@ interface MetaAccount {
   account_status: number | null
 }
 
+interface MetaAccountRefreshResult {
+  refreshed_connections: number
+  connected_accounts: number
+  added_accounts: number
+  updated_accounts: number
+  removed_accounts: number
+}
+
 interface GoogleAdsCustomer {
   id: string
   external_customer_id: string
@@ -200,6 +208,21 @@ interface SavedProviderKey {
   provider: AIProvider
   has_saved_key: boolean
   updated_at: string
+}
+
+type AutoVerdictScope = 'account' | 'campaign' | 'ad_group' | 'creative'
+
+interface AutoVerdictRequestPayload {
+  days: number
+  language: Locale
+  use_client_credentials: boolean
+  scope: AutoVerdictScope
+  campaign_id?: string
+  ad_group_id?: string
+  creative_id?: string
+  provider?: AIProvider
+  api_key?: string | null
+  model?: string | null
 }
 
 interface LegalSection {
@@ -1177,6 +1200,11 @@ const translations = {
     continueWithMeta: 'Продолжить с Facebook',
     continueWithGoogle: 'Продолжить с Google',
     continueWithTikTok: 'Продолжить с TikTok',
+    refreshMetaAccounts: 'Проверить новые кабинеты',
+    refreshMetaAccountsHint:
+      'Chatico обновит список доступных кабинетов по уже сохранённому Meta-доступу. Если нового кабинета нет в списке, используйте переподключение.',
+    metaRefreshSuccess: 'Список Meta кабинетов обновлён.',
+    reconnectMeta: 'Переподключить Meta',
     connectMetaIntro: 'Войдите через Facebook, чтобы Chatico получил доступ к вашим рекламным кабинетам Meta.',
     connectGoogleIntro: 'Войдите через Google, чтобы Chatico увидел ваши кабинеты Google Ads и MCC.',
     connectTikTokIntro: 'Войдите через TikTok for Business, чтобы Chatico увидел доступные рекламные аккаунты.',
@@ -1396,6 +1424,11 @@ const translations = {
     continueWithMeta: 'Facebook арқылы жалғастыру',
     continueWithGoogle: 'Google арқылы жалғастыру',
     continueWithTikTok: 'TikTok арқылы жалғастыру',
+    refreshMetaAccounts: 'Жаңа кабинеттерді тексеру',
+    refreshMetaAccountsHint:
+      'Chatico сақталған Meta рұқсаты арқылы қолжетімді кабинеттер тізімін жаңартады. Егер жаңа кабинет шықпаса, қайта қосып көріңіз.',
+    metaRefreshSuccess: 'Meta кабинеттерінің тізімі жаңартылды.',
+    reconnectMeta: 'Meta-ны қайта қосу',
     connectMetaIntro: 'Chatico сіздің Meta жарнама кабинеттеріңізді көруі үшін Facebook арқылы кіріңіз.',
     connectGoogleIntro: 'Chatico Google Ads және MCC кабинеттерін көруі үшін Google арқылы кіріңіз.',
     connectTikTokIntro: 'Chatico қолжетімді жарнама аккаунттарын көруі үшін TikTok for Business арқылы кіріңіз.',
@@ -1615,6 +1648,11 @@ const translations = {
     continueWithMeta: 'Continue with Facebook',
     continueWithGoogle: 'Continue with Google',
     continueWithTikTok: 'Continue with TikTok',
+    refreshMetaAccounts: 'Check for new accounts',
+    refreshMetaAccountsHint:
+      'Chatico refreshes your available Meta ad accounts using the saved connection first. If the new account is still missing, reconnect Meta.',
+    metaRefreshSuccess: 'Meta account list refreshed.',
+    reconnectMeta: 'Reconnect Meta',
     connectMetaIntro: 'Sign in with Facebook so Chatico can access your Meta ad accounts.',
     connectGoogleIntro: 'Sign in with Google so Chatico can access your Google Ads and MCC accounts.',
     connectTikTokIntro: 'Sign in with TikTok for Business so Chatico can access your available advertiser accounts.',
@@ -2172,6 +2210,21 @@ const workspaceMode = computed<WorkspaceSection>(() => {
   }
   return 'overview'
 })
+const autoVerdictScope = computed<AutoVerdictScope>(() => {
+  if (workspaceMode.value === 'campaign' && selectedCampaign.value) {
+    return 'campaign'
+  }
+  return 'account'
+})
+const autoVerdictRequestKey = computed(() => {
+  if (!selectedAccountId.value || !report.value) {
+    return ''
+  }
+  if (autoVerdictScope.value === 'campaign' && selectedCampaign.value) {
+    return `campaign:${selectedCampaign.value.id}`
+  }
+  return 'account'
+})
 const providerOptions = computed<readonly WorkspaceProviderOption[]>(() => [
   {
     key: 'meta',
@@ -2210,7 +2263,16 @@ const connectModalPrimaryLabel = computed(() => {
   if (!connectModalProviderOption.value) {
     return ''
   }
+  if (connectModalProviderOption.value.connected && connectModalProviderOption.value.key === 'meta') {
+    return copy.value.refreshMetaAccounts
+  }
   return connectModalProviderOption.value.connected ? copy.value.yourAccounts : providerContinueLabel(connectModalProviderOption.value.key)
+})
+const connectModalIntroNote = computed(() => {
+  if (connectModalProviderOption.value?.connected && connectModalProviderOption.value.key === 'meta') {
+    return copy.value.refreshMetaAccountsHint
+  }
+  return copy.value.connectFlowHint
 })
 const connectModalHeading = computed(() => copy.value.connectAccount)
 const connectModalHeadNote = computed(() => {
@@ -2223,7 +2285,7 @@ const connectModalHeadNote = computed(() => {
   if (connectModalStage.value === 'loading') {
     return copy.value.connectLoadingAccounts
   }
-  return copy.value.connectFlowHint
+  return connectModalIntroNote.value
 })
 const currentProviderAccounts = computed<readonly WorkspaceAccountOption[]>(() => {
   if (selectedProvider.value === 'google_ads') {
@@ -3103,6 +3165,29 @@ function buildAutoVerdictPath(provider: OAuthProvider, accountId: string) {
   return `/ai/meta/ad-accounts/${accountId}/auto-verdict`
 }
 
+function buildAutoVerdictRequestPayload(options: {
+  apiKey: string | null
+}): AutoVerdictRequestPayload {
+  const payload: AutoVerdictRequestPayload = {
+    days: reportDays.value,
+    language: locale.value,
+    use_client_credentials: useClientCredentials.value,
+    scope: autoVerdictScope.value,
+  }
+
+  if (autoVerdictScope.value === 'campaign' && selectedCampaign.value) {
+    payload.campaign_id = selectedCampaign.value.id
+  }
+
+  if (useClientCredentials.value) {
+    payload.provider = provider.value
+    payload.api_key = options.apiKey
+    payload.model = resolvedModel.value
+  }
+
+  return payload
+}
+
 function buildChatPath(provider: OAuthProvider, accountId: string) {
   if (provider === 'google_ads') {
     return `/ai/google-ads/customers/${accountId}/chat`
@@ -3565,6 +3650,30 @@ async function connectMeta() {
   }
 }
 
+async function refreshMetaAccounts(): Promise<boolean> {
+  metaConnecting.value = true
+  pageError.value = ''
+  pageNotice.value = ''
+
+  try {
+    await apiRequest<MetaAccountRefreshResult>('/meta/ad-accounts/refresh', {
+      method: 'POST',
+    })
+    await loadAccounts()
+    await syncSelectedAccount({
+      preferredProvider: 'meta',
+      forceReload: selectedProvider.value === 'meta',
+    })
+    pageNotice.value = copy.value.metaRefreshSuccess
+    return true
+  } catch (error) {
+    pageError.value = error instanceof Error ? error.message : 'Unexpected error'
+    return false
+  } finally {
+    metaConnecting.value = false
+  }
+}
+
 async function connectGoogle() {
   googleConnecting.value = true
   pageError.value = ''
@@ -3696,18 +3805,7 @@ async function loadAutoVerdict() {
     verdictLoading.value = true
     const payload = await apiRequest<{ text: string }>(buildAutoVerdictPath(selectedProvider.value, selectedAccountId.value), {
       method: 'POST',
-      body: {
-        days: reportDays.value,
-        language: locale.value,
-        use_client_credentials: useClientCredentials.value,
-        ...(useClientCredentials.value
-          ? {
-              provider: provider.value,
-              api_key: apiKey,
-              model: resolvedModel.value,
-            }
-          : {}),
-      },
+      body: buildAutoVerdictRequestPayload({ apiKey }),
     })
     autoVerdict.value = payload.text
   } catch (error) {
@@ -3899,6 +3997,17 @@ async function runConnectModalPrimaryAction() {
   }
 
   if (providerOption.connected) {
+    if (providerOption.key === 'meta') {
+      clearConnectModalStageTimer()
+      connectModalStage.value = 'loading'
+      const refreshed = await refreshMetaAccounts()
+      if (connectModalOpen.value && refreshed && !providerIsConnecting(providerOption.key)) {
+        connectModalStage.value = 'accounts'
+      } else if (connectModalOpen.value && !providerIsConnecting(providerOption.key)) {
+        connectModalStage.value = 'intro'
+      }
+      return
+    }
     showConnectModalAccounts()
     return
   }
@@ -3991,6 +4100,9 @@ function isAccountDisconnecting(providerOption: OAuthProvider, accountId: string
 function providerConnectLabel(providerOption: OAuthProvider) {
   if (providerIsConnecting(providerOption)) {
     return copy.value.loading
+  }
+  if (providerOption === 'meta' && accounts.value.length > 0) {
+    return copy.value.reconnectMeta
   }
   if (providerOption === 'google_ads') {
     return copy.value.connectGoogle
@@ -4626,6 +4738,15 @@ watch(selectedCampaignId, () => {
   campaignExpandedGroupIds.value = []
 })
 
+watch(autoVerdictRequestKey, (nextKey, previousKey) => {
+  if (!nextKey || nextKey === previousKey || reportLoading.value) {
+    return
+  }
+
+  resetAutoVerdict()
+  triggerAutoVerdictLoad()
+})
+
 watch(
   () => [currentView.value, locale.value, isAuthenticated.value, workspaceScreenTitle.value],
   () => {
@@ -4686,7 +4807,7 @@ watch(currentView, (view) => {
     <header v-if="!bootLoading && isLegalView" class="topbar">
       <template>
         <div class="topbar-brand">
-          <img class="brand-logo-image topbar-logo-image" src="/logo-chatico-ads.png" alt="chatico ads" draggable="false" />
+          <img class="brand-logo-image topbar-logo-image" src="/logo_ChAd_2.png" alt="chatico ads" draggable="false" />
           <div class="topbar-copy">
             <p class="eyebrow">{{ copy.brand }}</p>
             <p class="topbar-subtitle">{{ topbarContextLine }}</p>
@@ -4800,7 +4921,7 @@ watch(currentView, (view) => {
 
     <main v-else-if="!isAuthenticated" class="auth-stage">
       <section class="auth-shell">
-        <img class="auth-shell-logo" src="/logo-chatico-ads.png" alt="chatico ads" draggable="false" />
+        <img class="auth-shell-logo" src="/logo_ChAd_2.png" alt="chatico ads" draggable="false" />
 
         <div class="auth-shell-card">
           <div class="auth-shell-copy">
@@ -4898,7 +5019,7 @@ watch(currentView, (view) => {
         </button>
 
         <div class="workspace-brand-panel" :class="{ collapsed: sidebarCollapsed }">
-          <img class="brand-logo-image workspace-brand-logo" src="/logo-chatico-ads.png" alt="chatico ads" draggable="false" />
+          <img class="brand-logo-image workspace-brand-logo" src="/logo_ChAd_2.png" alt="chatico ads" draggable="false" />
         </div>
 
         <section ref="platformMenuRef" class="rail-section platform-section" :class="{ collapsed: sidebarCollapsed }">
@@ -6014,7 +6135,7 @@ watch(currentView, (view) => {
                 </div>
                 <h4>{{ copy.connectChooserTitle }}</h4>
                 <p class="connect-provider-intro-summary">{{ copy.connectChooserLead }}</p>
-                <p class="connect-provider-intro-note">{{ copy.connectFlowHint }}</p>
+                <p class="connect-provider-intro-note">{{ connectModalIntroNote }}</p>
               </section>
 
               <div class="connect-modal-provider-tabs connect-modal-provider-actions">

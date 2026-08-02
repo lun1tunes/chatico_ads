@@ -14,5 +14,6 @@ RUN pip install --no-cache-dir poetry && \
 
 COPY src/ /app/src/
 COPY database/ /app/database/
+COPY prompts/ /app/prompts/
 
 CMD ["sh", "-c", "cd /app/database && alembic upgrade head && cd /app/src && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

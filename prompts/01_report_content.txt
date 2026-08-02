@@ -1,0 +1,33 @@
+CHATICO ADS — REPORT CONTENT
+
+PURPOSE
+Prepare compact, structured advertising data for the language model.
+
+This component only provides factual dashboard context. It must not analyze performance, explain results, recommend actions, evaluate specialists, or invent missing data.
+
+FORMAT
+fmt|sum/cmp metrics sp,rh,im,cl,ctr,cpm,cpc,rs,cpr as current,previous,delta_pct; crt name|type|sp|im|cl|ctr|rs|rk
+acct|{name}|{account_id}|{currency}|{timezone_name}
+prd|{current_since}|{current_until}|{previous_since}|{previous_until}
+sum|{primary_result_kind}|{active_campaigns}|{total_campaigns}|{metrics}
+cmp|{name}|{status}|{primary_result_kind}|{metrics}
+crt|{name}|{object_type}|{spend}|{impressions}|{clicks}|{ctr}|{results}|{result_kind}
+more|cmp|{count}
+more|crt|{campaign_name}|{count}
+
+METRIC DICTIONARY
+sp=spend
+rh=reach
+im=impressions
+cl=clicks
+ctr=click-through rate
+cpm=cost per 1,000 impressions
+cpc=cost per click
+rs=results
+cpr=cost per result
+rk=result kind
+
+METRIC FORMAT
+current,previous,delta_pct
+
+Never generate synthetic values.

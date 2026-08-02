@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+AutoVerdictScope = Literal["account", "campaign", "ad_group", "creative"]
 
 
 class AutoVerdictRequest(BaseModel):
     days: int = Field(default=30, ge=1, le=365)
     language: str = Field(default="ru", min_length=2, max_length=8)
     use_client_credentials: bool = False
+    scope: AutoVerdictScope = "account"
+    campaign_id: str | None = Field(default=None, min_length=1, max_length=128)
+    ad_group_id: str | None = Field(default=None, min_length=1, max_length=128)
+    creative_id: str | None = Field(default=None, min_length=1, max_length=128)
     provider: str | None = None
     api_key: str | None = Field(default=None, min_length=10, max_length=512)
     model: str | None = None

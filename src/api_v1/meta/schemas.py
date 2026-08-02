@@ -19,6 +19,14 @@ class MetaAdAccountResponse(BaseModel):
     account_status: int | None = None
 
 
+class MetaAdAccountRefreshResponse(BaseModel):
+    refreshed_connections: int
+    connected_accounts: int
+    added_accounts: int
+    updated_accounts: int
+    removed_accounts: int
+
+
 class MetaDataDeletionCallbackResponse(BaseModel):
     url: str
     confirmation_code: str

@@ -15,6 +15,7 @@ from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.use_cases.meta_data_deletion import MetaDataDeletionUseCaseError
 from .schemas import (
     MetaAdAccountResponse,
+    MetaAdAccountRefreshResponse,
     MetaDataDeletionCallbackResponse,
     MetaDataDeletionStatusResponse,
     OAuthStartResponse,
@@ -147,6 +148,19 @@ async def list_ad_accounts(
         )
         for account in accounts
     ]
+
+
+@router.post("/ad-accounts/refresh", response_model=MetaAdAccountRefreshResponse)
+async def refresh_ad_accounts(
+    user=Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+    container: Container = Depends(get_di_container),
+):
+    try:
+        result = await container.refresh_meta_ad_accounts_use_case(session=session).execute(user_id=user.id)
+    except MetaGraphAPIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return MetaAdAccountRefreshResponse(**result)
 
 
 @router.delete("/connections", status_code=status.HTTP_204_NO_CONTENT)

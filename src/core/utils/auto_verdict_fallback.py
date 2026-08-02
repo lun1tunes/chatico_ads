@@ -34,6 +34,8 @@ _MESSAGES = {
     "ru": {
         "intro_temporary": "Серверный AI-ответ временно недоступен, поэтому ниже краткий вывод по метрикам.",
         "intro_unconfigured": "Серверный AI-ключ не настроен, поэтому ниже краткий вывод по метрикам.",
+        "intro_guardrail": "Ниже краткий вывод по метрикам в языке интерфейса, чтобы сохранить корректный формат ответа.",
+        "no_active_delivery": "За этот период активного показа не было.",
         "not_enough_data": "Доступно недостаточно метрик для точного сравнения периодов.",
         "active_campaigns": "Активно кампаний: {active} из {total}.",
         "leader": "Лидер: {name} - {details}.",
@@ -47,6 +49,7 @@ _MESSAGES = {
         "scale_winner": "Следующий шаг: аккуратно увеличить бюджет на {name} и проконтролировать, сохранится ли текущая цена результата.",
         "refresh_creatives": "Следующий шаг: обновить креативы и оффер в кампаниях с просевшим CTR.",
         "audit_conversion": "Следующий шаг: проверить посадочную страницу и события конверсии, потому что клики растут быстрее результатов.",
+        "reactivate_campaigns": "Следующий шаг: активировать кампанию и убедиться, что показы и клики снова пошли.",
         "review_mix": "Следующий шаг: пересмотреть кампании с расходом и слабым результатом, затем перераспределить бюджет.",
         "unnamed_campaign": "Кампания без названия",
         "spend_detail": "расход {value}",
@@ -56,6 +59,8 @@ _MESSAGES = {
     "kz": {
         "intro_temporary": "Серверлік AI жауабы уақытша қолжетімсіз, сондықтан төменде метрикалар бойынша қысқа қорытынды берілді.",
         "intro_unconfigured": "Серверлік AI кілті бапталмаған, сондықтан төменде метрикалар бойынша қысқа қорытынды берілді.",
+        "intro_guardrail": "Жауап форматы мен интерфейс тілін сақтау үшін төменде метрикалар бойынша қысқа қорытынды берілді.",
+        "no_active_delivery": "Осы кезеңде белсенді көрсетілім болмады.",
         "not_enough_data": "Кезеңдерді дәл салыстыруға метрика жеткіліксіз.",
         "active_campaigns": "Белсенді кампаниялар: {active} / {total}.",
         "leader": "Көшбасшы: {name} - {details}.",
@@ -69,6 +74,7 @@ _MESSAGES = {
         "scale_winner": "Келесі қадам: {name} кампаниясының бюджетін абайлап өсіріп, нәтиже құны сақталатынын тексеру.",
         "refresh_creatives": "Келесі қадам: CTR төмендеген кампанияларда креатив пен офферді жаңарту.",
         "audit_conversion": "Келесі қадам: кликтер нәтижеден жылдам өсіп жатқандықтан, landing page мен conversion events-ті тексеру.",
+        "reactivate_campaigns": "Келесі қадам: кампанияны іске қосып, көрсетілімдер мен кликтердің қайта жүргенін тексеру.",
         "review_mix": "Келесі қадам: шығыны бар, бірақ әлсіз нәтиже беретін кампанияларды қарап, бюджетті қайта бөлу.",
         "unnamed_campaign": "Атаусыз кампания",
         "spend_detail": "шығын {value}",
@@ -78,6 +84,8 @@ _MESSAGES = {
     "en": {
         "intro_temporary": "The server AI summary is temporarily unavailable, so here is a quick metric-based fallback.",
         "intro_unconfigured": "The server AI key is not configured, so here is a quick metric-based fallback.",
+        "intro_guardrail": "Here is a quick metric-based summary in the interface language to keep the response format reliable.",
+        "no_active_delivery": "There was no active delivery during this period.",
         "not_enough_data": "There is not enough metric data for a reliable period comparison.",
         "active_campaigns": "Active campaigns: {active} of {total}.",
         "leader": "Leader: {name} - {details}.",
@@ -91,6 +99,7 @@ _MESSAGES = {
         "scale_winner": "Next action: scale {name} gradually and confirm the current cost per result holds.",
         "refresh_creatives": "Next action: refresh creatives and offers in campaigns with a weaker CTR trend.",
         "audit_conversion": "Next action: audit the landing page and conversion tracking because clicks are growing faster than results.",
+        "reactivate_campaigns": "Next action: reactivate a campaign and confirm impressions and clicks resume.",
         "review_mix": "Next action: review campaigns with spend and weak output, then reallocate budget.",
         "unnamed_campaign": "Unnamed campaign",
         "spend_detail": "spend {value}",
@@ -272,15 +281,26 @@ def _worst_campaign(campaigns: list[dict[str, Any]], *, exclude: dict[str, Any] 
 def _recommendation(
     *,
     language: str,
+    summary: dict[str, Any],
     summary_metrics: dict[str, Any],
     best_campaign: dict[str, Any] | None,
     worst_campaign: dict[str, Any] | None,
 ) -> str:
     pack = _message_pack(language)
+    active_campaigns = _number(summary.get("active_campaigns"))
+    total_campaigns = _number(summary.get("total_campaigns"))
+    spend_current = _metric_number(summary_metrics, "spend")
+    results_current = _metric_number(summary_metrics, "results")
     results_delta = _metric_number(summary_metrics, "results", "delta_pct")
     cpr_delta = _metric_number(summary_metrics, "cost_per_result", "delta_pct")
     ctr_delta = _metric_number(summary_metrics, "ctr", "delta_pct")
     clicks_delta = _metric_number(summary_metrics, "clicks", "delta_pct")
+
+    if (active_campaigns or 0) == 0 and (total_campaigns or 0) > 0:
+        return pack["reactivate_campaigns"]
+
+    if (spend_current or 0) <= 0 and (results_current or 0) <= 0:
+        return pack["reactivate_campaigns"]
 
     if best_campaign is not None and worst_campaign is not None:
         best_name = _sanitize_name(best_campaign.get("name"), fallback=pack["unnamed_campaign"])
@@ -319,6 +339,21 @@ def _recommendation(
     return pack["review_mix"]
 
 
+def _has_no_active_delivery(summary: dict[str, Any], summary_metrics: dict[str, Any]) -> bool:
+    active_campaigns = _number(summary.get("active_campaigns"))
+    if active_campaigns is not None and active_campaigns <= 0:
+        return True
+
+    signals = (
+        _metric_number(summary_metrics, "spend"),
+        _metric_number(summary_metrics, "impressions"),
+        _metric_number(summary_metrics, "clicks"),
+        _metric_number(summary_metrics, "results"),
+    )
+    present_signals = [signal for signal in signals if signal is not None]
+    return bool(present_signals) and all(signal <= 0 for signal in present_signals)
+
+
 def build_auto_verdict_fallback_text(
     report: dict[str, Any],
     *,
@@ -350,7 +385,12 @@ def build_auto_verdict_fallback_text(
 
     currency = account.get("currency")
     primary_result_kind = summary.get("primary_result_kind")
-    intro = pack["intro_unconfigured"] if reason == "not_configured" else pack["intro_temporary"]
+    if reason == "not_configured":
+        intro = pack["intro_unconfigured"]
+    elif reason == "guardrail":
+        intro = pack["intro_guardrail"]
+    else:
+        intro = pack["intro_temporary"]
 
     spend_value = _format_money(_metric_number(summary_metrics, "spend"), currency)
     raw_results_value = _metric_number(summary_metrics, "results")
@@ -388,10 +428,14 @@ def build_auto_verdict_fallback_text(
     else:
         comparison_sentence = pack["not_enough_data"]
 
+    if _has_no_active_delivery(summary, summary_metrics):
+        comparison_sentence = f"{pack['no_active_delivery']} {comparison_sentence}".strip()
+
     best_campaign = _best_campaign(campaigns)
     worst_campaign = _worst_campaign(campaigns, exclude=best_campaign)
     recommendation = _recommendation(
         language=normalized_language,
+        summary=summary,
         summary_metrics=summary_metrics,
         best_campaign=best_campaign,
         worst_campaign=worst_campaign,

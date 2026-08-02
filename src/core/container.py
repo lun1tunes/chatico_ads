@@ -13,6 +13,7 @@ from .security.jwt_service import JWTService
 from .security.password_service import PasswordService
 from .services.date_range_service import DateRangeService
 from .services.google_ads_state_service import GoogleAdsOAuthStateService
+from .services.ai_prompt_service import AIPromptService
 from .services.google_ads_report_service import GoogleAdsReportService
 from .services.llm_proxy_service import LLMProxyService
 from .services.meta_report_service import MetaReportService
@@ -47,6 +48,7 @@ from .use_cases.meta import (
     DisconnectMetaAdAccountUseCase,
     HandleMetaOAuthCallbackUseCase,
     ListMetaAdAccountsUseCase,
+    RefreshMetaAdAccountsUseCase,
 )
 from .use_cases.tiktok_ads import (
     BuildTikTokAdsOAuthUrlUseCase,
@@ -66,6 +68,7 @@ class Container(containers.DeclarativeContainer):
     google_ads_state_service = providers.Singleton(GoogleAdsOAuthStateService)
     tiktok_ads_state_service = providers.Singleton(TikTokAdsOAuthStateService)
     date_range_service = providers.Singleton(DateRangeService)
+    ai_prompt_service = providers.Singleton(AIPromptService)
 
     meta_client = providers.Singleton(MetaGraphAPIClient)
     google_ads_client = providers.Singleton(GoogleAdsAPIClient)
@@ -128,6 +131,12 @@ class Container(containers.DeclarativeContainer):
         encryption_service=encryption_service,
     )
     list_meta_ad_accounts_use_case = providers.Factory(ListMetaAdAccountsUseCase)
+    refresh_meta_ad_accounts_use_case = providers.Factory(
+        RefreshMetaAdAccountsUseCase,
+        meta_client=meta_client,
+        encryption_service=encryption_service,
+        report_service=meta_report_service,
+    )
     disconnect_meta_use_case = providers.Factory(
         DisconnectMetaUseCase,
         report_service=meta_report_service,

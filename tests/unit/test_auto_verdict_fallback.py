@@ -71,3 +71,68 @@ def test_build_auto_verdict_fallback_text_highlights_best_and_risk_campaigns():
     assert "- Активно кампаний: 2 из 2." in text
     assert "- Лидер: Lead Gen Core" in text
     assert "- Зона внимания: Retargeting Warm" in text
+
+
+def test_build_auto_verdict_fallback_text_reactivates_when_active_campaigns_is_missing():
+    report = _sample_report()
+    summary = report["summary"]
+    campaigns = report["campaigns"]
+
+    assert isinstance(summary, dict)
+    assert isinstance(campaigns, list)
+
+    summary["active_campaigns"] = None
+
+    for campaign in campaigns:
+        assert isinstance(campaign, dict)
+        campaign["status"] = "PAUSED"
+
+    text = build_auto_verdict_fallback_text(report, language="en")
+
+    assert "Next action: reactivate a campaign and confirm impressions and clicks resume." in text
+
+
+def test_build_auto_verdict_fallback_text_calls_out_no_active_delivery():
+    report = _sample_report()
+    summary = report["summary"]
+    campaigns = report["campaigns"]
+
+    assert isinstance(summary, dict)
+    assert isinstance(campaigns, list)
+
+    summary["active_campaigns"] = 0
+    summary["metrics"] = {
+        "spend": {"current": 0.0, "previous": 25.0, "delta_pct": -100.0},
+        "impressions": {"current": 0, "previous": 500, "delta_pct": -100.0},
+        "clicks": {"current": 0, "previous": 40, "delta_pct": -100.0},
+        "results": {"current": 0, "previous": 4, "delta_pct": -100.0},
+        "cost_per_result": {"current": 0.0, "previous": 6.25, "delta_pct": -100.0},
+    }
+
+    for campaign in campaigns:
+        assert isinstance(campaign, dict)
+        campaign["status"] = "PAUSED"
+
+    text = build_auto_verdict_fallback_text(report, language="ru", reason="guardrail")
+
+    assert "За этот период активного показа не было." in text
+    assert "Следующий шаг: активировать кампанию и убедиться, что показы и клики снова пошли." in text
+
+
+def test_build_auto_verdict_fallback_text_calls_out_insufficient_data():
+    report = _sample_report()
+    summary = report["summary"]
+
+    assert isinstance(summary, dict)
+
+    summary["metrics"] = {}
+
+    text = build_auto_verdict_fallback_text(report, language="ru", reason="guardrail")
+
+    assert "Доступно недостаточно метрик для точного сравнения периодов." in text
+
+
+def test_build_auto_verdict_fallback_text_guardrail_stays_under_120_words():
+    for language in ("ru", "en", "kz"):
+        text = build_auto_verdict_fallback_text(_sample_report(), language=language, reason="guardrail")
+        assert len(text.split()) <= 120

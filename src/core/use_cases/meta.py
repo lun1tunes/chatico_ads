@@ -16,6 +16,68 @@ class MetaOAuthUseCaseError(Exception):
     pass
 
 
+def _serialize_meta_scopes(scope_value: object) -> str:
+    if isinstance(scope_value, list):
+        return ",".join(str(scope) for scope in scope_value)
+    return ""
+
+
+async def _sync_meta_connection_accounts(
+    *,
+    connection: MetaConnection,
+    access_token: str,
+    meta_client,
+    ad_account_repo: MetaAdAccountRepository,
+) -> dict[str, int]:
+    remote_accounts = await meta_client.list_ad_accounts(access_token=access_token)
+    existing_accounts = await ad_account_repo.list_for_connection(connection.id)
+    existing_by_external = {account.external_id: account for account in existing_accounts}
+    seen_external_ids: set[str] = set()
+    sync_time = utcnow()
+    added_accounts = 0
+    updated_accounts = 0
+    removed_accounts = 0
+
+    for remote in remote_accounts:
+        external_id = str(remote.get("id"))
+        seen_external_ids.add(external_id)
+        account = existing_by_external.get(external_id)
+        if account is None:
+            account = MetaAdAccount(
+                id=str(uuid4()),
+                connection_id=connection.id,
+                external_id=external_id,
+                account_id=str(remote.get("account_id") or external_id),
+                name=str(remote.get("name") or external_id),
+                currency=remote.get("currency"),
+                timezone_name=remote.get("timezone_name"),
+                account_status=remote.get("account_status"),
+                last_synced_at=sync_time,
+            )
+            await ad_account_repo.create(account)
+            added_accounts += 1
+        else:
+            account.account_id = str(remote.get("account_id") or account.account_id)
+            account.name = str(remote.get("name") or account.name)
+            account.currency = remote.get("currency")
+            account.timezone_name = remote.get("timezone_name")
+            account.account_status = remote.get("account_status")
+            account.last_synced_at = sync_time
+            updated_accounts += 1
+
+    for external_id, account in existing_by_external.items():
+        if external_id not in seen_external_ids:
+            await ad_account_repo.delete(account)
+            removed_accounts += 1
+
+    return {
+        "connected_accounts": len(remote_accounts),
+        "added_accounts": added_accounts,
+        "updated_accounts": updated_accounts,
+        "removed_accounts": removed_accounts,
+    }
+
+
 class BuildMetaOAuthUrlUseCase:
     def __init__(self, *, state_service, meta_client) -> None:
         self.state_service = state_service
@@ -64,49 +126,74 @@ class HandleMetaOAuthCallbackUseCase:
                 meta_user_name=meta_user_name,
                 access_token_encrypted=self.encryption_service.encrypt(access_token),
                 access_token_expires_at=(utcnow() + timedelta(seconds=int(expires_in))) if expires_in else None,
-                scopes=",".join(token_data.get("scope", []) if isinstance(token_data.get("scope"), list) else []),
+                scopes=_serialize_meta_scopes(token_data.get("scope")),
             )
             await self.connection_repo.create(connection)
-            existing_by_external: dict[str, MetaAdAccount] = {}
         else:
             connection.meta_user_name = meta_user_name
             connection.access_token_encrypted = self.encryption_service.encrypt(access_token)
             connection.access_token_expires_at = (utcnow() + timedelta(seconds=int(expires_in))) if expires_in else None
-            existing_by_external = {account.external_id: account for account in connection.ad_accounts}
-        remote_accounts = await self.meta_client.list_ad_accounts(access_token=access_token)
-        seen_external_ids: set[str] = set()
+            connection.scopes = _serialize_meta_scopes(token_data.get("scope"))
 
-        for remote in remote_accounts:
-            external_id = str(remote.get("id"))
-            seen_external_ids.add(external_id)
-            account = existing_by_external.get(external_id)
-            if account is None:
-                account = MetaAdAccount(
-                    id=str(uuid4()),
-                    connection_id=connection.id,
-                    external_id=external_id,
-                    account_id=str(remote.get("account_id") or external_id),
-                    name=str(remote.get("name") or external_id),
-                    currency=remote.get("currency"),
-                    timezone_name=remote.get("timezone_name"),
-                    account_status=remote.get("account_status"),
-                    last_synced_at=utcnow(),
-                )
-                await self.ad_account_repo.create(account)
-            else:
-                account.account_id = str(remote.get("account_id") or account.account_id)
-                account.name = str(remote.get("name") or account.name)
-                account.currency = remote.get("currency")
-                account.timezone_name = remote.get("timezone_name")
-                account.account_status = remote.get("account_status")
-                account.last_synced_at = utcnow()
-
-        for external_id, account in existing_by_external.items():
-            if external_id not in seen_external_ids:
-                await self.ad_account_repo.delete(account)
+        await _sync_meta_connection_accounts(
+            connection=connection,
+            access_token=access_token,
+            meta_client=self.meta_client,
+            ad_account_repo=self.ad_account_repo,
+        )
 
         await self.session.commit()
         return {"user_id": user_id, "connection_id": connection.id}
+
+
+class RefreshMetaAdAccountsUseCase:
+    def __init__(self, *, session: AsyncSession, meta_client, encryption_service, report_service=None) -> None:
+        self.session = session
+        self.meta_client = meta_client
+        self.encryption_service = encryption_service
+        self.report_service = report_service
+        self.connection_repo = MetaConnectionRepository(session)
+        self.ad_account_repo = MetaAdAccountRepository(session)
+
+    async def execute(self, *, user_id: str) -> dict[str, int]:
+        connections = await self.connection_repo.list_for_user(user_id)
+        if not connections:
+            return {
+                "refreshed_connections": 0,
+                "connected_accounts": 0,
+                "added_accounts": 0,
+                "updated_accounts": 0,
+                "removed_accounts": 0,
+            }
+
+        summary = {
+            "refreshed_connections": 0,
+            "connected_accounts": 0,
+            "added_accounts": 0,
+            "updated_accounts": 0,
+            "removed_accounts": 0,
+        }
+
+        for connection in connections:
+            access_token = self.encryption_service.decrypt(connection.access_token_encrypted)
+            sync_result = await _sync_meta_connection_accounts(
+                connection=connection,
+                access_token=access_token,
+                meta_client=self.meta_client,
+                ad_account_repo=self.ad_account_repo,
+            )
+            summary["refreshed_connections"] += 1
+            summary["connected_accounts"] += sync_result["connected_accounts"]
+            summary["added_accounts"] += sync_result["added_accounts"]
+            summary["updated_accounts"] += sync_result["updated_accounts"]
+            summary["removed_accounts"] += sync_result["removed_accounts"]
+
+        await self.session.commit()
+
+        if self.report_service is not None:
+            self.report_service.clear_user_cache(user_id=user_id)
+
+        return summary
 
 
 class ListMetaAdAccountsUseCase:

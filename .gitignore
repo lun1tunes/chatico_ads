@@ -223,3 +223,4 @@ front/node_modules/
 front/dist/
 database/alembic-dev.db
 nginx.conf
+HANDOFF_2026_08_02/

@@ -13,7 +13,7 @@ from core.security.encryption_service import EncryptionService
 from core.services.date_range_service import DateRangeService
 from core.services.meta_report_service import MetaReportService
 from core.use_cases.dashboard import GenerateMetaReportUseCase
-from core.utils.ai_context import build_report_context
+from core.utils.ai_context import build_report_context, build_scoped_report_context
 from core.utils.reporting import extract_primary_result, group_ads_by_campaign, percentage_delta
 
 
@@ -21,6 +21,7 @@ class FakeMetaReportClient:
     def __init__(self) -> None:
         self.account_info_calls = 0
         self.campaign_list_calls = 0
+        self.ad_set_list_calls = 0
         self.account_insight_calls = 0
         self.campaign_insight_calls = 0
         self.ads_calls = 0
@@ -43,6 +44,43 @@ class FakeMetaReportClient:
         return [
             {"id": "cmp_1", "name": "Lead Gen", "effective_status": "ACTIVE"},
             {"id": "cmp_2", "name": "Remarketing", "effective_status": "PAUSED"},
+        ]
+
+    async def list_ad_sets(self, *, account_id: str, access_token: str) -> list[dict[str, object]]:
+        self.ad_set_list_calls += 1
+        return [
+            {
+                "id": "adset_1",
+                "name": "Prospecting",
+                "campaign_id": "cmp_1",
+                "targeting": {
+                    "geo_locations": {
+                        "countries": ["KZ"],
+                        "cities": [{"name": "Almaty"}],
+                    },
+                    "age_min": 25,
+                    "age_max": 45,
+                    "genders": [2],
+                    "flexible_spec": [
+                        {"interests": [{"name": "Marketing"}, {"name": "Entrepreneurship"}]},
+                    ],
+                    "facebook_positions": ["feed"],
+                    "instagram_positions": ["story", "reels"],
+                },
+            },
+            {
+                "id": "adset_2",
+                "name": "Retargeting",
+                "campaign_id": "cmp_2",
+                "targeting": {
+                    "geo_locations": {"countries": ["KZ"]},
+                    "age_min": 18,
+                    "age_max": 65,
+                    "custom_audiences": [{"name": "Website Visitors 30d"}],
+                    "excluded_custom_audiences": [{"name": "Purchasers 180d"}],
+                    "publisher_platforms": ["facebook", "instagram"],
+                },
+            },
         ]
 
     async def get_account_insights(self, *, account_id: str, access_token: str, since: str, until: str):
@@ -217,40 +255,40 @@ class FakeMetaReportClient:
                 "ad_id": "ad_1",
                 "adset_id": "adset_1",
                 "adset_name": "Prospecting",
-                "spend": "70.0",
-                "impressions": "5000",
-                "clicks": "150",
-                "ctr": "3.0",
-                "actions": [{"action_type": "lead", "value": "8"}],
+                "spend": "50.0",
+                "impressions": "4000",
+                "clicks": "100",
+                "ctr": "2.5",
+                "actions": [{"action_type": "lead", "value": "6"}],
             },
             {
                 "ad_id": "ad_2",
                 "adset_id": "adset_1",
                 "adset_name": "Prospecting",
-                "spend": "50.0",
-                "impressions": "4000",
+                "spend": "30.0",
+                "impressions": "3000",
                 "clicks": "70",
-                "ctr": "1.75",
-                "actions": [{"action_type": "lead", "value": "4"}],
+                "ctr": "2.33",
+                "actions": [{"action_type": "lead", "value": "3"}],
             },
             {
                 "ad_id": "ad_3",
                 "adset_id": "adset_2",
                 "adset_name": "Retargeting",
-                "spend": "20.0",
-                "impressions": "1500",
-                "clicks": "35",
-                "ctr": "2.33",
-                "actions": [{"action_type": "lead", "value": "2"}],
+                "spend": "30.0",
+                "impressions": "3000",
+                "clicks": "80",
+                "ctr": "2.67",
+                "actions": [{"action_type": "lead", "value": "3"}],
             },
             {
                 "ad_id": "ad_4",
                 "adset_id": "adset_1",
                 "adset_name": "Prospecting",
                 "spend": "40.0",
-                "impressions": "2200",
-                "clicks": "42",
-                "ctr": "1.91",
+                "impressions": "2000",
+                "clicks": "50",
+                "ctr": "2.5",
                 "actions": [{"action_type": "lead", "value": "3"}],
             },
         ]
@@ -328,10 +366,18 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     }
     assert report["trend"]["previous"][-1]["date"] == "2026-04-18"
     assert report["campaigns"][0]["name"] == "Lead Gen"
+    assert report["campaigns"][0]["ad_groups"][0]["name"] == "Prospecting"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["geo"] == "KZ, Almaty"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["gender"] == "female"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["signal"] == "Marketing, Entrepreneurship"
+    assert report["campaigns"][1]["ad_groups"][0]["targeting"]["audience"] == (
+        "incl:Website Visitors 30d excl:Purchasers 180d"
+    )
     assert report["campaigns"][0]["creatives"][0]["name"] == "Creative A"
     assert report["campaigns"][0]["creatives"][0]["ad_group_id"] == "adset_1"
     assert report["campaigns"][0]["creatives"][0]["ad_group_name"] == "Prospecting"
-    assert report["campaigns"][0]["creatives"][1]["image_url"] == "https://cdn.test/creative-b-hq.jpg"
+    creative_b = next(creative for creative in report["campaigns"][0]["creatives"] if creative["name"] == "Creative B")
+    assert creative_b["image_url"] == "https://cdn.test/creative-b-hq.jpg"
     low_res_creative = next(
         creative for creative in report["campaigns"][0]["creatives"] if creative["name"] == "Пока вы занимаетесь"
     )
@@ -347,8 +393,10 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     context = build_report_context(report)
     assert "acct|Main account|111|USD|Asia/Almaty" in context
     assert "sum|leads|1|2|sp:150,120,25" in context
-    assert "crt|Creative A|IMAGE|70|5000|150|3|8|leads" in context
-    assert "crt|Пока вы занимаетесь|VIDEO|40|2200|42|1.91|3|leads" in context
+    assert "grp|Prospecting|KZ, Almaty|25-45|female|~|Marketing, Entrepreneurship|facebook:feed, instagram:story, instagram:reels|~|120|9000|220|2.4444|12|leads" in context
+    assert "grp|Retargeting|KZ|18-65|~|incl:Website Visitors 30d excl:Purchasers 180d|~|facebook, instagram|~|30|3000|80|2.6667|3|leads" in context
+    assert "crt|Creative A|IMAGE|50|4000|100|2.5|6|leads" in context
+    assert "crt|Пока вы занимаетесь|VIDEO|40|2000|50|2.5|3|leads" in context
     assert "https://cdn.test/creative-a.jpg" not in context
 
 
@@ -664,3 +712,170 @@ def test_build_report_context_sanitizes_delimiters_and_limits_campaigns_and_crea
     assert context.count("\ncmp|") == 12
     assert "more|cmp|1" in context
     assert "more|crt|Campaign 0 / Name|2" in context
+
+
+@pytest.mark.unit
+@pytest.mark.service
+def test_build_scoped_report_context_returns_level_specific_context_and_hierarchical_fallback():
+    report = {
+        "account": {"name": "Main account", "account_id": "111", "currency": "USD", "timezone_name": "Asia/Almaty"},
+        "periods": {
+            "current": {"since": "2026-05-17", "until": "2026-06-15"},
+            "previous": {"since": "2026-04-17", "until": "2026-05-16"},
+        },
+        "summary": {
+            "primary_result_kind": "leads",
+            "active_campaigns": 2,
+            "total_campaigns": 2,
+            "metrics": {
+                "spend": {"current": 160.0, "previous": 120.0, "delta_pct": 33.3},
+                "reach": {"current": 1000, "previous": 900, "delta_pct": 11.1},
+                "impressions": {"current": 1500, "previous": 1400, "delta_pct": 7.1},
+                "clicks": {"current": 120, "previous": 100, "delta_pct": 20.0},
+                "ctr": {"current": 8.0, "previous": 7.0, "delta_pct": 14.3},
+                "cpm": {"current": 10.0, "previous": 9.0, "delta_pct": 11.1},
+                "cpc": {"current": 1.0, "previous": 1.0, "delta_pct": 0.0},
+                "results": {"current": 18, "previous": 12, "delta_pct": 50.0},
+                "cost_per_result": {"current": 8.89, "previous": 10.0, "delta_pct": -11.1},
+            },
+        },
+        "campaigns": [
+            {
+                "id": "cmp_1",
+                "name": "Lead Gen",
+                "status": "ACTIVE",
+                "primary_result_kind": "leads",
+                "metrics": {
+                    "spend": {"current": 100.0, "previous": 80.0, "delta_pct": 25.0},
+                    "reach": {"current": 700, "previous": 650, "delta_pct": 7.7},
+                    "impressions": {"current": 1100, "previous": 1000, "delta_pct": 10.0},
+                    "clicks": {"current": 90, "previous": 80, "delta_pct": 12.5},
+                    "ctr": {"current": 8.2, "previous": 8.0, "delta_pct": 2.5},
+                    "cpm": {"current": 9.1, "previous": 8.0, "delta_pct": 13.8},
+                    "cpc": {"current": 1.11, "previous": 1.0, "delta_pct": 11.0},
+                    "results": {"current": 12, "previous": 9, "delta_pct": 33.3},
+                    "cost_per_result": {"current": 8.33, "previous": 8.89, "delta_pct": -6.3},
+                },
+                "ad_groups": [
+                    {
+                        "id": "adset_1",
+                        "name": "Prospecting",
+                        "targeting": {"geo": "KZ, Almaty", "age": "25-45", "gender": "female"},
+                        "metrics": {
+                            "spend": 90.0,
+                            "impressions": 1000,
+                            "clicks": 80,
+                            "ctr": 8.0,
+                            "results": 11,
+                            "result_kind": "leads",
+                        },
+                    }
+                ],
+                "creatives": [
+                    {
+                        "id": "ad_1",
+                        "name": "Creative A",
+                        "object_type": "IMAGE",
+                        "ad_group_id": "adset_1",
+                        "ad_group_name": "Prospecting",
+                        "metrics": {
+                            "spend": 50.0,
+                            "impressions": 600,
+                            "clicks": 42,
+                            "ctr": 7.0,
+                            "results": 7,
+                            "result_kind": "leads",
+                        },
+                    },
+                    {
+                        "id": "ad_2",
+                        "name": "Creative B",
+                        "object_type": "VIDEO",
+                        "ad_group_id": "adset_1",
+                        "ad_group_name": "Prospecting",
+                        "metrics": {
+                            "spend": 40.0,
+                            "impressions": 400,
+                            "clicks": 38,
+                            "ctr": 9.5,
+                            "results": 4,
+                            "result_kind": "leads",
+                        },
+                    },
+                ],
+            },
+            {
+                "id": "cmp_2",
+                "name": "Remarketing",
+                "status": "ACTIVE",
+                "primary_result_kind": "leads",
+                "metrics": {
+                    "spend": {"current": 60.0, "previous": 40.0, "delta_pct": 50.0},
+                    "results": {"current": 6, "previous": 3, "delta_pct": 100.0},
+                },
+                "creatives": [
+                    {
+                        "id": "ad_3",
+                        "name": "Creative C",
+                        "object_type": "IMAGE",
+                        "metrics": {
+                            "spend": 60.0,
+                            "impressions": 500,
+                            "clicks": 30,
+                            "ctr": 6.0,
+                            "results": 6,
+                            "result_kind": "leads",
+                        },
+                    }
+                ],
+            },
+        ],
+    }
+
+    campaign_context, campaign_scope, campaign_report = build_scoped_report_context(
+        report,
+        scope="campaign",
+        campaign_id="cmp_1",
+    )
+    assert campaign_scope == "campaign"
+    assert "scope|campaign|cmp_1|Lead Gen" in campaign_context
+    assert "cmp|Lead Gen|ACTIVE|leads" in campaign_context
+    assert "cmp|Remarketing" not in campaign_context
+    assert campaign_report["summary"]["total_campaigns"] == 1
+
+    ad_group_context, ad_group_scope, ad_group_report = build_scoped_report_context(
+        report,
+        scope="ad_group",
+        campaign_id="cmp_1",
+        ad_group_id="adset_1",
+    )
+    assert ad_group_scope == "ad_group"
+    assert "scope|ad_group|adset_1|Prospecting|Lead Gen" in ad_group_context
+    assert "grp|Prospecting|KZ, Almaty|25-45|female" in ad_group_context
+    assert "crt|Creative A|IMAGE|50|600|42|7|7|leads" in ad_group_context
+    assert "Creative C" not in ad_group_context
+    assert ad_group_report["summary"]["metrics"]["spend"]["current"] == 90.0
+    assert ad_group_report["campaigns"][0]["name"] == "Prospecting"
+
+    creative_context, creative_scope, creative_report = build_scoped_report_context(
+        report,
+        scope="creative",
+        campaign_id="cmp_1",
+        ad_group_id="adset_1",
+        creative_id="ad_1",
+    )
+    assert creative_scope == "creative"
+    assert "scope|creative|ad_1|Creative A|Prospecting|Lead Gen" in creative_context
+    assert "crt|Creative A|IMAGE|50|600|42|7|7|leads" in creative_context
+    assert "crt|Creative B|VIDEO|40|400|38|9.5|4|leads" in creative_context
+    assert creative_report["summary"]["metrics"]["spend"]["current"] == 50.0
+
+    fallback_context, fallback_scope, fallback_report = build_scoped_report_context(
+        report,
+        scope="creative",
+        campaign_id="cmp_1",
+        creative_id="missing-creative",
+    )
+    assert fallback_scope == "campaign"
+    assert "scope|campaign|cmp_1|Lead Gen" in fallback_context
+    assert fallback_report["campaigns"][0]["name"] == "Lead Gen"

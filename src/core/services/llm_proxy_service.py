@@ -1,7 +1,28 @@
 from __future__ import annotations
 
+import re
+
 from ..config import settings
 from ..infrastructure.llm_clients import LLMProxyError
+
+_AUTO_VERDICT_LABEL_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?\*{0,2}(?:what works|what's working|what underperforms|what's underperforming|next action|supporting details):\*{0,2}\s*",
+    re.IGNORECASE,
+)
+
+
+def _normalize_auto_verdict_text(*, text: str, language: str) -> str:
+    normalized_language = (language or "en").strip().lower() or "en"
+    cleaned_lines: list[str] = []
+    for raw_line in text.strip().splitlines():
+        line = _AUTO_VERDICT_LABEL_RE.sub("", raw_line).strip()
+        if normalized_language != "en" and line in {"-"}:
+            continue
+        cleaned_lines.append(line)
+
+    cleaned = "\n".join(cleaned_lines).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned or text.strip()
 
 
 class LLMProxyService:
@@ -71,6 +92,34 @@ class LLMProxyService:
             "gemini": self.gemini_client,
         }[provider]
 
+    async def _generate_with_provider(
+        self,
+        *,
+        provider: str,
+        api_key: str,
+        model: str | None,
+        system_prompt: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+    ) -> str:
+        normalized_provider = self.normalize_provider(provider)
+        normalized_messages = self._normalize_messages(provider=normalized_provider, messages=messages)
+        selected_model = (
+            model
+            or {
+                "anthropic": settings.llm.anthropic_model,
+                "openai": settings.llm.openai_default_model,
+                "gemini": settings.llm.gemini_default_model,
+            }[normalized_provider]
+        )
+        return await self._client_for_provider(normalized_provider).generate(
+            api_key=api_key,
+            model=selected_model,
+            system_prompt=system_prompt,
+            messages=normalized_messages,
+            max_tokens=max_tokens,
+        )
+
     def _normalize_messages(self, *, provider: str, messages: list[dict[str, str]]) -> list[dict[str, str]]:
         normalized: list[dict[str, str]] = []
 
@@ -101,31 +150,25 @@ class LLMProxyService:
     async def generate_auto_verdict(
         self,
         *,
-        report_context: str,
+        system_prompt: str,
+        messages: list[dict[str, str]],
         language: str,
         provider: str | None = None,
         api_key: str | None = None,
         model: str | None = None,
     ) -> str:
         normalized_language = (language or "ru").strip().lower() or "ru"
-        prompt = (
-            f"You are a paid social analyst. Reply in language code '{normalized_language}'. "
-            "Use only the provided dashboard context. Return concise Markdown with exactly two blocks separated by one blank line. "
-            "Block 1: one short paragraph of 3-4 sentences, no heading, covering what works, what underperforms, and exactly one highest-leverage next action. "
-            "Block 2: 2-4 short bullet points with the most important supporting details. "
-            "Keep the whole answer under 120 words. No intro, no recap, no tables, no filler."
-        )
-        system_prompt = prompt + "\n\nDashboard context:\n" + report_context
-        messages = [{"role": "user", "content": "Give the automatic verdict for this advertising account."}]
 
         if provider is not None or api_key is not None:
-            return await self.chat(
+            response_text = await self._generate_with_provider(
                 provider=provider or "gemini",
                 api_key=api_key or "",
                 model=model,
                 system_prompt=system_prompt,
                 messages=messages,
+                max_tokens=min(settings.llm.max_tokens, 420),
             )
+            return _normalize_auto_verdict_text(text=response_text, language=normalized_language)
 
         available_providers = settings.llm.internal_auto_verdict_providers
         if not available_providers:
@@ -134,13 +177,15 @@ class LLMProxyService:
         last_exc: LLMProxyError | None = None
         for internal_provider in available_providers:
             try:
-                return await self._client_for_provider(internal_provider).generate(
+                response_text = await self._generate_with_provider(
+                    provider=internal_provider,
                     api_key=settings.llm.resolve_internal_api_key_for_provider(internal_provider),
                     model=settings.llm.resolve_internal_model_for_provider(internal_provider),
                     system_prompt=system_prompt,
                     messages=messages,
                     max_tokens=min(settings.llm.max_tokens, 420),
                 )
+                return _normalize_auto_verdict_text(text=response_text, language=normalized_language)
             except LLMProxyError as exc:
                 last_exc = exc
 
@@ -157,12 +202,12 @@ class LLMProxyService:
         if not api_key or api_key.startswith("replace_with_real_"):
             raise LLMProxyError("Internal AI chat is not configured")
 
-        normalized_messages = self._normalize_messages(provider=provider, messages=messages)
-        return await self._client_for_provider(provider).generate(
+        return await self._generate_with_provider(
+            provider=provider,
             api_key=api_key,
             model=settings.llm.resolve_internal_chat_model(),
             system_prompt=system_prompt,
-            messages=normalized_messages,
+            messages=messages,
             max_tokens=settings.llm.max_tokens,
         )
 
@@ -175,23 +220,11 @@ class LLMProxyService:
         system_prompt: str,
         messages: list[dict[str, str]],
     ) -> str:
-        normalized = self.normalize_provider(provider)
-        client = self._client_for_provider(normalized)
-
-        selected_model = (
-            model
-            or {
-                "anthropic": settings.llm.anthropic_model,
-                "openai": settings.llm.openai_default_model,
-                "gemini": settings.llm.gemini_default_model,
-            }[normalized]
-        )
-        normalized_messages = self._normalize_messages(provider=normalized, messages=messages)
-
-        return await client.generate(
+        return await self._generate_with_provider(
+            provider=provider,
             api_key=api_key,
-            model=selected_model,
+            model=model,
             system_prompt=system_prompt,
-            messages=normalized_messages,
+            messages=messages,
             max_tokens=settings.llm.max_tokens,
         )

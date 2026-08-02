@@ -1883,7 +1883,9 @@ const campaignExpandedGroupIds = ref<string[]>([])
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
 const aiPanelOpen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1280 : true)
 const accountSwitcherRef = ref<HTMLElement | null>(null)
+const accountSwitcherTriggerRef = ref<HTMLElement | null>(null)
 const platformMenuRef = ref<HTMLElement | null>(null)
+const accountSwitcherMenuStyle = ref<Record<string, string>>({})
 const localeUpdateRequestId = ref(0)
 const reportContextKey = ref('')
 const accountPageSnapshotRequestId = ref(0)
@@ -3936,6 +3938,9 @@ function handleViewportResize() {
   if (viewportWidth.value < 1024) {
     sidebarCollapsed.value = false
   }
+  if (accountSwitcherOpen.value) {
+    updateAccountSwitcherMenuPosition()
+  }
 }
 
 function openAiPanel() {
@@ -4031,6 +4036,43 @@ function togglePlatformMenu() {
     return
   }
   platformMenuOpen.value = !platformMenuOpen.value
+}
+
+function updateAccountSwitcherMenuPosition() {
+  const trigger = accountSwitcherTriggerRef.value
+  if (!trigger) {
+    return
+  }
+
+  const triggerRect = trigger.getBoundingClientRect()
+  const viewportPadding = 12
+  const menuWidth = Math.min(352, Math.max(0, window.innerWidth - viewportPadding * 2))
+  const left = Math.min(
+    Math.max(viewportPadding, triggerRect.left),
+    Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+  )
+
+  accountSwitcherMenuStyle.value = {
+    position: 'fixed',
+    top: `${triggerRect.bottom + 8}px`,
+    left: `${left}px`,
+    right: 'auto',
+    width: `${menuWidth}px`,
+    minWidth: `${menuWidth}px`,
+    maxWidth: `${menuWidth}px`,
+    zIndex: '80',
+  }
+}
+
+function toggleAccountSwitcher() {
+  accountSwitcherOpen.value = !accountSwitcherOpen.value
+}
+
+function handleGlobalScroll() {
+  if (!accountSwitcherOpen.value) {
+    return
+  }
+  updateAccountSwitcherMenuPosition()
 }
 
 function providerEmptyMessage(providerOption: OAuthProvider) {
@@ -4738,6 +4780,14 @@ watch(selectedCampaignId, () => {
   campaignExpandedGroupIds.value = []
 })
 
+watch(accountSwitcherOpen, async (isOpen) => {
+  if (!isOpen) {
+    return
+  }
+  await nextTick()
+  updateAccountSwitcherMenuPosition()
+})
+
 watch(autoVerdictRequestKey, (nextKey, previousKey) => {
   if (!nextKey || nextKey === previousKey || reportLoading.value) {
     return
@@ -4778,6 +4828,7 @@ onMounted(() => {
   handleViewportResize()
   window.addEventListener('popstate', handlePopState)
   window.addEventListener('resize', handleViewportResize)
+  window.addEventListener('scroll', handleGlobalScroll, true)
   window.addEventListener('mousedown', handleGlobalPointer)
   window.addEventListener('keydown', handleGlobalKeydown)
   void syncView(currentView.value)
@@ -4787,6 +4838,7 @@ onUnmounted(() => {
   clearConnectModalStageTimer()
   window.removeEventListener('popstate', handlePopState)
   window.removeEventListener('resize', handleViewportResize)
+  window.removeEventListener('scroll', handleGlobalScroll, true)
   window.removeEventListener('mousedown', handleGlobalPointer)
   window.removeEventListener('keydown', handleGlobalKeydown)
 })
@@ -5233,7 +5285,7 @@ watch(currentView, (view) => {
       <section class="stage-center">
         <header class="topbar topbar-workspace workspace-stage-topbar">
           <div ref="accountSwitcherRef" class="account-switcher">
-            <button type="button" class="account-switcher-trigger" @click="accountSwitcherOpen = !accountSwitcherOpen">
+            <button ref="accountSwitcherTriggerRef" type="button" class="account-switcher-trigger" @click="toggleAccountSwitcher">
               <template v-if="selectedAccount">
                 <span class="account-switcher-avatar-shell" :class="selectedProvider">
                   <span class="account-switcher-avatar">
@@ -5261,7 +5313,7 @@ watch(currentView, (view) => {
               </svg>
             </button>
 
-            <div v-if="accountSwitcherOpen" class="account-switcher-menu">
+            <div v-if="accountSwitcherOpen" class="account-switcher-menu" :style="accountSwitcherMenuStyle">
               <p class="account-switcher-eyebrow">{{ copy.yourAccounts }}</p>
               <div v-if="accountPageCards.length === 0" class="empty-note">
                 {{ copy.accountSwitcherEmpty }}

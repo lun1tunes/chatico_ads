@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import PeriodSwitcher from '../components/overview/PeriodSwitcher';
 import KeyMetricsRow from '../components/overview/KeyMetricsRow';
-import VerdictCard from '../components/overview/VerdictCard';
+import AiChatEntryCard from '../components/ai/AiChatEntryCard';
 import TrendChart from '../components/overview/TrendChart';
 import { MOCK_METRICS_BY_PERIOD } from '../data/mockMetrics';
 
@@ -54,8 +54,11 @@ export default function DashboardPage() {
         <PeriodSwitcher selectedPeriod={period} onPeriodChange={setPeriod} />
       </div>
 
-      {/* ИИ-вердикт — «герой» в стиле активного пункта меню */}
-      <VerdictCard verdict={metrics?.verdict} loading={loading} />
+      {/* Компактный entry point: сам AI-вывод живёт в правом чате */}
+      <AiChatEntryCard
+        context="Автоматический AI-вывод для обзора аккаунта открывается в правом чате и не занимает место среди метрик."
+        hasVerdict={Boolean(metrics?.verdict) && !loading}
+      />
 
       {/* Ключевые метрики */}
       <KeyMetricsRow metrics={metrics} loading={loading} />

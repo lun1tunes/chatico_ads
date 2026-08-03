@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .schemas import ReportQuery
 from core.container import Container
 from core.dependencies import get_current_user, get_db_session, get_di_container
 from core.infrastructure.google_ads_api import GoogleAdsAPIError
@@ -21,8 +24,7 @@ router = APIRouter()
 @router.get("/meta/ad-accounts/{ad_account_id}/report")
 async def get_meta_report(
     ad_account_id: str,
-    days: int = Query(default=30, ge=1, le=365),
-    force_refresh: bool = Query(default=False),
+    report_query: Annotated[ReportQuery, Depends()],
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
@@ -31,8 +33,10 @@ async def get_meta_report(
         return await container.generate_meta_report_use_case(session=session).execute(
             user_id=user.id,
             ad_account_id=ad_account_id,
-            days=days,
-            force_refresh=force_refresh,
+            days=report_query.days,
+            since=report_query.since,
+            until=report_query.until,
+            force_refresh=report_query.force_refresh,
         )
     except MetaAdAccountNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -43,8 +47,7 @@ async def get_meta_report(
 @router.get("/google-ads/customers/{customer_id}/report")
 async def get_google_ads_report(
     customer_id: str,
-    days: int = Query(default=30, ge=1, le=365),
-    force_refresh: bool = Query(default=False),
+    report_query: Annotated[ReportQuery, Depends()],
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
@@ -53,8 +56,10 @@ async def get_google_ads_report(
         return await container.generate_google_ads_report_use_case(session=session).execute(
             user_id=user.id,
             customer_id=customer_id,
-            days=days,
-            force_refresh=force_refresh,
+            days=report_query.days,
+            since=report_query.since,
+            until=report_query.until,
+            force_refresh=report_query.force_refresh,
         )
     except GoogleAdsCustomerNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -67,8 +72,7 @@ async def get_google_ads_report(
 @router.get("/tiktok-ads/advertisers/{advertiser_id}/report")
 async def get_tiktok_ads_report(
     advertiser_id: str,
-    days: int = Query(default=30, ge=1, le=365),
-    force_refresh: bool = Query(default=False),
+    report_query: Annotated[ReportQuery, Depends()],
     user=Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
@@ -77,8 +81,10 @@ async def get_tiktok_ads_report(
         return await container.generate_tiktok_ads_report_use_case(session=session).execute(
             user_id=user.id,
             advertiser_id=advertiser_id,
-            days=days,
-            force_refresh=force_refresh,
+            days=report_query.days,
+            since=report_query.since,
+            until=report_query.until,
+            force_refresh=report_query.force_refresh,
         )
     except TikTokAdsAdvertiserNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

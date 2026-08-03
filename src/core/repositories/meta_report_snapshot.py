@@ -33,6 +33,31 @@ class MetaReportSnapshotRepository(BaseRepository[MetaReportSnapshot]):
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_by_account_and_periods(
+        self,
+        *,
+        meta_ad_account_id: str,
+        current_since: date,
+        current_until: date,
+        previous_since: date,
+        previous_until: date,
+        now: datetime,
+    ) -> MetaReportSnapshot | None:
+        result = await self.session.execute(
+            select(MetaReportSnapshot)
+            .where(
+                MetaReportSnapshot.meta_ad_account_id == meta_ad_account_id,
+                MetaReportSnapshot.current_since == current_since,
+                MetaReportSnapshot.current_until == current_until,
+                MetaReportSnapshot.previous_since == previous_since,
+                MetaReportSnapshot.previous_until == previous_until,
+                MetaReportSnapshot.expires_at > now,
+            )
+            .order_by(MetaReportSnapshot.source_fetched_at.desc(), MetaReportSnapshot.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_account_and_periods(
         self,
         *,

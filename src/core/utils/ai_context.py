@@ -100,6 +100,10 @@ def _compact_creative(creative: dict[str, Any]) -> str:
         _format_scalar(creative_metrics["ctr"]),
         _format_scalar(creative_metrics["results"]),
         _format_scalar(creative_metrics["result_kind"]),
+        _format_scalar(creative.get("headline")),
+        _format_scalar(creative.get("primary_text")),
+        _format_scalar(creative.get("call_to_action")),
+        _format_scalar(creative.get("destination_url")),
     ]
     return "crt|" + "|".join(creative_parts)
 

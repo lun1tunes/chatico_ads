@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Protocol
 
 
@@ -191,4 +191,11 @@ class IStateTokenService(Protocol):
 
 
 class IDateRangeService(Protocol):
-    def build_periods(self, *, days: int, now: datetime | None = None) -> dict[str, dict[str, str]]: ...
+    def build_periods(
+        self,
+        *,
+        days: int | None = None,
+        since: date | str | None = None,
+        until: date | str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, dict[str, str]]: ...

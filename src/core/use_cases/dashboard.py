@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,13 @@ from ..services.google_ads_report_service import GoogleAdsReportService
 from ..services.meta_report_service import MetaReportService
 from ..services.tiktok_ads_report_service import TikTokAdsReportService
 from ..utils.time import utcnow
+
+
+def _requested_days_from_periods(periods: dict[str, dict[str, str]]) -> int:
+    current = periods["current"]
+    current_since = date.fromisoformat(current["since"])
+    current_until = date.fromisoformat(current["until"])
+    return (current_until - current_since).days + 1
 
 
 async def _resolve_client_provider_credentials(
@@ -62,16 +70,19 @@ class GenerateMetaReportUseCase:
         *,
         user_id: str,
         ad_account_id: str,
-        days: int,
+        days: int | None = None,
+        since: date | str | None = None,
+        until: date | str | None = None,
         force_refresh: bool = False,
     ) -> dict[str, object]:
-        periods = self.date_range_service.build_periods(days=days)
+        periods = self.date_range_service.build_periods(days=days, since=since, until=until)
+        requested_days = _requested_days_from_periods(periods)
         report = await self.report_service.build_report(
             account_repo=self.account_repo,
             snapshot_repo=self.snapshot_repo,
             user_id=user_id,
             external_account_id=ad_account_id,
-            requested_days=days,
+            requested_days=requested_days,
             periods=periods,
             force_refresh=force_refresh,
         )
@@ -91,15 +102,18 @@ class GenerateGoogleAdsReportUseCase:
         *,
         user_id: str,
         customer_id: str,
-        days: int,
+        days: int | None = None,
+        since: date | str | None = None,
+        until: date | str | None = None,
         force_refresh: bool = False,
     ) -> dict[str, object]:
-        periods = self.date_range_service.build_periods(days=days)
+        periods = self.date_range_service.build_periods(days=days, since=since, until=until)
+        requested_days = _requested_days_from_periods(periods)
         report = await self.report_service.build_report(
             customer_repo=self.customer_repo,
             user_id=user_id,
             external_customer_id=customer_id,
-            requested_days=days,
+            requested_days=requested_days,
             periods=periods,
             force_refresh=force_refresh,
         )
@@ -119,15 +133,18 @@ class GenerateTikTokAdsReportUseCase:
         *,
         user_id: str,
         advertiser_id: str,
-        days: int,
+        days: int | None = None,
+        since: date | str | None = None,
+        until: date | str | None = None,
         force_refresh: bool = False,
     ) -> dict[str, object]:
-        periods = self.date_range_service.build_periods(days=days)
+        periods = self.date_range_service.build_periods(days=days, since=since, until=until)
+        requested_days = _requested_days_from_periods(periods)
         report = await self.report_service.build_report(
             advertiser_repo=self.advertiser_repo,
             user_id=user_id,
             external_advertiser_id=advertiser_id,
-            requested_days=days,
+            requested_days=requested_days,
             periods=periods,
             force_refresh=force_refresh,
         )

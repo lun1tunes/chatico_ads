@@ -214,6 +214,12 @@ class FakeMetaReportClient:
                     "object_story_spec": {
                         "video_data": {
                             "image_url": "https://cdn.test/creative-b-hq.jpg",
+                            "message": "Собираем заявки без ручной рутины",
+                            "title": "Автоворонка под ключ",
+                            "call_to_action": {
+                                "type": "LEARN_MORE",
+                                "value": {"link": "https://example.test/funnel"},
+                            },
                         }
                     },
                 },
@@ -298,8 +304,8 @@ class FixedDateRangeService:
     def __init__(self, *, anchor: datetime | None = None) -> None:
         self.anchor = anchor or datetime(2026, 6, 15, tzinfo=timezone.utc)
 
-    def build_periods(self, *, days: int, now=None):
-        return DateRangeService().build_periods(days=days, now=self.anchor)
+    def build_periods(self, *, days: int | None = None, since=None, until=None, now=None):
+        return DateRangeService().build_periods(days=days, since=since, until=until, now=self.anchor)
 
 
 class FakePreviewClient:
@@ -378,10 +384,16 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     assert report["campaigns"][0]["creatives"][0]["ad_group_name"] == "Prospecting"
     creative_b = next(creative for creative in report["campaigns"][0]["creatives"] if creative["name"] == "Creative B")
     assert creative_b["image_url"] == "https://cdn.test/creative-b-hq.jpg"
+    assert creative_b["primary_text"] == "Собираем заявки без ручной рутины"
+    assert creative_b["headline"] == "Автоворонка под ключ"
+    assert creative_b["call_to_action"] == "LEARN_MORE"
+    assert creative_b["destination_url"] == "https://example.test/funnel"
+    assert creative_b["source_url"] is None
     low_res_creative = next(
         creative for creative in report["campaigns"][0]["creatives"] if creative["name"] == "Пока вы занимаетесь"
     )
     assert low_res_creative["image_url"] == "https://cdninstagram.test/creative-low-hq.jpg"
+    assert low_res_creative["source_url"] == "https://www.instagram.com/p/test-low-res/"
     assert report["campaigns"][1]["creatives"][0]["image_url"] == "https://cdn.test/creative-share-hq.jpg"
     assert report["campaigns"][0]["metrics"]["cost_per_result"]["current"] == 10.0
     assert preview_client.calls == ["https://www.instagram.com/p/test-low-res/"]
@@ -505,6 +517,8 @@ async def test_generate_meta_report_use_case_reuses_latest_db_snapshot_until_for
         ),
     )
     first_report = await first_use_case.execute(user_id="user-1", ad_account_id="act_1", days=30)
+    first_since = first_report["periods"]["current"]["since"]
+    first_until = first_report["periods"]["current"]["until"]
 
     second_use_case = GenerateMetaReportUseCase(
         session=db_session,
@@ -517,7 +531,12 @@ async def test_generate_meta_report_use_case_reuses_latest_db_snapshot_until_for
             snapshot_cache_ttl_seconds=300,
         ),
     )
-    second_report = await second_use_case.execute(user_id="user-1", ad_account_id="act_1", days=30)
+    second_report = await second_use_case.execute(
+        user_id="user-1",
+        ad_account_id="act_1",
+        since=first_since,
+        until=first_until,
+    )
 
     assert second_report == first_report
     assert second_report["periods"] == first_report["periods"]
@@ -778,6 +797,10 @@ def test_build_scoped_report_context_returns_level_specific_context_and_hierarch
                         "object_type": "IMAGE",
                         "ad_group_id": "adset_1",
                         "ad_group_name": "Prospecting",
+                        "headline": "Big promise",
+                        "primary_text": "Short copy",
+                        "call_to_action": "LEARN_MORE",
+                        "destination_url": "https://example.test/a",
                         "metrics": {
                             "spend": 50.0,
                             "impressions": 600,
@@ -867,6 +890,7 @@ def test_build_scoped_report_context_returns_level_specific_context_and_hierarch
     assert creative_scope == "creative"
     assert "scope|creative|ad_1|Creative A|Prospecting|Lead Gen" in creative_context
     assert "crt|Creative A|IMAGE|50|600|42|7|7|leads" in creative_context
+    assert "crt|Creative A|IMAGE|50|600|42|7|7|leads|Big promise|Short copy|LEARN_MORE|https://example.test/a" in creative_context
     assert "crt|Creative B|VIDEO|40|400|38|9.5|4|leads" in creative_context
     assert creative_report["summary"]["metrics"]["spend"]["current"] == 50.0
 

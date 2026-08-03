@@ -19,8 +19,8 @@ class FixedDateRangeService:
     def __init__(self, *, anchor: datetime | None = None) -> None:
         self.anchor = anchor or datetime(2026, 6, 15, tzinfo=timezone.utc)
 
-    def build_periods(self, *, days: int, now=None):
-        return DateRangeService().build_periods(days=days, now=self.anchor)
+    def build_periods(self, *, days: int | None = None, since=None, until=None, now=None):
+        return DateRangeService().build_periods(days=days, since=since, until=until, now=self.anchor)
 
 
 class FakeTikTokAdsReportClient:

@@ -47,12 +47,11 @@ def _optional_int(value: object) -> int | None:
 
 
 def _resolve_creative_image_url(creative: dict[str, object]) -> str | None:
-    object_story_spec = creative.get("object_story_spec")
-    story = object_story_spec if isinstance(object_story_spec, dict) else {}
-    video_data = story.get("video_data") if isinstance(story.get("video_data"), dict) else {}
-    link_data = story.get("link_data") if isinstance(story.get("link_data"), dict) else {}
-    photo_data = story.get("photo_data") if isinstance(story.get("photo_data"), dict) else {}
-    template_data = story.get("template_data") if isinstance(story.get("template_data"), dict) else {}
+    story_payloads = _creative_story_payloads(creative)
+    video_data = story_payloads.get("video_data", {})
+    link_data = story_payloads.get("link_data", {})
+    photo_data = story_payloads.get("photo_data", {})
+    template_data = story_payloads.get("template_data", {})
 
     # Inference from Meta AdCreative docs: non-image creatives often surface a better preview through
     # object_story_spec.* than through the generic thumbnail_url field.
@@ -64,6 +63,79 @@ def _resolve_creative_image_url(creative: dict[str, object]) -> str | None:
         template_data.get("picture"),
         creative.get("thumbnail_url"),
     )
+
+
+def _creative_story_payloads(creative: dict[str, object]) -> dict[str, dict[str, object]]:
+    object_story_spec = creative.get("object_story_spec")
+    story = object_story_spec if isinstance(object_story_spec, dict) else {}
+    payloads: dict[str, dict[str, object]] = {}
+    for key in ("video_data", "link_data", "photo_data", "template_data", "text_data"):
+        value = story.get(key)
+        if isinstance(value, dict):
+            payloads[key] = value
+    return payloads
+
+
+def _resolve_creative_primary_text(creative: dict[str, object]) -> str | None:
+    values: list[object] = []
+    for payload in _creative_story_payloads(creative).values():
+        values.extend(
+            [
+                payload.get("message"),
+                payload.get("text"),
+                payload.get("body"),
+            ]
+        )
+    return _first_non_empty(*values)
+
+
+def _resolve_creative_headline(creative: dict[str, object]) -> str | None:
+    values: list[object] = []
+    for payload in _creative_story_payloads(creative).values():
+        values.extend(
+            [
+                payload.get("name"),
+                payload.get("title"),
+                payload.get("headline"),
+            ]
+        )
+    return _first_non_empty(*values)
+
+
+def _resolve_creative_call_to_action(creative: dict[str, object]) -> str | None:
+    payloads = _creative_story_payloads(creative)
+    for payload in payloads.values():
+        direct_type = _first_non_empty(payload.get("call_to_action_type"), payload.get("cta_text"))
+        if direct_type:
+            return direct_type
+
+        call_to_action = payload.get("call_to_action")
+        if isinstance(call_to_action, dict):
+            nested_type = _first_non_empty(call_to_action.get("type"))
+            if nested_type:
+                return nested_type
+    return None
+
+
+def _resolve_creative_destination_url(creative: dict[str, object]) -> str | None:
+    payloads = _creative_story_payloads(creative)
+    for payload in payloads.values():
+        call_to_action = payload.get("call_to_action")
+        if isinstance(call_to_action, dict):
+            cta_value = call_to_action.get("value")
+            if isinstance(cta_value, dict):
+                nested_url = _first_non_empty(
+                    cta_value.get("link"),
+                    cta_value.get("url"),
+                    cta_value.get("website_url"),
+                )
+                if nested_url:
+                    return nested_url
+
+        direct_url = _first_non_empty(payload.get("link"), payload.get("url"), payload.get("website_url"))
+        if direct_url:
+            return direct_url
+    return None
 
 
 def _looks_like_low_res_preview(url: str | None) -> bool:
@@ -345,7 +417,7 @@ class MetaReportService:
         cache_key = self._cache_key(
             user_id=user_id,
             meta_ad_account_id=account.id,
-            requested_days=requested_days,
+            periods=periods,
         )
         lock = self._locks.setdefault(cache_key, asyncio.Lock())
         async with lock:
@@ -354,9 +426,13 @@ class MetaReportService:
                 if cached_report is not None:
                     return cached_report
 
-                snapshot = await snapshot_repo.get_latest_by_account_and_requested_days(
+                current_since, current_until, previous_since, previous_until = self._parse_period_dates(periods)
+                snapshot = await snapshot_repo.get_latest_by_account_and_periods(
                     meta_ad_account_id=account.id,
-                    requested_days=requested_days,
+                    current_since=current_since,
+                    current_until=current_until,
+                    previous_since=previous_since,
+                    previous_until=previous_until,
                     now=utcnow(),
                 )
                 if snapshot is not None:
@@ -385,8 +461,13 @@ class MetaReportService:
             self._store_cached_report(cache_key, report)
             return deepcopy(report)
 
-    def _cache_key(self, *, user_id: str, meta_ad_account_id: str, requested_days: int) -> str:
-        return f"{user_id}:{meta_ad_account_id}:{requested_days}"
+    def _cache_key(self, *, user_id: str, meta_ad_account_id: str, periods: dict[str, dict[str, str]]) -> str:
+        current_since, current_until, previous_since, previous_until = self._parse_period_dates(periods)
+        return (
+            f"{user_id}:{meta_ad_account_id}:"
+            f"{current_since.isoformat()}:{current_until.isoformat()}:"
+            f"{previous_since.isoformat()}:{previous_until.isoformat()}"
+        )
 
     def _parse_period_dates(self, periods: dict[str, dict[str, str]]) -> tuple[date, date, date, date]:
         current = periods["current"]
@@ -454,6 +535,12 @@ class MetaReportService:
             "object_type": creative.get("object_type") or "ad",
             "thumbnail_url": creative.get("thumbnail_url"),
             "image_url": await self._resolve_creative_preview(creative),
+            "status": _optional_string(ad.get("effective_status")) or _optional_string(ad.get("status")),
+            "primary_text": _resolve_creative_primary_text(creative),
+            "headline": _resolve_creative_headline(creative),
+            "call_to_action": _resolve_creative_call_to_action(creative),
+            "destination_url": _resolve_creative_destination_url(creative),
+            "source_url": _optional_string(creative.get("instagram_permalink_url")),
             "ad_group_id": _optional_string(insight.get("adset_id")) or _optional_string(ad.get("adset_id")),
             "ad_group_name": _optional_string(insight.get("adset_name")),
             "metrics": {

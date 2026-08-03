@@ -6,11 +6,14 @@ type Locale = 'ru' | 'kz' | 'en'
 type AuthMode = 'login' | 'register'
 type AIProvider = 'anthropic' | 'openai' | 'gemini'
 type AppView = 'app' | 'privacy' | 'dataDeletion' | 'terms'
-type WorkspaceSection = 'overview' | 'campaign' | 'accounts' | 'settings'
+type WorkspaceSection = 'overview' | 'attention' | 'campaign' | 'accounts' | 'settings'
+type CampaignWorkspacePanel = 'results' | 'ad_groups' | 'creatives'
 type OAuthProvider = 'meta' | 'google_ads' | 'tiktok_ads'
 type ConnectModalStage = 'intro' | 'loading' | 'accounts'
 type SettingsNotificationPreference = 'digest' | 'alerts' | 'connections'
 type AccountCardStatusTone = 'active' | 'paused'
+type AttentionSeverity = 'critical' | 'warning' | 'recommendation'
+type AttentionScope = 'account' | 'campaign' | 'ad_group' | 'creative'
 type MetricKey =
   | 'spend'
   | 'reach'
@@ -91,6 +94,12 @@ interface Creative {
   object_type: string
   thumbnail_url: string | null
   image_url: string | null
+  status?: string | null
+  primary_text?: string | null
+  headline?: string | null
+  call_to_action?: string | null
+  destination_url?: string | null
+  source_url?: string | null
   ad_group_id?: string | null
   ad_group_name?: string | null
   metrics: {
@@ -103,6 +112,47 @@ interface Creative {
   }
 }
 
+interface CampaignAdGroupSnapshot {
+  id: string
+  name: string
+  targeting?: {
+    geo?: string | null
+    age?: string | null
+    gender?: string | null
+    audience?: string | null
+    signal?: string | null
+    placement?: string | null
+    device?: string | null
+    summary?: string | null
+  } | null
+  targeting_summary?: string | null
+  metrics: {
+    spend: number
+    impressions: number
+    clicks: number
+    ctr: number
+    results: number
+    result_kind: string
+  }
+}
+
+interface CampaignAdGroupTargetingView {
+  geo: string
+  age: string
+  gender: string
+  audience: string
+  signal: string
+  placement: string
+  device: string
+  summary: string
+}
+
+interface CampaignAdGroupSettingView {
+  id: string
+  label: string
+  value: string
+}
+
 interface Campaign {
   id: string
   name: string
@@ -110,6 +160,7 @@ interface Campaign {
   objective?: string | null
   primary_result_kind: string
   metrics: MetricCollection
+  ad_groups?: CampaignAdGroupSnapshot[]
   creatives: Creative[]
 }
 
@@ -211,9 +262,12 @@ interface SavedProviderKey {
 }
 
 type AutoVerdictScope = 'account' | 'campaign' | 'ad_group' | 'creative'
+type ReportPeriodPreset = '7d' | '14d' | '30d' | 'this_month' | 'last_month' | 'custom'
 
 interface AutoVerdictRequestPayload {
   days: number
+  since?: string | null
+  until?: string | null
   language: Locale
   use_client_credentials: boolean
   scope: AutoVerdictScope
@@ -223,6 +277,23 @@ interface AutoVerdictRequestPayload {
   provider?: AIProvider
   api_key?: string | null
   model?: string | null
+}
+
+interface ChatRequestPayload extends AutoVerdictRequestPayload {
+  messages: ChatMessage[]
+}
+
+interface DateRangeDraft {
+  since: string
+  until: string
+}
+
+interface ReportPeriodRequest {
+  preset: ReportPeriodPreset
+  days: number
+  since: string | null
+  until: string | null
+  key: string
 }
 
 interface LegalSection {
@@ -294,9 +365,16 @@ interface CampaignAdRow {
   id: string
   name: string
   format: string
+  status: string
   previewUrl: string
+  primaryText: string
+  headline: string
+  callToAction: string
+  destinationUrl: string
+  sourceUrl: string
   groupId: string
   groupName: string
+  placementSummary: string
   spend: number
   impressions: number
   clicks: number
@@ -311,11 +389,53 @@ interface CampaignAdGroupRow {
   id: string
   name: string
   context: string
+  targeting: CampaignAdGroupTargetingView
+  targetingSummary: string
   spend: number
   results: number
   costPerResult: number | null
+  resultKind: string
+  adsCount: number
   ads: readonly CampaignAdRow[]
   bestAdId: string
+}
+
+type CampaignCreativeQuickFilter = 'all' | 'active' | 'paused' | 'best' | 'attention' | 'video' | 'image' | 'carousel'
+type CampaignCreativeSortMode = 'efficiency' | 'results' | 'cost' | 'spend'
+type CampaignCreativePerformanceKey = 'strong' | 'stable' | 'warning' | 'paused' | 'no_data' | 'spend_only'
+type CampaignCreativeInsightTone = 'positive' | 'neutral' | 'warning'
+
+interface CampaignCreativeInsightCard {
+  key: string
+  label: string
+  value: string
+  caption: string
+  tone: CampaignCreativeInsightTone
+}
+
+interface AttentionMetricView {
+  label: string
+  value: string
+  hint: string
+}
+
+interface AttentionAlert {
+  id: string
+  severity: AttentionSeverity
+  scope: AttentionScope
+  title: string
+  reason: string
+  context: string
+  metrics: AttentionMetricView[]
+  campaignId: string
+  adGroupId: string
+  adId: string
+  aiQuestion: string
+  priorityScore: number
+}
+
+type ScoredAttentionAlert = AttentionAlert & {
+  score: number
 }
 
 const PlatformLogo = defineComponent({
@@ -390,8 +510,9 @@ const CUSTOM_MODEL_OPTION = '__custom__'
 const PRIVACY_CONTACT_EMAIL = 'support@chatico.cc'
 const PRIVACY_SERVICE_OPERATOR = 'Chatico Ads'
 const PRIVACY_SERVICE_URL = trimTrailingSlash(`${window.location.origin}${APP_BASE_PATH}`)
-const overviewMetricKeys: MetricKey[] = ['spend', 'results', 'cost_per_result', 'impressions']
-const overviewPeriodOptions = [7, 14, 30] as const
+const surfacePrimaryMetricKeys: MetricKey[] = ['spend', 'results', 'cost_per_result', 'impressions']
+const surfaceAdditionalMetricKeys: MetricKey[] = ['reach', 'clicks', 'ctr', 'cpm', 'cpc']
+const overviewQuickPeriodOptions = ['7d', '14d', '30d', 'this_month', 'last_month'] as const
 const trendChartFrame = {
   width: 760,
   height: 320,
@@ -399,6 +520,63 @@ const trendChartFrame = {
   right: 52,
   top: 18,
   bottom: 38,
+}
+
+function padDateSegment(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function toDateInputValue(value: Date): string {
+  return `${value.getFullYear()}-${padDateSegment(value.getMonth() + 1)}-${padDateSegment(value.getDate())}`
+}
+
+function parseDateInputValue(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null
+  }
+
+  const [year, month, day] = value.split('-').map(Number)
+  const parsed = new Date(year, month - 1, day)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null
+  }
+  return parsed
+}
+
+function shiftDateByDays(value: Date, days: number): Date {
+  const nextValue = new Date(value)
+  nextValue.setDate(nextValue.getDate() + days)
+  return nextValue
+}
+
+function startOfMonth(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), 1)
+}
+
+function endOfMonth(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth() + 1, 0)
+}
+
+function inclusiveDayCount(since: string, until: string): number {
+  const sinceDate = parseDateInputValue(since)
+  const untilDate = parseDateInputValue(until)
+  if (!sinceDate || !untilDate) {
+    return 30
+  }
+  return Math.max(1, Math.round((untilDate.getTime() - sinceDate.getTime()) / 86400000) + 1)
+}
+
+function defaultCustomRange(anchor = new Date()): DateRangeDraft {
+  const today = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
+  return {
+    since: toDateInputValue(shiftDateByDays(today, -29)),
+    until: toDateInputValue(today),
+  }
 }
 
 function normalizePathname(value: string): string {
@@ -414,6 +592,7 @@ function buildRoutePath(segment: string): string {
 const APP_HOME_PATH = normalizePathname(APP_BASE_PATH)
 const ACCOUNTS_ROUTE_PATH = buildRoutePath('accounts')
 const SETTINGS_ROUTE_PATH = buildRoutePath('settings')
+const ATTENTION_ROUTE_PATH = buildRoutePath('attention')
 const CAMPAIGNS_ROUTE_PATH = buildRoutePath('campaigns')
 const PRIVACY_ROUTE_PATH = buildRoutePath('privacy-policy')
 const DATA_DELETION_ROUTE_PATH = buildRoutePath('data-deletion')
@@ -1151,14 +1330,36 @@ const translations = {
     campaigns: 'Кампании',
     days: 'Период',
     dayOptions: { 7: '7 дней', 14: '14 дней', 30: '30 дней' },
+    periodThisMonth: 'Этот месяц',
+    periodLastMonth: 'Прошлый месяц',
+    periodCustom: 'Свой период',
+    periodFrom: 'От',
+    periodUntil: 'До',
+    periodApply: 'Применить',
+    periodCompareOn: 'Сравнение: вкл',
+    periodCompareOff: 'Сравнение: выкл',
+    periodCustomError: 'Выберите корректный диапазон дат.',
     noAccountsTitle: 'Подключите Meta, Google Ads или TikTok Ads',
     noAccountsBody:
       'После OAuth подключённые кабинеты появятся слева, а отчёт и AI-анализ загрузятся через серверный прокси.',
     sidebarOverview: 'Обзор аккаунта',
+    sidebarAttention: 'Требует внимания',
     sidebarAccounts: 'Аккаунты',
     sidebarSettings: 'Настройки',
     overviewAccount: 'Обзор аккаунта',
     overviewLead: 'Главные показатели рекламы простым языком.',
+    overviewStatusLabel: 'Статус рекламы',
+    overviewStatusStable: 'Реклама работает стабильно',
+    overviewStatusImproving: 'Результаты улучшаются',
+    overviewStatusAttention: 'Требуется внимание',
+    overviewStatusCritical: 'Есть серьёзная проблема',
+    overviewStatusPaused: 'Показы остановлены',
+    overviewStatusNoData: 'Недостаточно данных',
+    overviewStatusNoteStable: 'Сильных отклонений по результату и стоимости сейчас не видно.',
+    overviewStatusNoteImproving: 'Результатов стало больше, а стоимость результата не растёт.',
+    overviewStatusNoteAttention: 'Результаты или стоимость отклонились от нормального уровня и требуют проверки.',
+    overviewStatusNotePaused: 'За выбранный период не видно активных показов, поэтому реклама могла быть остановлена.',
+    overviewStatusNoteNoData: 'За выбранный период пока недостаточно расходов и результатов для уверенного вывода.',
     accountSwitcherLabel: 'Рекламный кабинет',
     accountSwitcherEmpty: 'Нет кабинета',
     accountSwitcherHint: 'Выберите кабинет для текущей платформы.',
@@ -1167,9 +1368,13 @@ const translations = {
     manageConnections: 'Управление подключениями',
     aiConsultant: 'ИИ-консультант',
     aiConsultantOnline: 'Chatico AI · на связи',
-    askAi: 'Спросить AI',
-    openAiPanel: 'Открыть ИИ-консультанта',
-    closeAiPanel: 'Свернуть консультанта',
+    askAi: 'Открыть чат AI',
+    openAiVerdict: 'Открыть ИИ-вывод в чате',
+    openAiPanel: 'Открыть чат AI',
+    closeAiPanel: 'Свернуть чат AI',
+    aiEntryCardTitle: 'Вердикт и рекомендации в правом чате',
+    aiEntryContextReady: 'Контекст передан в чат',
+    aiEntryNewVerdict: 'Есть новый вывод',
     refreshData: 'Обновить отчёт',
     logout: 'Выйти',
     accountsPageTitle: 'Рекламные кабинеты',
@@ -1234,19 +1439,42 @@ const translations = {
     totalCampaigns: 'Всего кампаний',
     periodCompare: 'Сравнение периода',
     campaignFocus: 'Выбранная кампания',
+    audienceFocus: 'Выбранная аудитория',
+    adFocus: 'Выбранное объявление',
     creativeFocus: 'Креативы',
-    aiVerdict: 'ИИ анализ',
-    aiVerdictCardTitle: 'ИИ-вердикт Chatico',
-    aiVerdictHint: 'После загрузки данных сервис показывает короткий вывод: что работает, что проседает и что стоит сделать дальше.',
-    aiVerdictInfoLabel: 'Что это',
-    showVerdictDetails: 'Подробнее',
-    hideVerdictDetails: 'Скрыть детали',
     verdictStatusGood: 'Всё стабильно',
     verdictStatusWarning: 'Есть нюанс',
     aiChat: 'AI-чат по данным',
-    aiWelcome: 'Задайте вопрос по выбранному рекламному кабинету, и Chatico кратко объяснит, что происходит с результатом, стоимостью и динамикой.',
-    aiChatDataMode: 'Ответы строятся на данных выбранного кабинета и текущего периода.',
+    aiWelcome: 'Спросите по открытому экрану, и Chatico коротко объяснит результат, стоимость и главное изменение за период.',
+    aiChatDataMode: 'Ответы строятся на данных открытого экрана и текущего периода.',
     aiChatHint: 'Задайте вопрос по рекламным данным и получите короткий ответ.',
+    attentionPageTitle: 'Требует внимания',
+    attentionPageLead: 'Здесь собраны только реальные сигналы: где растёт стоимость, где расход идёт без результата и что стоит проверить первым делом.',
+    attentionSignalsLabel: 'Найдено сигналов',
+    attentionCriticalCount: 'Критичных',
+    attentionTopIssue: 'Главный риск',
+    attentionEmptyTitle: 'Сейчас критичных сигналов не найдено',
+    attentionEmptyBody: 'Когда система увидит явную проблему по стоимости, результатам или остановке кампании, она появится в этом разделе.',
+    attentionPriorityCritical: 'Критично',
+    attentionPriorityWarning: 'Требует внимания',
+    attentionPriorityRecommendation: 'Рекомендация',
+    attentionScopeAccount: 'Аккаунт',
+    attentionScopeCampaign: 'Кампания',
+    attentionScopeAdGroup: 'Аудитория',
+    attentionScopeCreative: 'Объявление',
+    attentionReasonCostUp: 'Стоимость результата стала заметно выше прошлого периода.',
+    attentionReasonResultsDown: 'Результатов стало меньше, хотя реклама продолжает тратить бюджет.',
+    attentionReasonNoResults: 'Бюджет расходуется, но результатов почти нет.',
+    attentionReasonPausedCampaign: 'Кампания остановлена и не приносит новых результатов.',
+    attentionReasonAudienceExpensive: 'Эта аудитория даёт результат дороже среднего по кампании.',
+    attentionReasonCreativeExpensive: 'Это объявление даёт результат дороже других объявлений в кампании.',
+    attentionAiQuestionLead: 'Разбери этот сигнал:',
+    attentionAiQuestionFollowup: 'Что проверить в первую очередь и что лучше сделать дальше?',
+    attentionActionOpenOverview: 'Открыть обзор',
+    attentionActionOpenCampaign: 'Посмотреть кампанию',
+    attentionActionOpenAdGroup: 'Посмотреть аудиторию',
+    attentionActionOpenCreative: 'Посмотреть объявление',
+    chatContextLabel: 'Контекст',
     chatSuggestionLabel: 'Спросите, например',
     chatDefaultModeHint: 'По умолчанию чат использует встроенный Gemini 3.5 Flash.',
     useOwnApiKey: 'Использовать свой API ключ',
@@ -1294,9 +1522,38 @@ const translations = {
       clicks: 'Клики',
       ctr: 'CTR',
     },
-    helperQuestions: ['Какая кампания тянет результат?', 'Где растёт стоимость лида?', 'Что отключить в первую очередь?'],
+    helperQuestions: [
+      'Как в целом работает моя реклама?',
+      'Где сейчас теряются деньги?',
+      'Какие кампании требуют внимания?',
+      'Сколько лидов получено за выбранный период?',
+    ],
+    helperQuestionsAttention: [
+      'Что проверить в первую очередь по этим сигналам?',
+      'Какая аудитория тянет бюджет хуже среднего?',
+      'Какие объявления стоит отключить или перепроверить?',
+      'Почему цена результата выросла именно сейчас?',
+    ],
+    helperQuestionsCampaign: [
+      'Какая аудитория в этой кампании работает лучше?',
+      'Куда стоит добавить бюджет в этой кампании?',
+      'Почему выросла цена лида?',
+      'Какие объявления стоит отключить?',
+    ],
+    helperQuestionsAdGroup: [
+      'Почему эта аудитория работает лучше остальных?',
+      'Какие объявления здесь дают лучший результат?',
+      'Стоит ли оставить эту аудиторию активной?',
+      'Что в этой аудитории требует проверки?',
+    ],
+    helperQuestionsCreative: [
+      'Почему это объявление работает лучше или хуже среднего?',
+      'Стоит ли увеличить на него бюджет?',
+      'Что именно в нём требует внимания?',
+      'Чем оно отличается от остальных объявлений?',
+    ],
     status: { active: 'Активна', paused: 'Пауза', other: 'Другая' },
-    resultKinds: { messages: 'Сообщения', leads: 'Лиды', result: 'Результаты', conversions: 'Конверсии' },
+    resultKinds: { messages: 'Переписки', leads: 'Лиды', result: 'Результаты', conversions: 'Конверсии' },
     metricCopy: {
       spend: ['Расход', 'Сколько потрачено за период.'],
       reach: ['Охват', 'Сколько людей увидели рекламу.'],
@@ -1314,18 +1571,138 @@ const translations = {
     trendTitle: 'Расходы и результаты по дням',
     trendLead: 'Динамика за выбранный период',
     trendEmpty: 'Подневная динамика появится после следующего обновления отчёта.',
+    campaignOverviewTitle: 'Что рекламируем',
+    campaignTabsResults: 'Результаты',
+    campaignTabsAdGroups: 'Кому показываем',
+    campaignTabsCreatives: 'Что видят клиенты',
     campaignGoalLabel: 'цель',
-    campaignMetricsTitle: 'Показатели кампании',
-    campaignMetricsLead: 'Те же 4 главные метрики, что и на обзоре аккаунта.',
-    campaignAdGroupsTitle: 'Группы объявлений',
+    campaignGoalCardTitle: 'Зачем запущена эта реклама',
+    campaignGoalSupport:
+      'Здесь собрана короткая бизнес-формулировка цели, а ниже видно, кому идёт показ и какие объявления дают лучший отклик.',
+    campaignGoalSummaryFallback: 'Приводить больше целевых действий от аудитории, которая уже готова откликнуться на предложение.',
+    campaignGoalSummaryMessages: 'Получать новые переписки и обращения от потенциальных клиентов.',
+    campaignGoalSummaryWhatsApp: 'Получать новые обращения от потенциальных клиентов в WhatsApp.',
+    campaignGoalSummaryLeads: 'Получать новые заявки от потенциальных клиентов.',
+    campaignGoalSummarySales: 'Получать продажи и другие целевые конверсии от готовой к покупке аудитории.',
+    campaignGoalSummaryTraffic: 'Приводить людей на сайт или в профиль, чтобы познакомить их с предложением.',
+    campaignGoalSummaryAwareness: 'Привлекать внимание к бренду и напоминать о предложении новой аудитории.',
+    campaignMetricsTitle: 'Результаты',
+    campaignMetricsLead: 'Главные показатели кампании за выбранный период.',
+    additionalMetricsTitle: 'Дополнительные показатели',
+    additionalMetricsLead: 'Показы, охват, клики и рекламные коэффициенты.',
+    additionalMetricsSupport: 'Вынесли их сюда, чтобы на первом уровне остались только деньги и результаты.',
+    additionalMetricsOpen: 'Показать детали',
+    additionalMetricsClose: 'Скрыть детали',
+    campaignAdGroupsTitle: 'Кому показываем',
     campaignAdsCount: 'Объявления',
     campaignAdGroupDefaultName: 'Основная группа',
-    campaignAdGroupLead: 'Креативы кампании, отсортированные по стоимости результата и готовности к показам.',
+    campaignAdGroupsLead: 'Аудитории, на которые сейчас направлена реклама.',
+    campaignAdGroupLead: 'Описание аудитории появится после следующей синхронизации таргетинга.',
+    campaignAdGroupTargetingLabel: 'Кого приводим',
+    campaignAdGroupFormatsLabel: 'Что показываем',
+    campaignAdGroupTechnicalLabel: 'Группа объявлений Meta',
+    campaignAdGroupSettingsAction: 'Посмотреть все настройки аудитории',
+    campaignAdGroupSettingsTitle: 'Все настройки аудитории',
+    campaignAdGroupSettingsLead: 'Параметры таргетинга, которые вернула рекламная платформа.',
+    campaignAdGroupSettingGeo: 'География',
+    campaignAdGroupSettingAge: 'Возраст',
+    campaignAdGroupSettingGender: 'Пол',
+    campaignAdGroupSettingType: 'Тип аудитории',
+    campaignAdGroupSettingAudience: 'Своя аудитория и исключения',
+    campaignAdGroupSettingSignal: 'Интересы и сигналы',
+    campaignAdGroupSettingPlacements: 'Плейсменты',
+    campaignAdGroupSettingDevices: 'Устройства',
+    campaignAdGroupAudienceIncludes: 'Включено',
+    campaignAdGroupAudienceExcludes: 'Исключено',
+    campaignAdGroupAudienceTypeBroad: 'Широкая аудитория',
+    campaignAdGroupAudienceTypeInterest: 'Подбор по интересам и поведению',
+    campaignAdGroupAudienceTypeCustom: 'Своя аудитория',
+    campaignAdGroupAudienceTypeRetargeting: 'Тёплая аудитория / ретаргетинг',
+    campaignAdGroupAudienceTypeLookalike: 'Похожая на клиентов аудитория',
+    campaignAdGroupGenderAll: 'Мужчины и женщины',
+    campaignAdGroupGenderMale: 'Мужчины',
+    campaignAdGroupGenderFemale: 'Женщины',
+    campaignAdGroupAgeUpTo: 'до {value} лет',
+    campaignAdGroupAction: 'Посмотреть {count}',
+    campaignAdGroupViewAll: 'Все объявления кампании',
+    campaignAdGroupAdsInside: 'внутри этой аудитории',
+    campaignAdGroupPerformanceStrong: 'Лучше среднего',
+    campaignAdGroupPerformanceStable: 'На уровне кампании',
+    campaignAdGroupPerformanceWarning: 'Дороже среднего',
+    campaignAdGroupPerformanceNoData: 'Ждём данные',
+    campaignAdGroupPerformanceSpendOnly: 'Есть расход, но нет результата',
+    campaignAdGroupComparisonBetter: 'Цена результата здесь на {value}% лучше средней по кампании.',
+    campaignAdGroupComparisonWorse: 'Цена результата здесь на {value}% хуже средней по кампании.',
+    campaignAdGroupComparisonStable: 'Эта аудитория идёт примерно на уровне средней цены результата по кампании.',
+    campaignAdGroupComparisonNoData: 'Сравнение появится, когда по аудитории накопятся показы и результаты.',
+    campaignAdGroupComparisonSpendOnly: 'Аудитория уже тратит бюджет, но целевого результата пока не принесла.',
+    campaignAudienceAdsTitle: 'Что видит эта аудитория',
     campaignBestResult: 'Лучший результат',
     campaignAwaitingDelivery: 'Показы ещё не начались — данные появятся после запуска.',
     showMoreAds: 'Показать ещё',
     collapseAds: 'Свернуть',
-    campaignCreativesTitle: 'Объявления и креативы',
+    campaignCreativesTitle: 'Что видят клиенты',
+    campaignCreativesLead: 'Объявления, которые сейчас показываются аудиториям этой кампании.',
+    campaignCreativeDetails: 'Подробнее',
+    campaignCreativeFilterAudience: 'Только эта аудитория',
+    campaignCreativeFilterAll: 'Все объявления',
+    campaignCreativeFilterActive: 'Активные',
+    campaignCreativeFilterPaused: 'На паузе',
+    campaignCreativeFilterBest: 'Лучшие',
+    campaignCreativeFilterAttention: 'Требуют внимания',
+    campaignCreativeFilterVideo: 'Видео',
+    campaignCreativeFilterImage: 'Изображения',
+    campaignCreativeFilterCarousel: 'Карусели',
+    campaignCreativeSortLabel: 'Сортировка',
+    campaignCreativeSortEfficiency: 'По эффективности',
+    campaignCreativeSortResults: 'По результату',
+    campaignCreativeSortCost: 'По цене результата',
+    campaignCreativeSortSpend: 'По расходу',
+    campaignCreativeStatusLabel: 'Статус',
+    campaignCreativeAudienceLabel: 'Аудитория',
+    campaignCreativePlacementsLabel: 'Плейсменты',
+    campaignCreativePerformanceLabel: 'Оценка',
+    campaignCreativeComparisonLabel: 'Сравнение с кампанией',
+    campaignCreativePerformanceStrong: 'Дешевле среднего',
+    campaignCreativePerformanceStable: 'На уровне кампании',
+    campaignCreativePerformanceWarning: 'Дороже среднего',
+    campaignCreativePerformancePaused: 'На паузе',
+    campaignCreativePerformanceNoData: 'Ждём данные',
+    campaignCreativePerformanceSpendOnly: 'Есть расход, но нет результата',
+    campaignCreativeComparisonBetter: 'Цена результата здесь на {value}% лучше средней по кампании.',
+    campaignCreativeComparisonWorse: 'Цена результата здесь на {value}% хуже средней по кампании.',
+    campaignCreativeComparisonStable: 'Объявление идёт примерно на уровне средней цены результата по кампании.',
+    campaignCreativeComparisonNoData: 'Сравнение появится, когда по объявлению накопятся показы и результаты.',
+    campaignCreativeComparisonPaused: 'Объявление сейчас на паузе, поэтому свежих данных может быть мало.',
+    campaignCreativeComparisonSpendOnly: 'Расход уже есть, но целевого результата это объявление пока не принесло.',
+    campaignCreativePlacementsFallback: 'Платформа не вернула плейсменты для этого объявления.',
+    campaignCreativeSnapshotTitle: 'Как идёт это объявление',
+    campaignCreativeSnapshotLead:
+      'Без ИИ: сравнение с кампанией, место внутри аудитории и вклад в текущий результат.',
+    campaignCreativeRelativeCostLabel: 'Цена результата vs кампания',
+    campaignCreativeAudienceRankLabel: 'Место в аудитории',
+    campaignCreativeAudienceRankHint: 'Среди объявлений этой аудитории по цене результата.',
+    campaignCreativeAudienceRankFallback: 'Рейтинг появится, когда по объявлениям этой аудитории накопятся результаты.',
+    campaignCreativeAudienceRankSingle: 'В этой аудитории сейчас только одно объявление.',
+    campaignCreativeSpendShareLabel: 'Доля расхода',
+    campaignCreativeSpendShareHint: 'Часть расхода кампании за выбранный период.',
+    campaignCreativeResultsShareLabel: 'Доля результата',
+    campaignCreativeResultsShareHint: 'Часть результата кампании за выбранный период.',
+    campaignCreativeAskAiPrompt: 'Разобрать в чате справа',
+    campaignSelectedAudienceChip: 'Фильтр по аудитории',
+    campaignCreativeLead: 'Реальные объявления кампании с расходом, результатом и стоимостью результата.',
+    campaignCreativeHeadlineLabel: 'Заголовок',
+    campaignCreativePrimaryTextLabel: 'Основной текст',
+    campaignCreativeCtaLabel: 'Кнопка',
+    campaignCreativeCtaFallback: 'Кнопка не указана',
+    campaignCreativeDestinationLabel: 'Куда ведёт',
+    campaignCreativeSourceLabel: 'Источник',
+    campaignCreativeTextFallback:
+      'Платформа пока не вернула текст этого объявления. После следующей синхронизации здесь появится копирайт, если он доступен.',
+    campaignCreativeEmptySelectionTitle: 'Выберите объявление слева',
+    campaignCreativeEmptySelectionLead:
+      'Здесь откроются превью, текст, CTA и ссылка объявления. ИИ-вердикт и рекомендации живут в чате справа.',
+    campaignCreativeCloseDrawer: 'Закрыть карточку',
   },
   kz: {
     ...privacyContent.kz,
@@ -1375,14 +1752,36 @@ const translations = {
     campaigns: 'Кампаниялар',
     days: 'Кезең',
     dayOptions: { 7: '7 күн', 14: '14 күн', 30: '30 күн' },
+    periodThisMonth: 'Осы ай',
+    periodLastMonth: 'Өткен ай',
+    periodCustom: 'Өз кезеңі',
+    periodFrom: 'Басы',
+    periodUntil: 'Соңы',
+    periodApply: 'Қолдану',
+    periodCompareOn: 'Салыстыру: қосулы',
+    periodCompareOff: 'Салыстыру: өшірулі',
+    periodCustomError: 'Дұрыс күн диапазонын таңдаңыз.',
     noAccountsTitle: 'Meta, Google Ads немесе TikTok Ads қосыңыз',
     noAccountsBody:
       'OAuth аяқталған соң қосылған кабинеттер сол жақта көрінеді, ал есеп пен AI-талдау серверлік прокси арқылы жүктеледі.',
     sidebarOverview: 'Аккаунт шолуы',
+    sidebarAttention: 'Назар қажет',
     sidebarAccounts: 'Аккаунттар',
     sidebarSettings: 'Баптаулар',
     overviewAccount: 'Аккаунт шолуы',
     overviewLead: 'Жарнаманың басты көрсеткіштері қарапайым тілмен.',
+    overviewStatusLabel: 'Жарнама күйі',
+    overviewStatusStable: 'Жарнама тұрақты жұмыс істеп тұр',
+    overviewStatusImproving: 'Нәтижелер жақсарып жатыр',
+    overviewStatusAttention: 'Назар қажет',
+    overviewStatusCritical: 'Елеулі мәселе бар',
+    overviewStatusPaused: 'Көрсетілім тоқтаған',
+    overviewStatusNoData: 'Дерек жеткіліксіз',
+    overviewStatusNoteStable: 'Қазір нәтиже мен құн бойынша айқын ауытқу көрінбейді.',
+    overviewStatusNoteImproving: 'Нәтиже көбейіп, нәтиже құны өсіп тұрған жоқ.',
+    overviewStatusNoteAttention: 'Нәтиже не құн қалыпты деңгейден ауытқып тұр, тексеру қажет.',
+    overviewStatusNotePaused: 'Таңдалған кезеңде белсенді көрсетілім көрінбейді, сондықтан жарнама тоқтаған болуы мүмкін.',
+    overviewStatusNoteNoData: 'Таңдалған кезең бойынша сенімді қорытынды жасауға шығын мен нәтиже әлі жеткіліксіз.',
     accountSwitcherLabel: 'Жарнама кабинеті',
     accountSwitcherEmpty: 'Кабинет жоқ',
     accountSwitcherHint: 'Ағымдағы платформа үшін кабинетті таңдаңыз.',
@@ -1391,9 +1790,13 @@ const translations = {
     manageConnections: 'Байланыстарды басқару',
     aiConsultant: 'AI-кеңесші',
     aiConsultantOnline: 'Chatico AI · байланыста',
-    askAi: 'AI сұрау',
-    openAiPanel: 'AI-кеңесшіні ашу',
-    closeAiPanel: 'Кеңесшіні жабу',
+    askAi: 'AI чатын ашу',
+    openAiVerdict: 'AI қорытындысын чатта ашу',
+    openAiPanel: 'AI чатын ашу',
+    closeAiPanel: 'AI чатын жабу',
+    aiEntryCardTitle: 'Қорытынды мен ұсыныстар оң жақ чатта',
+    aiEntryContextReady: 'Мәнмәтін чатқа берілді',
+    aiEntryNewVerdict: 'Жаңа қорытынды бар',
     refreshData: 'Есепті жаңарту',
     logout: 'Шығу',
     accountsPageTitle: 'Жарнама кабинеттері',
@@ -1458,19 +1861,42 @@ const translations = {
     totalCampaigns: 'Барлық кампания',
     periodCompare: 'Кезеңді салыстыру',
     campaignFocus: 'Таңдалған кампания',
+    audienceFocus: 'Таңдалған аудитория',
+    adFocus: 'Таңдалған жарнама',
     creativeFocus: 'Креативтер',
-    aiVerdict: 'AI талдау',
-    aiVerdictCardTitle: 'Chatico AI қорытындысы',
-    aiVerdictHint: 'Деректер жүктелгеннен кейін сервис не жұмыс істеп тұрғанын, не әлсірегенін және келесі қадамды қысқа түрде көрсетеді.',
-    aiVerdictInfoLabel: 'Бұл не',
-    showVerdictDetails: 'Толығырақ',
-    hideVerdictDetails: 'Жасыру',
     verdictStatusGood: 'Тұрақты',
     verdictStatusWarning: 'Назар керек',
     aiChat: 'Дерекпен AI-чат',
-    aiWelcome: 'Таңдалған жарнама кабинеті бойынша сұрақ қойыңыз, ал Chatico нәтиже, құн және динамика туралы қысқаша түсіндіреді.',
-    aiChatDataMode: 'Жауаптар таңдалған кабинет пен ағымдағы кезең деректеріне сүйенеді.',
+    aiWelcome: 'Ашық тұрған экран бойынша сұрақ қойыңыз, ал Chatico нәтиже, құн және кезеңдегі басты өзгерісті қысқаша түсіндіреді.',
+    aiChatDataMode: 'Жауаптар ашық тұрған экран деректері мен ағымдағы кезеңге сүйенеді.',
     aiChatHint: 'Жарнама деректері бойынша сұрақ қойып, қысқа жауап алыңыз.',
+    attentionPageTitle: 'Назар қажет',
+    attentionPageLead: 'Мұнда тек нақты сигналдар жиналады: қай жерде құн өсіп жатыр, қай жерде бюджет нәтиже бермей жұмсалып жатыр және нені алдымен тексеру керек.',
+    attentionSignalsLabel: 'Табылған сигналдар',
+    attentionCriticalCount: 'Сыни',
+    attentionTopIssue: 'Негізгі тәуекел',
+    attentionEmptyTitle: 'Қазір сыни сигналдар табылған жоқ',
+    attentionEmptyBody: 'Құн, нәтиже немесе науқанның тоқтауы бойынша айқын мәселе анықталса, ол осы бөлімде көрінеді.',
+    attentionPriorityCritical: 'Сыни',
+    attentionPriorityWarning: 'Назар қажет',
+    attentionPriorityRecommendation: 'Ұсыныс',
+    attentionScopeAccount: 'Аккаунт',
+    attentionScopeCampaign: 'Науқан',
+    attentionScopeAdGroup: 'Аудитория',
+    attentionScopeCreative: 'Жарнама',
+    attentionReasonCostUp: 'Нәтиже құны өткен кезеңмен салыстырғанда айтарлықтай өсті.',
+    attentionReasonResultsDown: 'Жарнама бюджет жұмсап тұр, бірақ нәтижелер азайды.',
+    attentionReasonNoResults: 'Бюджет жұмсалып жатыр, бірақ нәтиже өте аз.',
+    attentionReasonPausedCampaign: 'Науқан тоқтап тұр және жаңа нәтиже әкелмейді.',
+    attentionReasonAudienceExpensive: 'Бұл аудитория науқандағы орташадан қымбат нәтиже береді.',
+    attentionReasonCreativeExpensive: 'Бұл жарнама науқандағы басқа жарнамаларға қарағанда қымбат нәтиже береді.',
+    attentionAiQuestionLead: 'Осы сигналды талда:',
+    attentionAiQuestionFollowup: 'Алдымен нені тексеру керек және кейін қандай әрекет жасаған дұрыс?',
+    attentionActionOpenOverview: 'Шолуды ашу',
+    attentionActionOpenCampaign: 'Науқанды ашу',
+    attentionActionOpenAdGroup: 'Аудиторияны ашу',
+    attentionActionOpenCreative: 'Жарнаманы ашу',
+    chatContextLabel: 'Контекст',
     chatSuggestionLabel: 'Мысалы, мынаны сұраңыз',
     chatDefaultModeHint: 'Әдепкіде чат кіріктірілген Gemini 3.5 Flash моделін қолданады.',
     useOwnApiKey: 'Өз API кілтіңізді қолдану',
@@ -1518,9 +1944,38 @@ const translations = {
       clicks: 'Клик',
       ctr: 'CTR',
     },
-    helperQuestions: ['Нәтижені қай кампания әкеліп тұр?', 'Лид құны қай жерде өсіп жатыр?', 'Ең алдымен нені өшіру керек?'],
+    helperQuestions: [
+      'Жарнамам жалпы қалай жұмыс істеп тұр?',
+      'Қай жерде ақша босқа кетіп жатыр?',
+      'Қай кампанияларға назар аудару керек?',
+      'Таңдалған кезеңде қанша лид алынды?',
+    ],
+    helperQuestionsAttention: [
+      'Осы сигналдар бойынша алдымен нені тексеру керек?',
+      'Қай аудитория бюджетті орташадан нашар жұмсап жатыр?',
+      'Қай жарнамаларды өшіру не қайта тексеру керек?',
+      'Неге нәтиже құны дәл қазір өсті?',
+    ],
+    helperQuestionsCampaign: [
+      'Бұл кампанияда қай аудитория жақсы жұмыс істеп тұр?',
+      'Осы кампанияда бюджетті қайда қосқан дұрыс?',
+      'Лид құны неге өсіп кетті?',
+      'Қай жарнамаларды өшіру керек?',
+    ],
+    helperQuestionsAdGroup: [
+      'Бұл аудитория неге жақсырақ жұмыс істеп тұр?',
+      'Мұнда қай жарнамалар жақсы нәтиже береді?',
+      'Осы аудиторияны белсенді қалдырған дұрыс па?',
+      'Бұл аудиторияда нені тексеру керек?',
+    ],
+    helperQuestionsCreative: [
+      'Бұл жарнама неге орташа нәтижеден жақсы не нашар?',
+      'Оған бюджетті көбейткен дұрыс па?',
+      'Мұнда нақты не назар сұрайды?',
+      'Ол басқа жарнамалардан несімен ерекшеленеді?',
+    ],
     status: { active: 'Белсенді', paused: 'Пауза', other: 'Басқа' },
-    resultKinds: { messages: 'Хабарламалар', leads: 'Лидтер', result: 'Нәтижелер', conversions: 'Конверсиялар' },
+    resultKinds: { messages: 'Хаттар', leads: 'Лидтер', result: 'Нәтижелер', conversions: 'Конверсиялар' },
     metricCopy: {
       spend: ['Шығын', 'Кезеңдегі жалпы шығын.'],
       reach: ['Қамту', 'Жарнаманы көрген адамдар саны.'],
@@ -1538,18 +1993,138 @@ const translations = {
     trendTitle: 'Күндер бойынша шығын мен нәтиже',
     trendLead: 'Таңдалған кезеңдегі динамика',
     trendEmpty: 'Күндік динамика есеп келесі рет жаңарғанда көрінеді.',
+    campaignOverviewTitle: 'Нені жарнамалап жатырмыз',
+    campaignTabsResults: 'Нәтижелер',
+    campaignTabsAdGroups: 'Кімге көрсетеміз',
+    campaignTabsCreatives: 'Клиенттер не көреді',
     campaignGoalLabel: 'мақсат',
-    campaignMetricsTitle: 'Кампания көрсеткіштері',
-    campaignMetricsLead: 'Шот шолуындағыдай сол 4 негізгі метрика.',
-    campaignAdGroupsTitle: 'Жарнама топтары',
+    campaignGoalCardTitle: 'Бұл жарнама не үшін іске қосылған',
+    campaignGoalSupport:
+      'Мұнда кампания мақсатының қысқа бизнес-түсіндірмесі берілген, ал төменде жарнама кімге көрсетілетіні және қай жарнамалар жақсырақ жұмыс істейтіні көрінеді.',
+    campaignGoalSummaryFallback: 'Ұсынысқа жауап беруге дайын аудиториядан көбірек мақсатты әрекет алу.',
+    campaignGoalSummaryMessages: 'Потенциалды клиенттерден жаңа хаттар мен өтініштер алу.',
+    campaignGoalSummaryWhatsApp: 'Потенциалды клиенттерден WhatsApp арқылы жаңа өтініштер алу.',
+    campaignGoalSummaryLeads: 'Потенциалды клиенттерден жаңа өтінімдер алу.',
+    campaignGoalSummarySales: 'Сатып алуға дайын аудиториядан сатылымдар мен өзге конверсиялар алу.',
+    campaignGoalSummaryTraffic: 'Адамдарды сайтқа не профильге әкеліп, ұсыныспен таныстыру.',
+    campaignGoalSummaryAwareness: 'Брендке назар аудартып, жаңа аудиторияға ұсынысты еске салу.',
+    campaignMetricsTitle: 'Нәтижелер',
+    campaignMetricsLead: 'Таңдалған кезеңдегі кампанияның негізгі көрсеткіштері.',
+    additionalMetricsTitle: 'Қосымша көрсеткіштер',
+    additionalMetricsLead: 'Көрсетілім, қамту, клик және жарнамалық коэффициенттер.',
+    additionalMetricsSupport: 'Бірінші деңгейде тек ақша мен нәтиже қалуы үшін оларды осы жерге шығардық.',
+    additionalMetricsOpen: 'Толығырақ ашу',
+    additionalMetricsClose: 'Жасыру',
+    campaignAdGroupsTitle: 'Кімге көрсетеміз',
     campaignAdsCount: 'Жарнамалар',
     campaignAdGroupDefaultName: 'Негізгі топ',
-    campaignAdGroupLead: 'Кампания креативтері нәтиже құны мен жеткізілу дайындығы бойынша сұрыпталған.',
+    campaignAdGroupsLead: 'Қазір жарнама бағытталған аудиториялар.',
+    campaignAdGroupLead: 'Аудитория сипаттамасы келесі таргетинг синхрондауынан кейін көрінеді.',
+    campaignAdGroupTargetingLabel: 'Кімді әкелеміз',
+    campaignAdGroupFormatsLabel: 'Не көрсетеміз',
+    campaignAdGroupTechnicalLabel: 'Meta жарнама тобы',
+    campaignAdGroupSettingsAction: 'Аудиторияның барлық баптауларын көру',
+    campaignAdGroupSettingsTitle: 'Аудиторияның барлық баптаулары',
+    campaignAdGroupSettingsLead: 'Жарнама платформасы қайтарған таргетинг параметрлері.',
+    campaignAdGroupSettingGeo: 'География',
+    campaignAdGroupSettingAge: 'Жас',
+    campaignAdGroupSettingGender: 'Жыныс',
+    campaignAdGroupSettingType: 'Аудитория түрі',
+    campaignAdGroupSettingAudience: 'Өз аудиториясы және алып тастаулар',
+    campaignAdGroupSettingSignal: 'Қызығушылықтар мен сигналдар',
+    campaignAdGroupSettingPlacements: 'Плейсменттер',
+    campaignAdGroupSettingDevices: 'Құрылғылар',
+    campaignAdGroupAudienceIncludes: 'Қосылғаны',
+    campaignAdGroupAudienceExcludes: 'Алып тасталғаны',
+    campaignAdGroupAudienceTypeBroad: 'Кең аудитория',
+    campaignAdGroupAudienceTypeInterest: 'Қызығушылық пен мінез-құлық бойынша іріктеу',
+    campaignAdGroupAudienceTypeCustom: 'Өз аудиториясы',
+    campaignAdGroupAudienceTypeRetargeting: 'Жылы аудитория / ретаргетинг',
+    campaignAdGroupAudienceTypeLookalike: 'Клиенттерге ұқсас аудитория',
+    campaignAdGroupGenderAll: 'Ерлер мен әйелдер',
+    campaignAdGroupGenderMale: 'Ерлер',
+    campaignAdGroupGenderFemale: 'Әйелдер',
+    campaignAdGroupAgeUpTo: '{value} жасқа дейін',
+    campaignAdGroupAction: '{count} көру',
+    campaignAdGroupViewAll: 'Кампанияның барлық жарнамалары',
+    campaignAdGroupAdsInside: 'осы аудитория ішінде',
+    campaignAdGroupPerformanceStrong: 'Ортадан жақсы',
+    campaignAdGroupPerformanceStable: 'Кампания деңгейінде',
+    campaignAdGroupPerformanceWarning: 'Ортадан қымбат',
+    campaignAdGroupPerformanceNoData: 'Дерек күтіп тұрмыз',
+    campaignAdGroupPerformanceSpendOnly: 'Шығын бар, нәтиже жоқ',
+    campaignAdGroupComparisonBetter: 'Мұндағы нәтиже құны кампания орташа мәнінен {value}% жақсы.',
+    campaignAdGroupComparisonWorse: 'Мұндағы нәтиже құны кампания орташа мәнінен {value}% нашар.',
+    campaignAdGroupComparisonStable: 'Бұл аудитория кампаниядағы орташа нәтиже құнына шамалас жүріп тұр.',
+    campaignAdGroupComparisonNoData: 'Салыстыру осы аудитория бойынша көрсетілім мен нәтиже жиналғанда көрінеді.',
+    campaignAdGroupComparisonSpendOnly: 'Аудитория бюджет жұмсап жатыр, бірақ мақсатты нәтиже әлі жоқ.',
+    campaignAudienceAdsTitle: 'Бұл аудитория не көреді',
     campaignBestResult: 'Ең жақсы нәтиже',
     campaignAwaitingDelivery: 'Көрсетілім әлі басталмады — деректер іске қосылғаннан кейін көрінеді.',
     showMoreAds: 'Тағы көрсету',
     collapseAds: 'Жию',
-    campaignCreativesTitle: 'Жарнамалар мен креативтер',
+    campaignCreativesTitle: 'Клиенттер не көреді',
+    campaignCreativesLead: 'Осы кампания аудиторияларына қазір көрсетіліп жатқан жарнамалар.',
+    campaignCreativeDetails: 'Толығырақ',
+    campaignCreativeFilterAudience: 'Тек осы аудитория',
+    campaignCreativeFilterAll: 'Барлық жарнамалар',
+    campaignCreativeFilterActive: 'Белсенді',
+    campaignCreativeFilterPaused: 'Паузада',
+    campaignCreativeFilterBest: 'Ең жақсысы',
+    campaignCreativeFilterAttention: 'Назар керек',
+    campaignCreativeFilterVideo: 'Видео',
+    campaignCreativeFilterImage: 'Суреттер',
+    campaignCreativeFilterCarousel: 'Карусельдер',
+    campaignCreativeSortLabel: 'Сұрыптау',
+    campaignCreativeSortEfficiency: 'Тиімділігі бойынша',
+    campaignCreativeSortResults: 'Нәтиже бойынша',
+    campaignCreativeSortCost: 'Нәтиже құны бойынша',
+    campaignCreativeSortSpend: 'Шығын бойынша',
+    campaignCreativeStatusLabel: 'Күйі',
+    campaignCreativeAudienceLabel: 'Аудитория',
+    campaignCreativePlacementsLabel: 'Плейсменттер',
+    campaignCreativePerformanceLabel: 'Бағалау',
+    campaignCreativeComparisonLabel: 'Кампаниямен салыстыру',
+    campaignCreativePerformanceStrong: 'Ортадан арзан',
+    campaignCreativePerformanceStable: 'Кампания деңгейінде',
+    campaignCreativePerformanceWarning: 'Ортадан қымбат',
+    campaignCreativePerformancePaused: 'Паузада',
+    campaignCreativePerformanceNoData: 'Дерек күтіп тұрмыз',
+    campaignCreativePerformanceSpendOnly: 'Шығын бар, нәтиже жоқ',
+    campaignCreativeComparisonBetter: 'Мұндағы нәтиже құны кампания орташа мәнінен {value}% жақсы.',
+    campaignCreativeComparisonWorse: 'Мұндағы нәтиже құны кампания орташа мәнінен {value}% нашар.',
+    campaignCreativeComparisonStable: 'Жарнама кампаниядағы орташа нәтиже құнына шамалас жүріп тұр.',
+    campaignCreativeComparisonNoData: 'Салыстыру үшін бұл жарнама бойынша көбірек көрсетілім мен нәтиже керек.',
+    campaignCreativeComparisonPaused: 'Жарнама қазір паузада, сондықтан жаңа дерек аз болуы мүмкін.',
+    campaignCreativeComparisonSpendOnly: 'Шығын бар, бірақ бұл жарнама әлі мақсатты нәтиже әкелген жоқ.',
+    campaignCreativePlacementsFallback: 'Платформа бұл жарнама үшін плейсменттерді қайтарған жоқ.',
+    campaignCreativeSnapshotTitle: 'Бұл жарнама қалай жүріп жатыр',
+    campaignCreativeSnapshotLead:
+      'AI-сыз қысқаша көрініс: кампаниямен салыстыру, аудитория ішіндегі орны және қазіргі нәтижеге қосқан үлесі.',
+    campaignCreativeRelativeCostLabel: 'Нәтиже құны vs кампания',
+    campaignCreativeAudienceRankLabel: 'Аудиториядағы орны',
+    campaignCreativeAudienceRankHint: 'Осы аудиториядағы жарнамалар арасында нәтиже құны бойынша.',
+    campaignCreativeAudienceRankFallback: 'Орын осы аудитория жарнамалары бойынша нәтиже жиналғаннан кейін көрінеді.',
+    campaignCreativeAudienceRankSingle: 'Бұл аудиторияда қазір бір ғана жарнама бар.',
+    campaignCreativeSpendShareLabel: 'Шығын үлесі',
+    campaignCreativeSpendShareHint: 'Таңдалған кезеңдегі кампания шығынының үлесі.',
+    campaignCreativeResultsShareLabel: 'Нәтиже үлесі',
+    campaignCreativeResultsShareHint: 'Таңдалған кезеңдегі кампания нәтижесінің үлесі.',
+    campaignCreativeAskAiPrompt: 'Оң жақ чатта талдау',
+    campaignSelectedAudienceChip: 'Аудитория фильтрі',
+    campaignCreativeLead: 'Кампанияның нақты жарнамалары: шығын, нәтиже және нәтиже құны.',
+    campaignCreativeHeadlineLabel: 'Тақырып',
+    campaignCreativePrimaryTextLabel: 'Негізгі мәтін',
+    campaignCreativeCtaLabel: 'Батырма',
+    campaignCreativeCtaFallback: 'Батырма көрсетілмеген',
+    campaignCreativeDestinationLabel: 'Қайда апарады',
+    campaignCreativeSourceLabel: 'Дереккөз',
+    campaignCreativeTextFallback:
+      'Платформа бұл жарнаманың мәтінін әлі қайтарған жоқ. Қолжетімді болса, келесі синхрондаудан кейін мұнда копирайт көрінеді.',
+    campaignCreativeEmptySelectionTitle: 'Сол жақтан жарнаманы таңдаңыз',
+    campaignCreativeEmptySelectionLead:
+      'Мұнда превью, мәтін, CTA және жарнама сілтемесі ашылады. AI-қорытынды мен ұсыныстар оң жақ чатта тұрады.',
+    campaignCreativeCloseDrawer: 'Карточканы жабу',
   },
   en: {
     ...privacyContent.en,
@@ -1599,14 +2174,36 @@ const translations = {
     campaigns: 'Campaigns',
     days: 'Range',
     dayOptions: { 7: '7 days', 14: '14 days', 30: '30 days' },
+    periodThisMonth: 'This month',
+    periodLastMonth: 'Last month',
+    periodCustom: 'Custom',
+    periodFrom: 'From',
+    periodUntil: 'Until',
+    periodApply: 'Apply',
+    periodCompareOn: 'Compare: on',
+    periodCompareOff: 'Compare: off',
+    periodCustomError: 'Choose a valid date range.',
     noAccountsTitle: 'Connect Meta, Google Ads, or TikTok Ads',
     noAccountsBody:
       'Start either OAuth flow. After approval, the connected accounts appear on the left and the dashboard plus AI analysis load through the backend proxy.',
     sidebarOverview: 'Account overview',
+    sidebarAttention: 'Needs attention',
     sidebarAccounts: 'Accounts',
     sidebarSettings: 'Settings',
     overviewAccount: 'Account overview',
     overviewLead: 'The main ad performance numbers in plain language.',
+    overviewStatusLabel: 'Ad status',
+    overviewStatusStable: 'Ads are running steadily',
+    overviewStatusImproving: 'Results are improving',
+    overviewStatusAttention: 'Needs attention',
+    overviewStatusCritical: 'There is a serious issue',
+    overviewStatusPaused: 'Delivery is paused',
+    overviewStatusNoData: 'Not enough data',
+    overviewStatusNoteStable: 'There are no strong shifts in cost or results right now.',
+    overviewStatusNoteImproving: 'Results are up and the cost per result is not rising.',
+    overviewStatusNoteAttention: 'The result volume or cost has moved away from the normal range and needs a check.',
+    overviewStatusNotePaused: 'There is no visible active delivery in the selected range, so the ads may be paused.',
+    overviewStatusNoteNoData: 'There is not enough spend and result volume in the selected range for a confident read.',
     accountSwitcherLabel: 'Ad account',
     accountSwitcherEmpty: 'No account',
     accountSwitcherHint: 'Choose an account for the current platform.',
@@ -1615,9 +2212,13 @@ const translations = {
     manageConnections: 'Manage connections',
     aiConsultant: 'AI consultant',
     aiConsultantOnline: 'Chatico AI · online',
-    askAi: 'Ask AI',
-    openAiPanel: 'Open AI consultant',
-    closeAiPanel: 'Collapse consultant',
+    askAi: 'Open AI chat',
+    openAiVerdict: 'Open AI summary in chat',
+    openAiPanel: 'Open AI chat',
+    closeAiPanel: 'Collapse AI chat',
+    aiEntryCardTitle: 'Verdict and recommendations stay in the right chat',
+    aiEntryContextReady: 'Context is ready in chat',
+    aiEntryNewVerdict: 'There is a new summary',
     refreshData: 'Refresh report',
     logout: 'Logout',
     accountsPageTitle: 'Ad accounts',
@@ -1682,19 +2283,42 @@ const translations = {
     totalCampaigns: 'Total campaigns',
     periodCompare: 'Period comparison',
     campaignFocus: 'Selected campaign',
+    audienceFocus: 'Selected audience',
+    adFocus: 'Selected ad',
     creativeFocus: 'Creatives',
-    aiVerdict: 'AI analysis',
-    aiVerdictCardTitle: 'Chatico AI verdict',
-    aiVerdictHint: 'After the data loads, the app shows a short summary of what is working, what is slipping, and what to do next.',
-    aiVerdictInfoLabel: 'What is this',
-    showVerdictDetails: 'Show details',
-    hideVerdictDetails: 'Hide details',
     verdictStatusGood: 'Looking solid',
     verdictStatusWarning: 'Needs attention',
     aiChat: 'AI chat with data',
-    aiWelcome: 'Ask about the selected ad account and Chatico will explain the result, cost, and trend in plain language.',
-    aiChatDataMode: 'Replies are grounded in the selected account and current period data.',
+    aiWelcome: 'Ask about the open screen and Chatico will explain the result, cost, and biggest shift in plain language.',
+    aiChatDataMode: 'Replies are grounded in the open screen and current period data.',
     aiChatHint: 'Ask about the ad data and get a short answer.',
+    attentionPageTitle: 'Needs attention',
+    attentionPageLead: 'This view keeps only real signals: where cost is climbing, where spend is happening without results, and what to check first.',
+    attentionSignalsLabel: 'Signals found',
+    attentionCriticalCount: 'Critical',
+    attentionTopIssue: 'Top risk',
+    attentionEmptyTitle: 'No critical signals right now',
+    attentionEmptyBody: 'When the system sees a clear issue in cost, results, or a paused campaign, it will appear here.',
+    attentionPriorityCritical: 'Critical',
+    attentionPriorityWarning: 'Needs attention',
+    attentionPriorityRecommendation: 'Recommendation',
+    attentionScopeAccount: 'Account',
+    attentionScopeCampaign: 'Campaign',
+    attentionScopeAdGroup: 'Audience',
+    attentionScopeCreative: 'Ad',
+    attentionReasonCostUp: 'The cost per result is noticeably higher than in the previous period.',
+    attentionReasonResultsDown: 'Results are down while the ads are still spending.',
+    attentionReasonNoResults: 'Budget is being spent but almost no results are coming in.',
+    attentionReasonPausedCampaign: 'The campaign is paused and is not bringing new results.',
+    attentionReasonAudienceExpensive: 'This audience is producing results above the campaign average cost.',
+    attentionReasonCreativeExpensive: 'This ad is producing results above the other ads in the campaign.',
+    attentionAiQuestionLead: 'Break down this signal:',
+    attentionAiQuestionFollowup: 'What should I check first and what is the best next step?',
+    attentionActionOpenOverview: 'Open overview',
+    attentionActionOpenCampaign: 'View campaign',
+    attentionActionOpenAdGroup: 'View audience',
+    attentionActionOpenCreative: 'View ad',
+    chatContextLabel: 'Context',
     chatSuggestionLabel: 'Try asking',
     chatDefaultModeHint: 'By default, chat uses the built-in Gemini 3.5 Flash.',
     useOwnApiKey: 'Use your own API key',
@@ -1742,7 +2366,36 @@ const translations = {
       clicks: 'Clicks',
       ctr: 'CTR',
     },
-    helperQuestions: ['Which campaign drives the result?', 'Where is cost per lead rising?', 'What should I pause first?'],
+    helperQuestions: [
+      'How is my advertising performing overall?',
+      'Where is money being wasted right now?',
+      'Which campaigns need attention?',
+      'How many leads came in during the selected period?',
+    ],
+    helperQuestionsAttention: [
+      'What should I check first across these signals?',
+      'Which audience is pulling budget below average?',
+      'Which ads should be paused or reviewed first?',
+      'Why did the cost per result rise right now?',
+    ],
+    helperQuestionsCampaign: [
+      'Which audience inside this campaign performs best?',
+      'Where should I add budget in this campaign?',
+      'Why did cost per lead go up?',
+      'Which ads should I pause?',
+    ],
+    helperQuestionsAdGroup: [
+      'Why is this audience performing better than the others?',
+      'Which ads in this audience drive the best result?',
+      'Should I keep this audience running?',
+      'What inside this audience needs attention?',
+    ],
+    helperQuestionsCreative: [
+      'Why is this ad better or worse than average?',
+      'Should I increase budget on this ad?',
+      'What exactly needs attention in this ad?',
+      'How is it different from the other ads?',
+    ],
     status: { active: 'Active', paused: 'Paused', other: 'Other' },
     resultKinds: { messages: 'Messages', leads: 'Leads', result: 'Results', conversions: 'Conversions' },
     metricCopy: {
@@ -1762,18 +2415,138 @@ const translations = {
     trendTitle: 'Spend and results by day',
     trendLead: 'Trend for the selected period',
     trendEmpty: 'Daily trend will appear after the next report refresh.',
+    campaignOverviewTitle: 'What we are advertising',
+    campaignTabsResults: 'Results',
+    campaignTabsAdGroups: 'Who sees it',
+    campaignTabsCreatives: 'What customers see',
     campaignGoalLabel: 'goal',
-    campaignMetricsTitle: 'Campaign metrics',
-    campaignMetricsLead: 'The same four core metrics shown on the account overview.',
-    campaignAdGroupsTitle: 'Ad groups',
+    campaignGoalCardTitle: 'Why this campaign is running',
+    campaignGoalSupport:
+      'This turns the platform objective into a short business explanation, then shows which audiences see the ads and which creatives respond best.',
+    campaignGoalSummaryFallback: 'Drive more valuable actions from people who are already likely to respond to the offer.',
+    campaignGoalSummaryMessages: 'Start more conversations and inbound messages from potential customers.',
+    campaignGoalSummaryWhatsApp: 'Start more WhatsApp conversations from potential customers.',
+    campaignGoalSummaryLeads: 'Collect more leads from potential customers.',
+    campaignGoalSummarySales: 'Generate sales and other valuable conversions from high-intent audiences.',
+    campaignGoalSummaryTraffic: 'Bring people to the site or profile so they can discover the offer.',
+    campaignGoalSummaryAwareness: 'Build awareness and keep the offer visible to new audiences.',
+    campaignMetricsTitle: 'Results',
+    campaignMetricsLead: 'Main campaign metrics for the selected period.',
+    additionalMetricsTitle: 'Additional metrics',
+    additionalMetricsLead: 'Impressions, reach, clicks, and advertising ratios.',
+    additionalMetricsSupport: 'They live here so the first layer stays focused on money and outcomes.',
+    additionalMetricsOpen: 'Show details',
+    additionalMetricsClose: 'Hide details',
+    campaignAdGroupsTitle: 'Who sees it',
     campaignAdsCount: 'Ads',
     campaignAdGroupDefaultName: 'Primary group',
-    campaignAdGroupLead: 'Campaign creatives sorted by cost per result and delivery readiness.',
+    campaignAdGroupsLead: 'Audiences that the campaign is currently targeting.',
+    campaignAdGroupLead: 'Audience details will appear after the next targeting sync.',
+    campaignAdGroupTargetingLabel: 'Who we reach',
+    campaignAdGroupFormatsLabel: 'What they see',
+    campaignAdGroupTechnicalLabel: 'Meta ad group',
+    campaignAdGroupSettingsAction: 'View all audience settings',
+    campaignAdGroupSettingsTitle: 'Full audience settings',
+    campaignAdGroupSettingsLead: 'Targeting parameters returned by the ad platform.',
+    campaignAdGroupSettingGeo: 'Geography',
+    campaignAdGroupSettingAge: 'Age',
+    campaignAdGroupSettingGender: 'Gender',
+    campaignAdGroupSettingType: 'Audience type',
+    campaignAdGroupSettingAudience: 'Owned audience and exclusions',
+    campaignAdGroupSettingSignal: 'Interests and signals',
+    campaignAdGroupSettingPlacements: 'Placements',
+    campaignAdGroupSettingDevices: 'Devices',
+    campaignAdGroupAudienceIncludes: 'Included',
+    campaignAdGroupAudienceExcludes: 'Excluded',
+    campaignAdGroupAudienceTypeBroad: 'Broad audience',
+    campaignAdGroupAudienceTypeInterest: 'Interest and behavior targeting',
+    campaignAdGroupAudienceTypeCustom: 'Owned audience',
+    campaignAdGroupAudienceTypeRetargeting: 'Warm audience / retargeting',
+    campaignAdGroupAudienceTypeLookalike: 'Lookalike audience',
+    campaignAdGroupGenderAll: 'Men and women',
+    campaignAdGroupGenderMale: 'Men',
+    campaignAdGroupGenderFemale: 'Women',
+    campaignAdGroupAgeUpTo: 'up to {value}',
+    campaignAdGroupAction: 'View {count}',
+    campaignAdGroupViewAll: 'All campaign ads',
+    campaignAdGroupAdsInside: 'inside this audience',
+    campaignAdGroupPerformanceStrong: 'Above average',
+    campaignAdGroupPerformanceStable: 'Around campaign average',
+    campaignAdGroupPerformanceWarning: 'More expensive than average',
+    campaignAdGroupPerformanceNoData: 'Waiting for data',
+    campaignAdGroupPerformanceSpendOnly: 'Spend without results yet',
+    campaignAdGroupComparisonBetter: 'Cost per result here is {value}% better than the campaign average.',
+    campaignAdGroupComparisonWorse: 'Cost per result here is {value}% worse than the campaign average.',
+    campaignAdGroupComparisonStable: 'This audience is performing roughly in line with the campaign average cost per result.',
+    campaignAdGroupComparisonNoData: 'Comparison will appear once this audience has enough delivery and results.',
+    campaignAdGroupComparisonSpendOnly: 'This audience is already spending budget but has not produced the target result yet.',
+    campaignAudienceAdsTitle: 'What this audience sees',
     campaignBestResult: 'Best result',
     campaignAwaitingDelivery: 'Delivery has not started yet. Metrics will appear after launch.',
     showMoreAds: 'Show more',
     collapseAds: 'Collapse',
-    campaignCreativesTitle: 'Ads and creatives',
+    campaignCreativesTitle: 'What customers see',
+    campaignCreativesLead: 'Ads that are currently being shown to this campaign’s audiences.',
+    campaignCreativeDetails: 'Details',
+    campaignCreativeFilterAudience: 'This audience only',
+    campaignCreativeFilterAll: 'All ads',
+    campaignCreativeFilterActive: 'Active',
+    campaignCreativeFilterPaused: 'Paused',
+    campaignCreativeFilterBest: 'Best',
+    campaignCreativeFilterAttention: 'Needs attention',
+    campaignCreativeFilterVideo: 'Video',
+    campaignCreativeFilterImage: 'Images',
+    campaignCreativeFilterCarousel: 'Carousels',
+    campaignCreativeSortLabel: 'Sort',
+    campaignCreativeSortEfficiency: 'By efficiency',
+    campaignCreativeSortResults: 'By results',
+    campaignCreativeSortCost: 'By cost per result',
+    campaignCreativeSortSpend: 'By spend',
+    campaignCreativeStatusLabel: 'Status',
+    campaignCreativeAudienceLabel: 'Audience',
+    campaignCreativePlacementsLabel: 'Placements',
+    campaignCreativePerformanceLabel: 'Performance',
+    campaignCreativeComparisonLabel: 'Compared with campaign',
+    campaignCreativePerformanceStrong: 'Cheaper than average',
+    campaignCreativePerformanceStable: 'Around campaign average',
+    campaignCreativePerformanceWarning: 'More expensive than average',
+    campaignCreativePerformancePaused: 'Paused',
+    campaignCreativePerformanceNoData: 'Waiting for data',
+    campaignCreativePerformanceSpendOnly: 'Spend without results yet',
+    campaignCreativeComparisonBetter: 'Cost per result here is {value}% better than the campaign average.',
+    campaignCreativeComparisonWorse: 'Cost per result here is {value}% worse than the campaign average.',
+    campaignCreativeComparisonStable: 'This ad is performing roughly in line with the campaign average cost per result.',
+    campaignCreativeComparisonNoData: 'Comparison will appear once this ad has enough delivery and results.',
+    campaignCreativeComparisonPaused: 'This ad is currently paused, so recent delivery data may be limited.',
+    campaignCreativeComparisonSpendOnly: 'This ad is already spending budget but has not produced the target result yet.',
+    campaignCreativePlacementsFallback: 'The platform did not return placements for this ad.',
+    campaignCreativeSnapshotTitle: 'How This Ad Is Doing',
+    campaignCreativeSnapshotLead:
+      'A quick, non-AI snapshot: compared with campaign averages, ranked within its audience, and measured by contribution to current results.',
+    campaignCreativeRelativeCostLabel: 'Cost per result vs campaign',
+    campaignCreativeAudienceRankLabel: 'Audience rank',
+    campaignCreativeAudienceRankHint: 'Among ads in this audience by cost per result.',
+    campaignCreativeAudienceRankFallback: 'A rank will appear once ads in this audience accumulate enough results.',
+    campaignCreativeAudienceRankSingle: 'This audience currently has only one ad.',
+    campaignCreativeSpendShareLabel: 'Spend share',
+    campaignCreativeSpendShareHint: 'Share of campaign spend in the selected period.',
+    campaignCreativeResultsShareLabel: 'Result share',
+    campaignCreativeResultsShareHint: 'Share of campaign results in the selected period.',
+    campaignCreativeAskAiPrompt: 'Break down in chat',
+    campaignSelectedAudienceChip: 'Audience filter',
+    campaignCreativeLead: 'Live campaign ads with spend, result, and cost per result.',
+    campaignCreativeHeadlineLabel: 'Headline',
+    campaignCreativePrimaryTextLabel: 'Primary text',
+    campaignCreativeCtaLabel: 'CTA',
+    campaignCreativeCtaFallback: 'No CTA returned',
+    campaignCreativeDestinationLabel: 'Destination',
+    campaignCreativeSourceLabel: 'Source',
+    campaignCreativeTextFallback:
+      'The ad platform has not returned body copy for this ad yet. If available, it will appear here after the next sync.',
+    campaignCreativeEmptySelectionTitle: 'Pick an ad from the left',
+    campaignCreativeEmptySelectionLead:
+      'This drawer will show the preview, copy, CTA, and destination link. The AI verdict and recommendations live in the chat on the right.',
+    campaignCreativeCloseDrawer: 'Close card',
   },
 } as const
 
@@ -1845,6 +2618,14 @@ const reportLoading = ref(false)
 const verdictLoading = ref(false)
 const chatLoading = ref(false)
 const reportDays = ref(7)
+const reportPeriodPreset = ref<ReportPeriodPreset>('7d')
+const reportComparisonEnabled = ref(true)
+const reportCustomRange = ref<DateRangeDraft>(defaultCustomRange())
+const reportCustomDraft = ref<DateRangeDraft>({ ...reportCustomRange.value })
+const reportCustomError = ref('')
+const reportCustomEditorOpen = ref(false)
+const overviewAdditionalMetricsOpen = ref(false)
+const campaignAdditionalMetricsOpen = ref(false)
 const accounts = ref<MetaAccount[]>([])
 const googleAccounts = ref<GoogleAdsCustomer[]>([])
 const tiktokAccounts = ref<TikTokAdsAdvertiser[]>([])
@@ -1854,6 +2635,13 @@ const report = ref<DashboardReport | null>(null)
 const accountPageSnapshots = ref<Record<string, AccountPageSnapshot>>({})
 const workspaceSection = ref<WorkspaceSection>(initialWorkspaceRoute.section)
 const selectedCampaignId = ref(initialWorkspaceRoute.campaignId)
+const selectedCampaignPanel = ref<CampaignWorkspacePanel>('results')
+const selectedCampaignAdGroupId = ref('')
+const selectedCampaignCreativeId = ref('')
+const campaignCreativeFilterGroupId = ref('')
+const campaignCreativeFilterMode = ref<CampaignCreativeQuickFilter>('all')
+const campaignCreativeSortMode = ref<CampaignCreativeSortMode>('efficiency')
+const activeAttentionAlertId = ref('')
 const autoVerdict = ref('')
 const chatMessages = ref<ChatMessage[]>([])
 const chatDraft = ref('')
@@ -1881,9 +2669,11 @@ const sidebarCollapsed = ref(false)
 const campaignsExpanded = ref(true)
 const campaignExpandedGroupIds = ref<string[]>([])
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1440)
-const aiPanelOpen = ref(typeof window !== 'undefined' ? window.innerWidth >= 1280 : true)
+const aiPanelOpen = ref(false)
+const chatTextareaRef = ref<HTMLTextAreaElement | null>(null)
 const accountSwitcherRef = ref<HTMLElement | null>(null)
 const accountSwitcherTriggerRef = ref<HTMLElement | null>(null)
+const accountSwitcherMenuRef = ref<HTMLElement | null>(null)
 const platformMenuRef = ref<HTMLElement | null>(null)
 const accountSwitcherMenuStyle = ref<Record<string, string>>({})
 const localeUpdateRequestId = ref(0)
@@ -1896,18 +2686,113 @@ const selectedModelPreset = ref(
 const appViewInitialized = ref(false)
 let connectModalStageTimer: ReturnType<typeof setTimeout> | null = null
 
+function buildCurrentMonthRange(anchor = new Date()): DateRangeDraft {
+  const today = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
+  return {
+    since: toDateInputValue(startOfMonth(today)),
+    until: toDateInputValue(today),
+  }
+}
+
+function buildLastMonthRange(anchor = new Date()): DateRangeDraft {
+  const today = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
+  const lastMonthAnchor = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  return {
+    since: toDateInputValue(startOfMonth(lastMonthAnchor)),
+    until: toDateInputValue(endOfMonth(lastMonthAnchor)),
+  }
+}
+
+function resolveReportPeriodRequest(preset: ReportPeriodPreset, customRange: DateRangeDraft): ReportPeriodRequest {
+  if (preset === '7d' || preset === '14d' || preset === '30d') {
+    const days = Number.parseInt(preset, 10)
+    return {
+      preset,
+      days,
+      since: null,
+      until: null,
+      key: `days:${days}`,
+    }
+  }
+
+  const resolvedRange =
+    preset === 'this_month' ? buildCurrentMonthRange() : preset === 'last_month' ? buildLastMonthRange() : customRange
+  const days = inclusiveDayCount(resolvedRange.since, resolvedRange.until)
+
+  return {
+    preset,
+    days,
+    since: resolvedRange.since,
+    until: resolvedRange.until,
+    key: `${preset}:${resolvedRange.since}:${resolvedRange.until}`,
+  }
+}
+
+function periodPresetLabel(preset: (typeof overviewQuickPeriodOptions)[number] | 'custom') {
+  if (preset === 'this_month') {
+    return copy.value.periodThisMonth
+  }
+  if (preset === 'last_month') {
+    return copy.value.periodLastMonth
+  }
+  if (preset === 'custom') {
+    return copy.value.periodCustom
+  }
+  return copy.value.dayOptions[Number.parseInt(preset, 10) as 7 | 14 | 30]
+}
+
+function buildDateRangeLabel(since: string, until: string) {
+  const sinceDate = parseDateInputValue(since)
+  const untilDate = parseDateInputValue(until)
+  if (!sinceDate || !untilDate) {
+    return `${since} - ${until}`
+  }
+
+  return new Intl.DateTimeFormat(locale.value, {
+    day: '2-digit',
+    month: 'short',
+    year: sinceDate.getFullYear() === untilDate.getFullYear() ? undefined : 'numeric',
+  }).formatRange(sinceDate, untilDate)
+}
+
 const copy = computed(() => translations[locale.value])
 const isAuthenticated = computed(() => user.value !== null)
 const isPolicyView = computed(() => currentView.value === 'privacy' || currentView.value === 'dataDeletion')
 const isTermsView = computed(() => currentView.value === 'terms')
 const isLegalView = computed(() => isPolicyView.value || isTermsView.value)
 const isCampaignSection = computed(() => workspaceSection.value === 'campaign')
+const isAttentionSection = computed(() => workspaceSection.value === 'attention')
 const isAccountsSection = computed(() => workspaceSection.value === 'accounts')
 const isSettingsSection = computed(() => workspaceSection.value === 'settings')
 const isAiOverlay = computed(() => viewportWidth.value < 1280)
+const reportPeriodOptions = computed(() =>
+  overviewQuickPeriodOptions.map((preset) => ({
+    value: preset,
+    label: periodPresetLabel(preset),
+  })),
+)
+const activeReportRequest = computed<ReportPeriodRequest>(() =>
+  resolveReportPeriodRequest(reportPeriodPreset.value, reportCustomRange.value),
+)
+const isCustomPeriodActive = computed(() => reportPeriodPreset.value === 'custom')
+const customPeriodDraftRangeLabel = computed(() => {
+  if (!reportCustomDraft.value.since || !reportCustomDraft.value.until) {
+    return ''
+  }
+  return buildDateRangeLabel(reportCustomDraft.value.since, reportCustomDraft.value.until)
+})
 const workspaceGridStyle = computed(() => ({
   '--sidebar-width': sidebarCollapsed.value ? '80px' : '288px',
 }))
+
+watch(
+  activeReportRequest,
+  (nextRequest) => {
+    reportDays.value = nextRequest.days
+  },
+  { immediate: true },
+)
+
 const headerTitle = computed(() => {
   if (isTermsView.value) {
     return copy.value.termsOfService
@@ -1963,14 +2848,113 @@ const canSendChat = computed(() => {
 })
 const autoVerdictBlocks = computed(() => splitAutoVerdictBlocks(autoVerdict.value))
 const autoVerdictDisplay = computed(() => autoVerdictBlocks.value.join('\n\n').trim())
-const visibleChatMessages = computed<ChatMessage[]>(() => {
-  if (chatMessages.value.length > 0) {
-    return chatMessages.value
+const hasAutoVerdict = computed(() => Boolean(autoVerdictDisplay.value))
+const autoVerdictTone = computed<'good' | 'warning'>(() => {
+  if (currentAiScope.value === 'creative' && selectedCampaignCreative.value && selectedCampaign.value) {
+    return verdictToneFromCreative(selectedCampaignCreative.value, selectedCampaign.value)
   }
+  if (currentAiScope.value === 'ad_group' && selectedCampaignAdGroup.value && selectedCampaign.value) {
+    return verdictToneFromAdGroup(selectedCampaignAdGroup.value, selectedCampaign.value)
+  }
+  if (currentAiScope.value === 'campaign' && selectedCampaign.value) {
+    return verdictToneFromMetrics(selectedCampaign.value.metrics)
+  }
+  if (report.value) {
+    return verdictToneFromMetrics(report.value.summary.metrics)
+  }
+  return 'warning'
+})
+const autoVerdictMetaLine = computed(() => {
+  const parts: string[] = []
+
+  if (currentAiContextLabel.value) {
+    parts.push(currentAiContextLabel.value)
+  }
+
+  if (currentAiScope.value === 'creative' && selectedCampaign.value) {
+    parts.push(`${copy.value.campaignFocus}: ${selectedCampaign.value.name}`)
+  } else if (currentAiScope.value === 'ad_group' && selectedCampaign.value) {
+    parts.push(`${copy.value.campaignFocus}: ${selectedCampaign.value.name}`)
+  }
+
+  if (report.value) {
+    parts.push(`${copy.value.days}: ${report.value.periods.current.since} - ${report.value.periods.current.until}`)
+  }
+
+  parts.push(verdictStatusLabel(autoVerdictTone.value))
+  return parts.filter(Boolean).join(' · ')
+})
+const autoVerdictChatMessage = computed<ChatMessage | null>(() => {
+  if (!autoVerdictDisplay.value) {
+    return null
+  }
+
+  const lines: string[] = []
+  if (autoVerdictMetaLine.value) {
+    lines.push(`_${autoVerdictMetaLine.value}_`, '')
+  }
+  lines.push(autoVerdictDisplay.value)
+
+  return {
+    role: 'assistant',
+    content: lines.join('\n'),
+  }
+})
+const aiEntryMetaLine = computed(() => {
+  return currentAiContextLabel.value || copy.value.aiConsultantOnline
+})
+const aiEntryCardContext = computed(() => {
+  return currentAiContextLabel.value || aiEntryMetaLine.value
+})
+const showInlineAiEntryCard = computed(() => {
+  if (aiPanelOpen.value) {
+    return false
+  }
+  if (workspaceMode.value === 'campaign') {
+    return Boolean(selectedCampaign.value)
+  }
+  if (workspaceMode.value === 'attention') {
+    return Boolean(attentionAlerts.value.length || currentAiContextLabel.value)
+  }
+  if (workspaceMode.value === 'overview') {
+    return Boolean(report.value?.account.name || selectedAccount.value?.name)
+  }
+  return false
+})
+const contextualHelperQuestions = computed(() => {
+  if (workspaceMode.value === 'attention') {
+    return copy.value.helperQuestionsAttention
+  }
+  if (currentAiScope.value === 'creative') {
+    return copy.value.helperQuestionsCreative
+  }
+  if (currentAiScope.value === 'ad_group') {
+    return copy.value.helperQuestionsAdGroup
+  }
+  if (currentAiScope.value === 'campaign') {
+    return copy.value.helperQuestionsCampaign
+  }
+  return copy.value.helperQuestions
+})
+const visibleChatMessages = computed<ChatMessage[]>(() => {
+  const seededMessages: ChatMessage[] = []
+
+  if (autoVerdictChatMessage.value) {
+    seededMessages.push(autoVerdictChatMessage.value)
+  }
+
+  if (chatMessages.value.length > 0) {
+    return [...seededMessages, ...chatMessages.value]
+  }
+
+  if (seededMessages.length > 0) {
+    return seededMessages
+  }
+
   return [{ role: 'assistant', content: copy.value.aiWelcome }]
 })
 const hasUserChatMessages = computed(() => chatMessages.value.some((message) => message.role === 'user'))
-const showChatSuggestions = computed(() => !hasUserChatMessages.value && !chatLoading.value)
+const showChatSuggestions = computed(() => !hasUserChatMessages.value && !chatLoading.value && !verdictLoading.value)
 const settingsNotificationRows = computed<
   Array<{ key: SettingsNotificationPreference; label: string; hint: string }>
 >(() => [
@@ -2091,100 +3075,131 @@ const selectedCampaignAds = computed<readonly CampaignAdRow[]>(() => {
   if (!selectedCampaign.value) {
     return []
   }
-
-  return selectedCampaign.value.creatives
-    .map((creative) => {
-      const spend = Number(creative.metrics.spend || 0)
-      const results = Number(creative.metrics.results || 0)
-      const impressions = Number(creative.metrics.impressions || 0)
-      const clicks = Number(creative.metrics.clicks || 0)
-      const ctr = Number(creative.metrics.ctr || 0)
-      return {
-        id: creative.id,
-        name: creativeTitle(creative),
-        format: creativeTypeLabel(creative),
-        previewUrl: creativePreview(creative),
-        groupId: creative.ad_group_id?.trim() || '',
-        groupName: creative.ad_group_name?.trim() || '',
-        spend,
-        impressions,
-        clicks,
-        ctr,
-        results,
-        resultKind: creative.metrics.result_kind || selectedCampaign.value?.primary_result_kind || 'result',
-        costPerResult: results > 0 ? spend / results : null,
-        hasData: spend > 0 || results > 0 || impressions > 0 || clicks > 0,
-      }
-    })
-    .sort((left, right) => {
-      if (left.costPerResult !== null && right.costPerResult !== null && left.costPerResult !== right.costPerResult) {
-        return left.costPerResult - right.costPerResult
-      }
-      if (left.costPerResult !== null && right.costPerResult === null) {
-        return -1
-      }
-      if (left.costPerResult === null && right.costPerResult !== null) {
-        return 1
-      }
-      if (right.spend !== left.spend) {
-        return right.spend - left.spend
-      }
-      return left.name.localeCompare(right.name, locale.value)
-    })
+  return buildCampaignAds(selectedCampaign.value)
 })
 const selectedCampaignAdGroups = computed<readonly CampaignAdGroupRow[]>(() => {
-  if (!selectedCampaign.value || selectedCampaignAds.value.length === 0) {
+  if (!selectedCampaign.value) {
+    return []
+  }
+  return buildCampaignAdGroups(selectedCampaign.value)
+})
+const bestCampaignAdGroup = computed<CampaignAdGroupRow | null>(() => {
+  return selectedCampaignAdGroups.value.find((group) => group.results > 0 || group.spend > 0) ?? selectedCampaignAdGroups.value[0] ?? null
+})
+const selectedCampaignAdGroup = computed<CampaignAdGroupRow | null>(() => {
+  if (!selectedCampaignAdGroupId.value) {
+    return null
+  }
+  return selectedCampaignAdGroups.value.find((group) => group.id === selectedCampaignAdGroupId.value) ?? null
+})
+const bestCampaignCreative = computed<CampaignAdRow | null>(() => {
+  return selectedCampaignAds.value.find((ad) => ad.hasData) ?? selectedCampaignAds.value[0] ?? null
+})
+const selectedCampaignCreative = computed<CampaignAdRow | null>(() => {
+  if (!selectedCampaignCreativeId.value) {
+    return null
+  }
+  return selectedCampaignAds.value.find((ad) => ad.id === selectedCampaignCreativeId.value) ?? null
+})
+const selectedCampaignCreativeGroupId = computed(() => {
+  return campaignCreativeFilterGroupId.value
+})
+const selectedCampaignCreativeFilterGroup = computed<CampaignAdGroupRow | null>(() => {
+  if (!selectedCampaignCreativeGroupId.value) {
+    return null
+  }
+  return selectedCampaignAdGroups.value.find((group) => group.id === selectedCampaignCreativeGroupId.value) ?? null
+})
+const campaignCreativeQuickFilterOptions = computed<
+  ReadonlyArray<{ key: CampaignCreativeQuickFilter; label: string }>
+>(() => [
+  { key: 'all', label: copy.value.campaignCreativeFilterAll },
+  { key: 'active', label: copy.value.campaignCreativeFilterActive },
+  { key: 'paused', label: copy.value.campaignCreativeFilterPaused },
+  { key: 'best', label: copy.value.campaignCreativeFilterBest },
+  { key: 'attention', label: copy.value.campaignCreativeFilterAttention },
+  { key: 'video', label: copy.value.campaignCreativeFilterVideo },
+  { key: 'image', label: copy.value.campaignCreativeFilterImage },
+  { key: 'carousel', label: copy.value.campaignCreativeFilterCarousel },
+])
+const campaignCreativeSortOptions = computed<
+  ReadonlyArray<{ key: CampaignCreativeSortMode; label: string }>
+>(() => [
+  { key: 'efficiency', label: copy.value.campaignCreativeSortEfficiency },
+  { key: 'results', label: copy.value.campaignCreativeSortResults },
+  { key: 'cost', label: copy.value.campaignCreativeSortCost },
+  { key: 'spend', label: copy.value.campaignCreativeSortSpend },
+])
+const filteredCampaignBaseAds = computed<readonly CampaignAdRow[]>(() => {
+  if (!selectedCampaignCreativeGroupId.value) {
+    return selectedCampaignAds.value
+  }
+  return selectedCampaignAds.value.filter((ad) => {
+    const groupId = ad.groupId || `${selectedCampaign.value?.id}-primary-group`
+    return groupId === selectedCampaignCreativeGroupId.value
+  })
+})
+const baseCampaignBestAdId = computed(() => {
+  return filteredCampaignBaseAds.value.find((ad) => ad.costPerResult !== null)?.id ?? filteredCampaignBaseAds.value[0]?.id ?? ''
+})
+const filteredCampaignAds = computed<readonly CampaignAdRow[]>(() => {
+  if (!selectedCampaign.value) {
     return []
   }
 
-  const grouped = new Map<string, { name: string; ads: CampaignAdRow[] }>()
-  for (const ad of selectedCampaignAds.value) {
-    const groupId = ad.groupId || `${selectedCampaign.value.id}-primary-group`
-    const existing = grouped.get(groupId)
-    if (existing) {
-      if (!existing.name && ad.groupName) {
-        existing.name = ad.groupName
-      }
-      existing.ads.push(ad)
-      continue
-    }
-    grouped.set(groupId, {
-      name: ad.groupName,
-      ads: [ad],
-    })
+  return [...filteredCampaignBaseAds.value]
+    .filter((ad) => matchesCampaignCreativeQuickFilter(ad, selectedCampaign.value!, campaignCreativeFilterMode.value, baseCampaignBestAdId.value))
+    .sort((left, right) => compareCampaignAds(left, right, selectedCampaign.value!, campaignCreativeSortMode.value))
+})
+const filteredCampaignBestAdId = computed(() => {
+  return filteredCampaignAds.value.find((ad) => ad.costPerResult !== null)?.id ?? filteredCampaignAds.value[0]?.id ?? ''
+})
+const selectedCampaignCreativeInsightCards = computed<CampaignCreativeInsightCard[]>(() => {
+  if (!selectedCampaign.value || !selectedCampaignCreative.value) {
+    return []
   }
 
-  const groups = Array.from(grouped.entries()).map(([groupId, group]) => {
-    const spend = group.ads.reduce((sum, ad) => sum + ad.spend, 0)
-    const results = group.ads.reduce((sum, ad) => sum + ad.results, 0)
-    return {
-      id: groupId,
-      name: group.name,
-      context: buildCampaignAdGroupContext(group.ads),
-      spend,
-      results,
-      costPerResult: results > 0 ? spend / results : null,
-      ads: group.ads,
-      bestAdId: group.ads.find((ad) => ad.costPerResult !== null)?.id ?? '',
-    }
-  })
+  const campaign = selectedCampaign.value
+  const ad = selectedCampaignCreative.value
+  const performanceKey = creativePerformanceKey(ad, campaign)
+  const delta = creativePerformanceDelta(ad, campaign)
+  const campaignSpendTotal = selectedCampaignAds.value.reduce((sum, item) => sum + item.spend, 0)
+  const campaignResultsTotal = selectedCampaignAds.value.reduce((sum, item) => sum + item.results, 0)
+  const spendShare = campaignSpendTotal > 0 ? (ad.spend / campaignSpendTotal) * 100 : null
+  const resultsShare = campaignResultsTotal > 0 ? (ad.results / campaignResultsTotal) * 100 : null
+  const audienceGroup = selectedCampaignAdGroups.value.find((group) => group.id === ad.groupId) ?? null
+  const audienceRank = audienceGroup ? campaignCreativeAudienceRank(ad, audienceGroup) : null
 
-  groups.sort((left, right) => {
-    if (right.spend !== left.spend) {
-      return right.spend - left.spend
-    }
-    if (right.results !== left.results) {
-      return right.results - left.results
-    }
-    return left.id.localeCompare(right.id, locale.value)
-  })
-
-  return groups.map((group, index) => ({
-    ...group,
-    name:
-      group.name ||
-      (groups.length === 1 ? copy.value.campaignAdGroupDefaultName : `${copy.value.campaignAdGroupDefaultName} ${index + 1}`),
-  }))
+  return [
+    {
+      key: 'relative-cost',
+      label: copy.value.campaignCreativeRelativeCostLabel,
+      value: delta === null ? '—' : formatDelta(delta),
+      caption: creativePerformanceSummary(ad, campaign),
+      tone: campaignCreativeInsightTone(performanceKey),
+    },
+    {
+      key: 'audience-rank',
+      label: copy.value.campaignCreativeAudienceRankLabel,
+      value: audienceRank?.value ?? '—',
+      caption: audienceRank?.caption ?? copy.value.campaignCreativeAudienceRankFallback,
+      tone: audienceRank?.tone ?? 'neutral',
+    },
+    {
+      key: 'spend-share',
+      label: copy.value.campaignCreativeSpendShareLabel,
+      value: formatSharePercent(spendShare),
+      caption: copy.value.campaignCreativeSpendShareHint,
+      tone: campaignCreativeShareTone(spendShare, resultsShare, 'spend'),
+    },
+    {
+      key: 'results-share',
+      label: copy.value.campaignCreativeResultsShareLabel,
+      value: formatSharePercent(resultsShare),
+      caption: copy.value.campaignCreativeResultsShareHint,
+      tone: campaignCreativeShareTone(spendShare, resultsShare, 'results'),
+    },
+  ]
 })
 const selectedCampaignBreakdownLine = computed(() => {
   if (!selectedCampaign.value) {
@@ -2200,7 +3215,442 @@ const selectedCampaignBreakdownLine = computed(() => {
   }
   return parts.join(' · ')
 })
+const campaignHeroEyebrow = computed(() => {
+  if (selectedCampaignCreative.value) {
+    return copy.value.adFocus
+  }
+  if (selectedCampaignAdGroup.value) {
+    return copy.value.audienceFocus
+  }
+  return copy.value.campaignOverviewTitle
+})
+const campaignHeroTitle = computed(() => {
+  if (selectedCampaignCreative.value) {
+    return selectedCampaignCreative.value.headline || selectedCampaignCreative.value.name
+  }
+  if (selectedCampaignAdGroup.value) {
+    return selectedCampaignAdGroup.value.name
+  }
+  return selectedCampaign.value?.name || ''
+})
+const campaignHeroLead = computed(() => {
+  if (!selectedCampaign.value) {
+    return ''
+  }
+  if (selectedCampaignCreative.value) {
+    return creativePerformanceSummary(selectedCampaignCreative.value, selectedCampaign.value)
+  }
+  if (selectedCampaignAdGroup.value) {
+    return campaignAdGroupTargetingSummary(selectedCampaignAdGroup.value)
+  }
+  return campaignGoalHeadline(selectedCampaign.value)
+})
+const campaignHeroMetaItems = computed<string[]>(() => {
+  if (!selectedCampaign.value) {
+    return []
+  }
+
+  const items: string[] = []
+  if (selectedCampaignCreative.value) {
+    const creativeAudience = selectedCampaignCreative.value.groupName || selectedCampaignAdGroup.value?.name
+    if (creativeAudience) {
+      items.push(`${copy.value.campaignCreativeAudienceLabel}: ${creativeAudience}`)
+    }
+
+    const creativePlacement = creativePlacementLabel(selectedCampaignCreative.value)
+    if (creativePlacement) {
+      items.push(creativePlacement)
+    }
+
+    items.push(`${copy.value.campaignFocus}: ${selectedCampaign.value.name}`)
+    return items
+  }
+
+  if (selectedCampaignAdGroup.value) {
+    items.push(`${copy.value.campaignFocus}: ${selectedCampaign.value.name}`)
+
+    const adsInsideLabel = campaignAdGroupAdsCountLabel(selectedCampaignAdGroup.value.adsCount)
+    if (adsInsideLabel) {
+      items.push(adsInsideLabel)
+    }
+
+    const formatsLabel = campaignAdGroupFormatSummary(selectedCampaignAdGroup.value)
+    if (formatsLabel) {
+      items.push(formatsLabel)
+    }
+
+    return items
+  }
+
+  if (selectedCampaignBreakdownLine.value) {
+    items.push(selectedCampaignBreakdownLine.value)
+  }
+  return items
+})
+const campaignHeroBreadcrumbs = computed<Array<{ key: string; label: string; action: 'campaign' | 'ad_group' | null }>>(() => {
+  const items: Array<{ key: string; label: string; action: 'campaign' | 'ad_group' | null }> = [
+    { key: 'campaigns', label: copy.value.campaigns, action: null },
+  ]
+
+  if (!selectedCampaign.value) {
+    return items
+  }
+
+  if (selectedCampaignCreative.value) {
+    items.push({ key: `campaign-${selectedCampaign.value.id}`, label: selectedCampaign.value.name, action: 'campaign' })
+    if (selectedCampaignAdGroup.value) {
+      items.push({ key: `group-${selectedCampaignAdGroup.value.id}`, label: selectedCampaignAdGroup.value.name, action: 'ad_group' })
+    }
+    items.push({
+      key: `creative-${selectedCampaignCreative.value.id}`,
+      label: selectedCampaignCreative.value.headline || selectedCampaignCreative.value.name,
+      action: null,
+    })
+    return items
+  }
+
+  if (selectedCampaignAdGroup.value) {
+    items.push({ key: `campaign-${selectedCampaign.value.id}`, label: selectedCampaign.value.name, action: 'campaign' })
+    items.push({ key: `group-${selectedCampaignAdGroup.value.id}`, label: selectedCampaignAdGroup.value.name, action: null })
+    return items
+  }
+
+  items.push({ key: `campaign-${selectedCampaign.value.id}`, label: selectedCampaign.value.name, action: null })
+  return items
+})
+const attentionAlerts = computed<readonly AttentionAlert[]>(() => {
+  if (!report.value) {
+    return []
+  }
+
+  const alerts: AttentionAlert[] = []
+  const accountMetrics = report.value.summary.metrics
+  const summaryCostDelta = Number(accountMetrics.cost_per_result.delta_pct ?? 0)
+  const summaryResultsDelta = Number(accountMetrics.results.delta_pct ?? 0)
+  const summarySpend = Number(accountMetrics.spend.current || 0)
+  const summaryResults = Number(accountMetrics.results.current || 0)
+  const summaryCostPerResult = Number(accountMetrics.cost_per_result.current || 0)
+  const accountName = report.value.account.name || selectedAccount.value?.name || selectedProviderLabel.value
+
+  if (summarySpend > 0 && summaryResults <= 0) {
+    alerts.push({
+      id: `account-no-results-${report.value.account.id}`,
+      severity: 'critical',
+      scope: 'account',
+      title: accountName,
+      reason: copy.value.attentionReasonNoResults,
+      context: copy.value.overviewAccount,
+      metrics: buildAttentionMetrics(report.value.summary.primary_result_kind || 'result', {
+        spend: summarySpend,
+        results: summaryResults,
+        costPerResult: summaryCostPerResult > 0 ? summaryCostPerResult : null,
+        costDelta: accountMetrics.cost_per_result.delta_pct,
+      }),
+      campaignId: '',
+      adGroupId: '',
+      adId: '',
+      aiQuestion: buildAttentionAiQuestion(accountName, copy.value.attentionReasonNoResults, copy.value.overviewAccount),
+      priorityScore: summarySpend,
+    })
+  } else if (summaryCostPerResult > 0 && summaryCostDelta >= 25) {
+    alerts.push({
+      id: `account-cost-${report.value.account.id}`,
+      severity: summaryCostDelta >= 40 ? 'critical' : 'warning',
+      scope: 'account',
+      title: accountName,
+      reason: copy.value.attentionReasonCostUp,
+      context: copy.value.overviewAccount,
+      metrics: buildAttentionMetrics(report.value.summary.primary_result_kind || 'result', {
+        spend: summarySpend,
+        results: summaryResults,
+        costPerResult: summaryCostPerResult,
+        costDelta: accountMetrics.cost_per_result.delta_pct,
+      }),
+      campaignId: '',
+      adGroupId: '',
+      adId: '',
+      aiQuestion: buildAttentionAiQuestion(accountName, copy.value.attentionReasonCostUp, copy.value.overviewAccount),
+      priorityScore: summaryCostPerResult,
+    })
+  } else if (summarySpend > 0 && summaryResultsDelta <= -25) {
+    alerts.push({
+      id: `account-results-${report.value.account.id}`,
+      severity: summaryResultsDelta <= -40 ? 'critical' : 'warning',
+      scope: 'account',
+      title: accountName,
+      reason: copy.value.attentionReasonResultsDown,
+      context: copy.value.overviewAccount,
+      metrics: buildAttentionMetrics(report.value.summary.primary_result_kind || 'result', {
+        spend: summarySpend,
+        results: summaryResults,
+        costPerResult: summaryCostPerResult > 0 ? summaryCostPerResult : null,
+        costDelta: accountMetrics.cost_per_result.delta_pct,
+      }),
+      campaignId: '',
+      adGroupId: '',
+      adId: '',
+      aiQuestion: buildAttentionAiQuestion(accountName, copy.value.attentionReasonResultsDown, copy.value.overviewAccount),
+      priorityScore: Math.abs(summaryResultsDelta),
+    })
+  }
+
+  for (const campaign of report.value.campaigns) {
+    const spend = Number(campaign.metrics.spend.current || 0)
+    const results = Number(campaign.metrics.results.current || 0)
+    const costPerResult = Number(campaign.metrics.cost_per_result.current || 0)
+    const costDelta = Number(campaign.metrics.cost_per_result.delta_pct ?? 0)
+    const resultsDelta = Number(campaign.metrics.results.delta_pct ?? 0)
+    const campaignContext = `${copy.value.campaignFocus}: ${campaign.name}`
+
+    if (spend > 0 && results <= 0) {
+      alerts.push({
+        id: `campaign-no-results-${campaign.id}`,
+        severity: spend >= Math.max(summarySpend * 0.12, 80) ? 'critical' : 'warning',
+        scope: 'campaign',
+        title: campaign.name,
+        reason: copy.value.attentionReasonNoResults,
+        context: campaignContext,
+        metrics: buildAttentionMetrics(campaign.primary_result_kind || 'result', {
+          spend,
+          results,
+          costPerResult: costPerResult > 0 ? costPerResult : null,
+          costDelta: campaign.metrics.cost_per_result.delta_pct,
+        }),
+        campaignId: campaign.id,
+        adGroupId: '',
+        adId: '',
+        aiQuestion: buildAttentionAiQuestion(campaign.name, copy.value.attentionReasonNoResults, campaignContext),
+        priorityScore: spend,
+      })
+    } else if (costPerResult > 0 && costDelta >= 25) {
+      alerts.push({
+        id: `campaign-cost-${campaign.id}`,
+        severity: costDelta >= 40 ? 'critical' : 'warning',
+        scope: 'campaign',
+        title: campaign.name,
+        reason: copy.value.attentionReasonCostUp,
+        context: campaignContext,
+        metrics: buildAttentionMetrics(campaign.primary_result_kind || 'result', {
+          spend,
+          results,
+          costPerResult,
+          costDelta: campaign.metrics.cost_per_result.delta_pct,
+        }),
+        campaignId: campaign.id,
+        adGroupId: '',
+        adId: '',
+        aiQuestion: buildAttentionAiQuestion(campaign.name, copy.value.attentionReasonCostUp, campaignContext),
+        priorityScore: costPerResult,
+      })
+    } else if (spend > 0 && resultsDelta <= -25) {
+      alerts.push({
+        id: `campaign-results-${campaign.id}`,
+        severity: resultsDelta <= -40 ? 'critical' : 'warning',
+        scope: 'campaign',
+        title: campaign.name,
+        reason: copy.value.attentionReasonResultsDown,
+        context: campaignContext,
+        metrics: buildAttentionMetrics(campaign.primary_result_kind || 'result', {
+          spend,
+          results,
+          costPerResult: costPerResult > 0 ? costPerResult : null,
+          costDelta: campaign.metrics.cost_per_result.delta_pct,
+        }),
+        campaignId: campaign.id,
+        adGroupId: '',
+        adId: '',
+        aiQuestion: buildAttentionAiQuestion(campaign.name, copy.value.attentionReasonResultsDown, campaignContext),
+        priorityScore: Math.abs(resultsDelta),
+      })
+    }
+
+    const campaignAdGroups = buildCampaignAdGroups(campaign)
+    const topAdGroupAlert = campaignAdGroups
+      .map((group): ScoredAttentionAlert | null => {
+        if (group.spend <= 0) {
+          return null
+        }
+        if (group.results <= 0 && group.spend >= Math.max(spend * 0.18, 30)) {
+          return {
+            id: `ad-group-no-results-${campaign.id}-${group.id}`,
+            severity: group.spend >= Math.max(spend * 0.28, 60) ? 'critical' : 'warning',
+            scope: 'ad_group' as const,
+            title: group.name,
+            reason: copy.value.attentionReasonNoResults,
+            context: campaign.name,
+            metrics: buildAttentionMetrics(group.resultKind || campaign.primary_result_kind || 'result', {
+              spend: group.spend,
+              results: group.results,
+              costPerResult: group.costPerResult,
+            }),
+            campaignId: campaign.id,
+            adGroupId: group.id,
+            adId: '',
+            aiQuestion: buildAttentionAiQuestion(group.name, copy.value.attentionReasonNoResults, campaign.name),
+            priorityScore: group.spend,
+            score: group.spend,
+          }
+        }
+        if (group.costPerResult !== null && costPerResult > 0 && group.costPerResult >= costPerResult * 1.35 && group.results > 0) {
+          return {
+            id: `ad-group-cost-${campaign.id}-${group.id}`,
+            severity: group.costPerResult >= costPerResult * 1.7 ? 'critical' : 'recommendation',
+            scope: 'ad_group' as const,
+            title: group.name,
+            reason: copy.value.attentionReasonAudienceExpensive,
+            context: campaign.name,
+            metrics: buildAttentionMetrics(group.resultKind || campaign.primary_result_kind || 'result', {
+              spend: group.spend,
+              results: group.results,
+              costPerResult: group.costPerResult,
+            }),
+            campaignId: campaign.id,
+            adGroupId: group.id,
+            adId: '',
+            aiQuestion: buildAttentionAiQuestion(group.name, copy.value.attentionReasonAudienceExpensive, campaign.name),
+            priorityScore: group.costPerResult,
+            score: group.costPerResult,
+          }
+        }
+        return null
+      })
+      .filter((item): item is ScoredAttentionAlert => item !== null)
+      .sort((left, right) => right.score - left.score)[0]
+
+    if (topAdGroupAlert) {
+      const { score: _score, ...alert } = topAdGroupAlert
+      alerts.push(alert)
+    }
+
+    const topCreativeAlert = buildCampaignAds(campaign)
+      .map((ad): ScoredAttentionAlert | null => {
+        if (!ad.hasData || ad.spend <= 0) {
+          return null
+        }
+        if (ad.results <= 0 && ad.spend >= Math.max(spend * 0.1, 20)) {
+          return {
+            id: `creative-no-results-${campaign.id}-${ad.id}`,
+            severity: ad.spend >= Math.max(spend * 0.18, 35) ? 'critical' : 'warning',
+            scope: 'creative' as const,
+            title: ad.name,
+            reason: copy.value.attentionReasonNoResults,
+            context: ad.groupName || campaign.name,
+            metrics: buildAttentionMetrics(ad.resultKind || campaign.primary_result_kind || 'result', {
+              spend: ad.spend,
+              results: ad.results,
+              costPerResult: ad.costPerResult,
+            }),
+            campaignId: campaign.id,
+            adGroupId: ad.groupId,
+            adId: ad.id,
+            aiQuestion: buildAttentionAiQuestion(ad.name, copy.value.attentionReasonNoResults, ad.groupName || campaign.name),
+            priorityScore: ad.spend,
+            score: ad.spend,
+          }
+        }
+        if (ad.costPerResult !== null && costPerResult > 0 && ad.costPerResult >= costPerResult * 1.4 && ad.results > 0) {
+          return {
+            id: `creative-cost-${campaign.id}-${ad.id}`,
+            severity: ad.costPerResult >= costPerResult * 1.8 ? 'warning' : 'recommendation',
+            scope: 'creative' as const,
+            title: ad.name,
+            reason: copy.value.attentionReasonCreativeExpensive,
+            context: ad.groupName || campaign.name,
+            metrics: buildAttentionMetrics(ad.resultKind || campaign.primary_result_kind || 'result', {
+              spend: ad.spend,
+              results: ad.results,
+              costPerResult: ad.costPerResult,
+            }),
+            campaignId: campaign.id,
+            adGroupId: ad.groupId,
+            adId: ad.id,
+            aiQuestion: buildAttentionAiQuestion(ad.name, copy.value.attentionReasonCreativeExpensive, ad.groupName || campaign.name),
+            priorityScore: ad.costPerResult,
+            score: ad.costPerResult,
+          }
+        }
+        return null
+      })
+      .filter((item): item is ScoredAttentionAlert => item !== null)
+      .sort((left, right) => right.score - left.score)[0]
+
+    if (topCreativeAlert) {
+      const { score: _score, ...alert } = topCreativeAlert
+      alerts.push(alert)
+    }
+  }
+
+  return alerts
+    .sort((left, right) => {
+      const severityDiff = attentionSeverityRank(right.severity) - attentionSeverityRank(left.severity)
+      if (severityDiff !== 0) {
+        return severityDiff
+      }
+      const priorityDiff = right.priorityScore - left.priorityScore
+      if (priorityDiff !== 0) {
+        return priorityDiff
+      }
+      return left.title.localeCompare(right.title, locale.value)
+    })
+    .slice(0, 8)
+})
+const attentionCriticalCount = computed(() => attentionAlerts.value.filter((alert) => alert.severity === 'critical').length)
+const attentionTopAlert = computed(() => attentionAlerts.value[0] ?? null)
+const attentionActiveAlert = computed(() => {
+  if (!activeAttentionAlertId.value) {
+    return attentionTopAlert.value
+  }
+  return attentionAlerts.value.find((alert) => alert.id === activeAttentionAlertId.value) ?? attentionTopAlert.value
+})
+const currentAiScope = computed<AutoVerdictScope>(() => {
+  if (workspaceMode.value === 'attention') {
+    const activeAlert = attentionActiveAlert.value
+    if (activeAlert?.scope === 'creative') {
+      return 'creative'
+    }
+    if (activeAlert?.scope === 'ad_group') {
+      return 'ad_group'
+    }
+    if (activeAlert?.scope === 'campaign') {
+      return 'campaign'
+    }
+    return 'account'
+  }
+  if (workspaceMode.value === 'campaign' && selectedCampaignCreative.value) {
+    return 'creative'
+  }
+  if (workspaceMode.value === 'campaign' && selectedCampaignAdGroup.value) {
+    return 'ad_group'
+  }
+  if (workspaceMode.value === 'campaign' && selectedCampaign.value) {
+    return 'campaign'
+  }
+  return 'account'
+})
+const currentAiContextLabel = computed(() => {
+  if (workspaceMode.value === 'attention' && attentionActiveAlert.value) {
+    return `${attentionScopeLabel(attentionActiveAlert.value.scope)}: ${attentionActiveAlert.value.title}`
+  }
+  if (currentAiScope.value === 'creative' && selectedCampaignCreative.value) {
+    const parts = [`${copy.value.adFocus}: ${selectedCampaignCreative.value.name}`]
+    if (selectedCampaignAdGroup.value) {
+      parts.push(`${copy.value.audienceFocus}: ${selectedCampaignAdGroup.value.name}`)
+    }
+    return parts.join(' · ')
+  }
+  if (currentAiScope.value === 'ad_group' && selectedCampaignAdGroup.value) {
+    return `${copy.value.audienceFocus}: ${selectedCampaignAdGroup.value.name}`
+  }
+  if (currentAiScope.value === 'campaign' && selectedCampaign.value) {
+    return `${copy.value.campaignFocus}: ${selectedCampaign.value.name}`
+  }
+  const accountName = report.value?.account.name || selectedAccount.value?.name || ''
+  return accountName ? `${copy.value.overviewAccount}: ${accountName}` : copy.value.overviewAccount
+})
 const workspaceMode = computed<WorkspaceSection>(() => {
+  if (isAttentionSection.value) {
+    return 'attention'
+  }
   if (isAccountsSection.value) {
     return 'accounts'
   }
@@ -2213,14 +3663,29 @@ const workspaceMode = computed<WorkspaceSection>(() => {
   return 'overview'
 })
 const autoVerdictScope = computed<AutoVerdictScope>(() => {
-  if (workspaceMode.value === 'campaign' && selectedCampaign.value) {
-    return 'campaign'
-  }
-  return 'account'
+  return currentAiScope.value
 })
 const autoVerdictRequestKey = computed(() => {
   if (!selectedAccountId.value || !report.value) {
     return ''
+  }
+  if (workspaceMode.value === 'attention' && attentionActiveAlert.value) {
+    if (autoVerdictScope.value === 'creative') {
+      return `attention:creative:${attentionActiveAlert.value.campaignId}:${attentionActiveAlert.value.adGroupId}:${attentionActiveAlert.value.adId}`
+    }
+    if (autoVerdictScope.value === 'ad_group') {
+      return `attention:ad_group:${attentionActiveAlert.value.campaignId}:${attentionActiveAlert.value.adGroupId}`
+    }
+    if (autoVerdictScope.value === 'campaign') {
+      return `attention:campaign:${attentionActiveAlert.value.campaignId}`
+    }
+    return `attention:account:${attentionActiveAlert.value.id}`
+  }
+  if (autoVerdictScope.value === 'creative' && selectedCampaignCreative.value) {
+    return `creative:${selectedCampaign.value?.id}:${selectedCampaignAdGroup.value?.id || ''}:${selectedCampaignCreative.value.id}`
+  }
+  if (autoVerdictScope.value === 'ad_group' && selectedCampaignAdGroup.value) {
+    return `ad_group:${selectedCampaign.value?.id}:${selectedCampaignAdGroup.value.id}`
   }
   if (autoVerdictScope.value === 'campaign' && selectedCampaign.value) {
     return `campaign:${selectedCampaign.value.id}`
@@ -2349,25 +3814,25 @@ const overviewMetrics = computed<SurfaceMetricCard[]>(() => {
   if (!report.value) {
     return []
   }
-  return buildSurfaceMetricCards(report.value.summary.metrics, report.value.summary.primary_result_kind)
+  return buildSurfaceMetricCards(report.value.summary.metrics, report.value.summary.primary_result_kind, surfacePrimaryMetricKeys)
+})
+const overviewAdditionalMetrics = computed<SurfaceMetricCard[]>(() => {
+  if (!report.value) {
+    return []
+  }
+  return buildSurfaceMetricCards(report.value.summary.metrics, report.value.summary.primary_result_kind, surfaceAdditionalMetricKeys)
 })
 const campaignSummaryMetrics = computed<SurfaceMetricCard[]>(() => {
   if (!selectedCampaign.value) {
     return []
   }
-  return buildSurfaceMetricCards(selectedCampaign.value.metrics, selectedCampaign.value.primary_result_kind)
+  return buildSurfaceMetricCards(selectedCampaign.value.metrics, selectedCampaign.value.primary_result_kind, surfacePrimaryMetricKeys)
 })
-const overviewVerdictTone = computed(() => {
-  if (!report.value) {
-    return 'warning'
-  }
-  return verdictToneFromMetrics(report.value.summary.metrics)
-})
-const campaignVerdictTone = computed(() => {
+const campaignAdditionalMetrics = computed<SurfaceMetricCard[]>(() => {
   if (!selectedCampaign.value) {
-    return 'warning'
+    return []
   }
-  return verdictToneFromMetrics(selectedCampaign.value.metrics)
+  return buildSurfaceMetricCards(selectedCampaign.value.metrics, selectedCampaign.value.primary_result_kind, surfaceAdditionalMetricKeys)
 })
 const overviewTrendPoints = computed<TrendPoint[]>(() => report.value?.trend?.current ?? [])
 const overviewTrendResultLabel = computed(() => {
@@ -2380,9 +3845,70 @@ const overviewCurrentRangeLabel = computed(() => {
   if (!report.value) {
     return ''
   }
-  return `${report.value.periods.current.since} - ${report.value.periods.current.until}`
+  return buildDateRangeLabel(report.value.periods.current.since, report.value.periods.current.until)
 })
 const overviewTrendChart = computed<TrendChartModel>(() => buildTrendChartModel(overviewTrendPoints.value))
+const overviewStatusCard = computed<{
+  tone: 'stable' | 'improving' | 'attention' | 'critical' | 'paused' | 'empty'
+  title: string
+  note: string
+} | null>(() => {
+  if (!report.value) {
+    return null
+  }
+
+  const metrics = report.value.summary.metrics
+  const resultTone = metricPerformanceTone('results', metrics.results.delta_pct)
+  const costTone = metricPerformanceTone('cost_per_result', metrics.cost_per_result.delta_pct)
+  const hasActiveDelivery = report.value.summary.active_campaigns > 0
+  const hasMeaningfulData = (metrics.spend.current ?? 0) > 0 || (metrics.results.current ?? 0) > 0
+
+  if (!hasActiveDelivery && report.value.campaigns.length > 0) {
+    return {
+      tone: 'paused',
+      title: copy.value.overviewStatusPaused,
+      note: copy.value.overviewStatusNotePaused,
+    }
+  }
+
+  if (!hasMeaningfulData) {
+    return {
+      tone: 'empty',
+      title: copy.value.overviewStatusNoData,
+      note: copy.value.overviewStatusNoteNoData,
+    }
+  }
+
+  if (attentionCriticalCount.value > 0) {
+    return {
+      tone: 'critical',
+      title: copy.value.overviewStatusCritical,
+      note: attentionTopAlert.value?.reason || copy.value.overviewStatusNoteAttention,
+    }
+  }
+
+  if (attentionAlerts.value.length > 0 || resultTone === 'warning' || costTone === 'warning') {
+    return {
+      tone: 'attention',
+      title: copy.value.overviewStatusAttention,
+      note: attentionTopAlert.value?.reason || copy.value.overviewStatusNoteAttention,
+    }
+  }
+
+  if (resultTone === 'good' || costTone === 'good') {
+    return {
+      tone: 'improving',
+      title: copy.value.overviewStatusImproving,
+      note: copy.value.overviewStatusNoteImproving,
+    }
+  }
+
+  return {
+    tone: 'stable',
+    title: copy.value.overviewStatusStable,
+    note: copy.value.overviewStatusNoteStable,
+  }
+})
 const workspaceNotice = computed(() => {
   if (pageNotice.value) {
     return pageNotice.value
@@ -2448,6 +3974,9 @@ const topbarContextLine = computed(() => {
 const workspaceScreenTitle = computed(() => {
   if (workspaceMode.value === 'campaign') {
     return selectedCampaign.value?.name || copy.value.overviewAccount
+  }
+  if (workspaceMode.value === 'attention') {
+    return copy.value.attentionPageTitle
   }
   if (workspaceMode.value === 'accounts') {
     return copy.value.accountsPageTitle
@@ -2570,6 +4099,9 @@ function resolveCurrentView(pathname: string): AppView {
 
 function resolveWorkspaceRoute(pathname: string): WorkspaceRoute {
   const normalized = normalizePathname(pathname)
+  if (normalized === ATTENTION_ROUTE_PATH) {
+    return { section: 'attention', campaignId: '' }
+  }
   if (normalized === ACCOUNTS_ROUTE_PATH) {
     return { section: 'accounts', campaignId: '' }
   }
@@ -2601,6 +4133,9 @@ function routePathForView(view: AppView): string {
 }
 
 function routePathForWorkspace(section: WorkspaceSection, campaignId = selectedCampaignId.value): string {
+  if (section === 'attention') {
+    return ATTENTION_ROUTE_PATH
+  }
   if (section === 'accounts') {
     return ACCOUNTS_ROUTE_PATH
   }
@@ -2669,8 +4204,69 @@ function openDataDeletion() {
 }
 
 function openOverview() {
-  campaignExpandedGroupIds.value = []
+  resetCampaignWorkspaceSelection()
   navigateToWorkspace('overview')
+}
+
+function openAttentionPage() {
+  resetCampaignWorkspaceSelection()
+  navigateToWorkspace('attention')
+}
+
+async function openAttentionAlert(alert: AttentionAlert) {
+  activeAttentionAlertId.value = alert.id
+  if (!alert.campaignId) {
+    openOverview()
+    return
+  }
+
+  navigateToWorkspace('campaign', { campaignId: alert.campaignId })
+  await nextTick()
+
+  if (alert.scope === 'ad_group') {
+    selectedCampaignPanel.value = 'ad_groups'
+    selectedCampaignAdGroupId.value = alert.adGroupId
+    return
+  }
+
+  if (alert.scope === 'creative') {
+    selectedCampaignPanel.value = 'creatives'
+    selectedCampaignAdGroupId.value = alert.adGroupId || ''
+    selectedCampaignCreativeId.value = alert.adId
+    return
+  }
+
+  selectedCampaignPanel.value = 'results'
+}
+
+async function askAiAboutAttention(alert: AttentionAlert) {
+  activeAttentionAlertId.value = alert.id
+  openAiPanel()
+  await nextTick()
+  await sendQuestion(alert.aiQuestion)
+}
+
+async function askAiAboutAdGroup(group: CampaignAdGroupRow) {
+  if (!selectedCampaign.value) {
+    return
+  }
+  activeAttentionAlertId.value = ''
+  selectedCampaignPanel.value = 'ad_groups'
+  selectedCampaignAdGroupId.value = group.id
+  selectedCampaignCreativeId.value = ''
+  openAiPanel()
+  await nextTick()
+  await sendQuestion(copy.value.helperQuestionsAdGroup[0] ?? copy.value.askAi)
+}
+
+async function askAiAboutCreative(ad: CampaignAdRow) {
+  if (!selectedCampaign.value) {
+    return
+  }
+  activeAttentionAlertId.value = ''
+  openAiPanel()
+  await nextTick()
+  await sendQuestion(buildCreativeAiQuestion(ad, selectedCampaign.value))
 }
 
 function openAccountsPage() {
@@ -3139,8 +4735,8 @@ function resolvePreferredAccountSelection(preferredProvider: OAuthProvider | nul
   return null
 }
 
-function buildReportContextKey(provider: OAuthProvider, accountId: string, days: number) {
-  return `${provider}:${accountId}:${days}`
+function buildReportContextKey(provider: OAuthProvider, accountId: string, request: ReportPeriodRequest) {
+  return `${provider}:${accountId}:${request.key}`
 }
 
 function buildAccountSnapshotKey(provider: OAuthProvider, accountId: string) {
@@ -3170,21 +4766,74 @@ function buildAutoVerdictPath(provider: OAuthProvider, accountId: string) {
 function buildAutoVerdictRequestPayload(options: {
   apiKey: string | null
 }): AutoVerdictRequestPayload {
+  const periodRequest = activeReportRequest.value
   const payload: AutoVerdictRequestPayload = {
-    days: reportDays.value,
+    days: periodRequest.days,
+    since: periodRequest.since,
+    until: periodRequest.until,
     language: locale.value,
     use_client_credentials: useClientCredentials.value,
-    scope: autoVerdictScope.value,
-  }
-
-  if (autoVerdictScope.value === 'campaign' && selectedCampaign.value) {
-    payload.campaign_id = selectedCampaign.value.id
+    ...buildScopedAiContextPayload(),
   }
 
   if (useClientCredentials.value) {
     payload.provider = provider.value
     payload.api_key = options.apiKey
     payload.model = resolvedModel.value
+  }
+
+  return payload
+}
+
+function buildChatRequestPayload(options: {
+  apiKey: string | null
+  messages: ChatMessage[]
+}): ChatRequestPayload {
+  const periodRequest = activeReportRequest.value
+  return {
+    days: periodRequest.days,
+    since: periodRequest.since,
+    until: periodRequest.until,
+    language: locale.value,
+    use_client_credentials: useClientCredentials.value,
+    ...buildScopedAiContextPayload(),
+    ...(useClientCredentials.value
+      ? {
+          provider: provider.value,
+          api_key: options.apiKey,
+          model: resolvedModel.value,
+        }
+      : {}),
+    messages: options.messages,
+  }
+}
+
+function buildScopedAiContextPayload() {
+  const payload: Pick<AutoVerdictRequestPayload, 'scope' | 'campaign_id' | 'ad_group_id' | 'creative_id'> = {
+    scope: autoVerdictScope.value,
+  }
+
+  if (workspaceMode.value === 'attention' && attentionActiveAlert.value) {
+    if (attentionActiveAlert.value.campaignId) {
+      payload.campaign_id = attentionActiveAlert.value.campaignId
+    }
+    if ((autoVerdictScope.value === 'ad_group' || autoVerdictScope.value === 'creative') && attentionActiveAlert.value.adGroupId) {
+      payload.ad_group_id = attentionActiveAlert.value.adGroupId
+    }
+    if (autoVerdictScope.value === 'creative' && attentionActiveAlert.value.adId) {
+      payload.creative_id = attentionActiveAlert.value.adId
+    }
+    return payload
+  }
+
+  if (selectedCampaign.value) {
+    payload.campaign_id = selectedCampaign.value.id
+  }
+  if ((autoVerdictScope.value === 'ad_group' || autoVerdictScope.value === 'creative') && selectedCampaignAdGroup.value) {
+    payload.ad_group_id = selectedCampaignAdGroup.value.id
+  }
+  if (autoVerdictScope.value === 'creative' && selectedCampaignCreative.value) {
+    payload.creative_id = selectedCampaignCreative.value.id
   }
 
   return payload
@@ -3220,7 +4869,7 @@ async function syncSelectedAccount(options: { preferredProvider?: OAuthProvider 
     selectedCampaignId.value = ''
   }
 
-  const nextContextKey = buildReportContextKey(nextSelection.provider, nextSelection.accountId, reportDays.value)
+  const nextContextKey = buildReportContextKey(nextSelection.provider, nextSelection.accountId, activeReportRequest.value)
   if (selectionChanged || options.forceReload || reportContextKey.value !== nextContextKey || !report.value) {
     await loadReport()
   }
@@ -3593,7 +5242,7 @@ async function loadAccountPageSnapshots() {
         const payload =
           selectedProvider.value === card.provider &&
           selectedAccountId.value === card.id &&
-          reportDays.value === 30 &&
+          activeReportRequest.value.key === 'days:30' &&
           report.value
             ? report.value
             : await apiRequest<DashboardReport>(
@@ -3759,7 +5408,8 @@ async function loadReport(options: { forceRefresh?: boolean } = {}) {
     return
   }
 
-  const nextContextKey = buildReportContextKey(selectedProvider.value, selectedAccountId.value, reportDays.value)
+  const periodRequest = activeReportRequest.value
+  const nextContextKey = buildReportContextKey(selectedProvider.value, selectedAccountId.value, periodRequest)
   reportLoading.value = true
   pageError.value = ''
   chatError.value = ''
@@ -3771,19 +5421,44 @@ async function loadReport(options: { forceRefresh?: boolean } = {}) {
 
   try {
     const query = new URLSearchParams({
-      days: String(reportDays.value),
+      days: String(periodRequest.days),
     })
+    if (periodRequest.since && periodRequest.until) {
+      query.set('since', periodRequest.since)
+      query.set('until', periodRequest.until)
+    }
     if (options.forceRefresh) {
       query.set('force_refresh', 'true')
     }
     const payload = await apiRequest<DashboardReport>(buildDashboardReportPath(selectedProvider.value, selectedAccountId.value, query.toString()))
-    report.value = payload
-    reportContextKey.value = nextContextKey
-    selectedCampaignId.value = payload.campaigns.find((campaign) => campaign.id === selectedCampaignId.value)?.id ?? ''
-    if (workspaceSection.value === 'campaign' && !selectedCampaignId.value) {
-      navigateToWorkspace('overview', { replace: true })
-    }
-    triggerAutoVerdictLoad()
+	    report.value = payload
+	    reportContextKey.value = nextContextKey
+	    selectedCampaignId.value = payload.campaigns.find((campaign) => campaign.id === selectedCampaignId.value)?.id ?? ''
+	    if (selectedCampaignAdGroupId.value && !selectedCampaignAdGroups.value.find((group) => group.id === selectedCampaignAdGroupId.value)) {
+	      selectedCampaignAdGroupId.value = ''
+	    }
+	    if (campaignCreativeFilterGroupId.value && !selectedCampaignAdGroups.value.find((group) => group.id === campaignCreativeFilterGroupId.value)) {
+	      campaignCreativeFilterGroupId.value = ''
+	    }
+	    if (selectedCampaignCreativeId.value && !selectedCampaignAds.value.find((ad) => ad.id === selectedCampaignCreativeId.value)) {
+	      selectedCampaignCreativeId.value = ''
+	    }
+	    if (
+	      selectedCampaignCreativeId.value &&
+	      campaignCreativeFilterGroupId.value &&
+	      !selectedCampaignAds.value.find(
+	        (ad) => ad.id === selectedCampaignCreativeId.value && resolveCampaignAdGroupId(ad) === campaignCreativeFilterGroupId.value,
+	      )
+	    ) {
+	      selectedCampaignCreativeId.value = ''
+	    }
+	    if (selectedCampaignPanel.value === 'creatives') {
+	      syncSelectedCampaignCreative()
+	    }
+	    if (workspaceSection.value === 'campaign' && !selectedCampaignId.value) {
+	      navigateToWorkspace('overview', { replace: true })
+	    }
+	    triggerAutoVerdictLoad()
   } catch (error) {
     pageError.value = formatUnexpectedError(error)
     resetAutoVerdict()
@@ -3838,19 +5513,7 @@ async function sendQuestion(question?: string) {
   try {
     const payload = await apiRequest<{ text: string }>(buildChatPath(selectedProvider.value, selectedAccountId.value), {
       method: 'POST',
-      body: {
-        days: reportDays.value,
-        language: locale.value,
-        use_client_credentials: useClientCredentials.value,
-        ...(useClientCredentials.value
-          ? {
-              provider: provider.value,
-              api_key: apiKey,
-              model: resolvedModel.value,
-            }
-          : {}),
-        messages: nextMessages,
-      },
+      body: buildChatRequestPayload({ apiKey, messages: nextMessages }),
     })
 
     chatMessages.value = [...nextMessages, { role: 'assistant', content: payload.text }]
@@ -3943,8 +5606,29 @@ function handleViewportResize() {
   }
 }
 
+function focusAiComposer() {
+  nextTick(() => {
+    const composer = chatTextareaRef.value
+    if (!composer) {
+      return
+    }
+    composer.focus()
+    const cursor = composer.value.length
+    composer.setSelectionRange(cursor, cursor)
+  })
+}
+
 function openAiPanel() {
   aiPanelOpen.value = true
+  focusAiComposer()
+}
+
+function toggleAiPanel() {
+  if (aiPanelOpen.value) {
+    closeAiPanel()
+    return
+  }
+  openAiPanel()
 }
 
 function closeAiPanel() {
@@ -4046,21 +5730,26 @@ function updateAccountSwitcherMenuPosition() {
 
   const triggerRect = trigger.getBoundingClientRect()
   const viewportPadding = 12
-  const menuWidth = Math.min(352, Math.max(0, window.innerWidth - viewportPadding * 2))
-  const left = Math.min(
-    Math.max(viewportPadding, triggerRect.left),
-    Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+  const menuWidth = Math.min(
+    352,
+    Math.max(triggerRect.width, 240),
+    Math.max(0, window.innerWidth - viewportPadding * 2),
   )
 
+  const sidebar = document.querySelector('.rail-left')
+  const sidebarRight = sidebar instanceof HTMLElement ? sidebar.getBoundingClientRect().right : 0
+  const minLeft = sidebarRight > 0 ? sidebarRight + 8 : viewportPadding
+
+  let left = triggerRect.left
+  left = Math.max(minLeft, left)
+  left = Math.min(left, Math.max(minLeft, window.innerWidth - menuWidth - viewportPadding))
+
   accountSwitcherMenuStyle.value = {
-    position: 'fixed',
     top: `${triggerRect.bottom + 8}px`,
     left: `${left}px`,
-    right: 'auto',
     width: `${menuWidth}px`,
     minWidth: `${menuWidth}px`,
     maxWidth: `${menuWidth}px`,
-    zIndex: '80',
   }
 }
 
@@ -4199,7 +5888,9 @@ function setWorkspaceProvider(provider: OAuthProvider) {
 
 function handleGlobalPointer(event: MouseEvent) {
   const target = event.target as Node
-  if (accountSwitcherRef.value && !accountSwitcherRef.value.contains(target)) {
+  const insideAccountSwitcher =
+    accountSwitcherRef.value?.contains(target) || accountSwitcherMenuRef.value?.contains(target)
+  if (accountSwitcherOpen.value && !insideAccountSwitcher) {
     accountSwitcherOpen.value = false
   }
   if (platformMenuRef.value && !platformMenuRef.value.contains(target)) {
@@ -4242,18 +5933,398 @@ function selectAccount(provider: OAuthProvider, accountId: string) {
   void loadReport()
 }
 
-function selectDays(days: number) {
-  if (reportDays.value === days) {
+function selectPeriodPreset(preset: (typeof overviewQuickPeriodOptions)[number]) {
+  if (reportPeriodPreset.value === preset) {
     return
   }
-  reportDays.value = days
+  reportPeriodPreset.value = preset
+  reportCustomEditorOpen.value = false
+  reportCustomError.value = ''
   resetChatState()
   void loadReport()
 }
 
+function toggleCustomPeriodEditor() {
+  if (!reportCustomEditorOpen.value) {
+    if (reportPeriodPreset.value === 'custom') {
+      reportCustomDraft.value = { ...reportCustomRange.value }
+    } else if (report.value) {
+      reportCustomDraft.value = {
+        since: report.value.periods.current.since,
+        until: report.value.periods.current.until,
+      }
+    }
+  }
+  reportCustomError.value = ''
+  reportCustomEditorOpen.value = !reportCustomEditorOpen.value
+}
+
+function applyCustomPeriod() {
+  const { since, until } = reportCustomDraft.value
+  const sinceDate = parseDateInputValue(since)
+  const untilDate = parseDateInputValue(until)
+
+  if (!sinceDate || !untilDate) {
+    reportCustomError.value = copy.value.periodCustomError
+    return
+  }
+  if (untilDate.getTime() < sinceDate.getTime()) {
+    reportCustomError.value = copy.value.periodCustomError
+    return
+  }
+
+  reportCustomError.value = ''
+  reportCustomEditorOpen.value = true
+  if (
+    reportPeriodPreset.value === 'custom' &&
+    reportCustomRange.value.since === since &&
+    reportCustomRange.value.until === until
+  ) {
+    return
+  }
+
+  reportCustomRange.value = { since, until }
+  reportPeriodPreset.value = 'custom'
+  resetChatState()
+  void loadReport()
+}
+
+function togglePeriodComparison() {
+  reportComparisonEnabled.value = !reportComparisonEnabled.value
+}
+
 function selectCampaign(campaignId: string) {
-  campaignExpandedGroupIds.value = []
+  resetCampaignWorkspaceSelection()
   navigateToWorkspace('campaign', { campaignId })
+}
+
+function resolveVisibleCampaignAds(
+  groupId = campaignCreativeFilterGroupId.value,
+  filterMode = campaignCreativeFilterMode.value,
+  sortMode = campaignCreativeSortMode.value,
+) {
+  if (!selectedCampaign.value) {
+    return []
+  }
+  const baseAds = selectedCampaignAds.value.filter((ad) => {
+    if (!groupId) {
+      return true
+    }
+    return resolveCampaignAdGroupId(ad) === groupId
+  })
+  const bestAdId = baseAds.find((ad) => ad.costPerResult !== null)?.id ?? baseAds[0]?.id ?? ''
+  return [...baseAds]
+    .filter((ad) => matchesCampaignCreativeQuickFilter(ad, selectedCampaign.value!, filterMode, bestAdId))
+    .sort((left, right) => compareCampaignAds(left, right, selectedCampaign.value!, sortMode))
+}
+
+function syncSelectedCampaignCreative() {
+  const visibleAds = resolveVisibleCampaignAds()
+  if (visibleAds.length === 0) {
+    selectedCampaignCreativeId.value = ''
+    return
+  }
+  if (selectedCampaignCreativeId.value && visibleAds.some((ad) => ad.id === selectedCampaignCreativeId.value)) {
+    return
+  }
+  selectedCampaignCreativeId.value = visibleAds[0].id
+  selectedCampaignAdGroupId.value = visibleAds[0].groupId || selectedCampaignAdGroupId.value
+}
+
+function resetCampaignWorkspaceSelection() {
+  campaignExpandedGroupIds.value = []
+  selectedCampaignPanel.value = 'results'
+  selectedCampaignAdGroupId.value = ''
+  selectedCampaignCreativeId.value = ''
+  campaignCreativeFilterGroupId.value = ''
+  campaignCreativeFilterMode.value = 'all'
+  campaignCreativeSortMode.value = 'efficiency'
+}
+
+function setCampaignPanel(panel: CampaignWorkspacePanel) {
+  selectedCampaignPanel.value = panel
+  if (panel === 'results') {
+    selectedCampaignAdGroupId.value = ''
+    selectedCampaignCreativeId.value = ''
+    campaignCreativeFilterGroupId.value = ''
+    return
+  }
+  if (panel === 'ad_groups') {
+    selectedCampaignCreativeId.value = ''
+    campaignCreativeFilterGroupId.value = ''
+  }
+}
+
+function selectCampaignAdGroup(groupId: string) {
+  const nextGroup = selectedCampaignAdGroups.value.find((group) => group.id === groupId)
+  if (!nextGroup) {
+    return
+  }
+  selectedCampaignPanel.value = 'ad_groups'
+  selectedCampaignAdGroupId.value = nextGroup.id
+  selectedCampaignCreativeId.value = ''
+  if (!campaignExpandedGroupIds.value.includes(nextGroup.id)) {
+    campaignExpandedGroupIds.value = [...campaignExpandedGroupIds.value, nextGroup.id]
+  }
+}
+
+function viewCampaignCreatives(groupId = '') {
+  selectedCampaignPanel.value = 'creatives'
+  selectedCampaignAdGroupId.value = groupId
+  campaignCreativeFilterGroupId.value = groupId
+  syncSelectedCampaignCreative()
+}
+
+function clearSelectedCampaignAdGroup() {
+  selectedCampaignAdGroupId.value = ''
+}
+
+function clearSelectedCampaignCreative() {
+  selectedCampaignCreativeId.value = ''
+}
+
+function selectCampaignCreative(adId: string, options: { filterGroupId?: string } = {}) {
+  const nextAd = selectedCampaignAds.value.find((ad) => ad.id === adId)
+  if (!nextAd) {
+    return
+  }
+  selectedCampaignPanel.value = 'creatives'
+  if (typeof options.filterGroupId === 'string') {
+    campaignCreativeFilterGroupId.value = options.filterGroupId
+  }
+  selectedCampaignCreativeId.value = nextAd.id
+  selectedCampaignAdGroupId.value = nextAd.groupId || selectedCampaignAdGroupId.value
+}
+
+function buildCampaignAds(campaign: Campaign): CampaignAdRow[] {
+  const adGroupsById = new Map(
+    (campaign.ad_groups ?? []).map((group, index) => [group.id?.trim() || `${campaign.id}-group-${index + 1}`, group]),
+  )
+  return campaign.creatives
+    .map((creative) => {
+      const spend = Number(creative.metrics.spend || 0)
+      const results = Number(creative.metrics.results || 0)
+      const impressions = Number(creative.metrics.impressions || 0)
+      const clicks = Number(creative.metrics.clicks || 0)
+      const ctr = Number(creative.metrics.ctr || 0)
+      const groupId = creative.ad_group_id?.trim() || ''
+      const adGroup = adGroupsById.get(groupId)
+      return {
+        id: creative.id,
+        name: creativeTitle(creative),
+        format: creativeTypeLabel(creative),
+        status: creative.status?.trim() || '',
+        previewUrl: creativePreview(creative),
+        primaryText: creative.primary_text?.trim() || '',
+        headline: creative.headline?.trim() || '',
+        callToAction: creative.call_to_action?.trim() || '',
+        destinationUrl: creative.destination_url?.trim() || '',
+        sourceUrl: creative.source_url?.trim() || '',
+        groupId,
+        groupName: creative.ad_group_name?.trim() || '',
+        placementSummary: adGroup?.targeting?.placement?.trim() || '',
+        spend,
+        impressions,
+        clicks,
+        ctr,
+        results,
+        resultKind: creative.metrics.result_kind || campaign.primary_result_kind || 'result',
+        costPerResult: results > 0 ? spend / results : null,
+        hasData: spend > 0 || results > 0 || impressions > 0 || clicks > 0,
+      }
+    })
+    .sort((left, right) => {
+      if (left.costPerResult !== null && right.costPerResult !== null && left.costPerResult !== right.costPerResult) {
+        return left.costPerResult - right.costPerResult
+      }
+      if (left.costPerResult !== null && right.costPerResult === null) {
+        return -1
+      }
+      if (left.costPerResult === null && right.costPerResult !== null) {
+        return 1
+      }
+      if (right.spend !== left.spend) {
+        return right.spend - left.spend
+      }
+      return left.name.localeCompare(right.name, locale.value)
+    })
+}
+
+function resolveCampaignAdGroupId(ad: Pick<CampaignAdRow, 'groupId'>) {
+  return ad.groupId || `${selectedCampaign.value?.id || 'campaign'}-primary-group`
+}
+
+const emptyCampaignAdGroupTargeting: CampaignAdGroupTargetingView = {
+  geo: '',
+  age: '',
+  gender: '',
+  audience: '',
+  signal: '',
+  placement: '',
+  device: '',
+  summary: '',
+}
+
+type CampaignAdGroupTargetingField = Exclude<keyof CampaignAdGroupTargetingView, 'summary'>
+
+const TARGETING_SUMMARY_FIELD_MAP: Record<string, CampaignAdGroupTargetingField> = {
+  geo: 'geo',
+  age: 'age',
+  gender: 'gender',
+  aud: 'audience',
+  audience: 'audience',
+  sig: 'signal',
+  signal: 'signal',
+  pl: 'placement',
+  placement: 'placement',
+  dev: 'device',
+  device: 'device',
+}
+
+const LOOKALIKE_AUDIENCE_PATTERN = /\b(lookalike|similar|lal)\b|похож|ұқсас/iu
+const RETARGETING_AUDIENCE_PATTERN =
+  /\b(retarget|remarket|visitor|visitors|purchase|purchasers|checkout|cart|lead|crm|customer|customers|client|clients|engage|engager|video|view|views|website|site|landing|message|messages|chat|whatsapp)\b|ретаргет|посет|клиент|қайта/iu
+
+function trimText(value: string | null | undefined) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function splitTargetingList(value: string) {
+  return value
+    .split(/\s*,\s*/u)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function dedupeTargetingValues(values: readonly string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function parseCampaignAdGroupTargetingSummary(summary: string) {
+  const parsed: Partial<Record<CampaignAdGroupTargetingField, string>> = {}
+  for (const segment of summary.split(';')) {
+    const [rawKey, ...rawValueParts] = segment.split('=')
+    const key = trimText(rawKey).toLowerCase()
+    const mappedKey = TARGETING_SUMMARY_FIELD_MAP[key]
+    const value = trimText(rawValueParts.join('='))
+    if (!mappedKey || !value || parsed[mappedKey]) {
+      continue
+    }
+    parsed[mappedKey] = value
+  }
+  return parsed
+}
+
+function normalizeCampaignAdGroupTargeting(
+  targeting?: CampaignAdGroupSnapshot['targeting'] | null,
+  targetingSummary?: string | null,
+): CampaignAdGroupTargetingView {
+  const summary = trimText(targeting?.summary) || trimText(targetingSummary)
+  const parsed = parseCampaignAdGroupTargetingSummary(summary)
+  return {
+    geo: trimText(targeting?.geo) || parsed.geo || '',
+    age: trimText(targeting?.age) || parsed.age || '',
+    gender: trimText(targeting?.gender) || parsed.gender || '',
+    audience: trimText(targeting?.audience) || parsed.audience || '',
+    signal: trimText(targeting?.signal) || parsed.signal || '',
+    placement: trimText(targeting?.placement) || parsed.placement || '',
+    device: trimText(targeting?.device) || parsed.device || '',
+    summary,
+  }
+}
+
+function buildCampaignAdGroups(campaign: Campaign): CampaignAdGroupRow[] {
+  const campaignAds = buildCampaignAds(campaign)
+  const grouped = new Map<
+    string,
+    {
+      name: string
+      targeting: CampaignAdGroupTargetingView
+      targetingSummary: string
+      spend: number
+      results: number
+      resultKind: string
+      hasSnapshotMetrics: boolean
+      ads: CampaignAdRow[]
+    }
+  >()
+
+  for (const [index, group] of (campaign.ad_groups ?? []).entries()) {
+    const groupId = group.id?.trim() || `${campaign.id}-group-${index + 1}`
+    const targeting = normalizeCampaignAdGroupTargeting(group.targeting, group.targeting_summary)
+    grouped.set(groupId, {
+      name: group.name?.trim() || '',
+      targeting,
+      targetingSummary: targeting.summary,
+      spend: Number(group.metrics?.spend || 0),
+      results: Number(group.metrics?.results || 0),
+      resultKind: group.metrics?.result_kind || campaign.primary_result_kind || 'result',
+      hasSnapshotMetrics: true,
+      ads: [],
+    })
+  }
+
+  for (const ad of campaignAds) {
+    const groupId = ad.groupId || `${campaign.id}-primary-group`
+    const existing = grouped.get(groupId)
+    if (existing) {
+      if (!existing.name && ad.groupName) {
+        existing.name = ad.groupName
+      }
+      existing.ads.push(ad)
+      if (!existing.resultKind) {
+        existing.resultKind = ad.resultKind
+      }
+      continue
+    }
+    grouped.set(groupId, {
+      name: ad.groupName,
+      targeting: emptyCampaignAdGroupTargeting,
+      targetingSummary: '',
+      spend: 0,
+      results: 0,
+      resultKind: ad.resultKind,
+      hasSnapshotMetrics: false,
+      ads: [ad],
+    })
+  }
+
+  const groups = Array.from(grouped.entries()).map(([groupId, group]) => {
+    const derivedSpend = group.ads.reduce((sum, ad) => sum + ad.spend, 0)
+    const derivedResults = group.ads.reduce((sum, ad) => sum + ad.results, 0)
+    const spend = group.hasSnapshotMetrics ? group.spend : derivedSpend
+    const results = group.hasSnapshotMetrics ? group.results : derivedResults
+    const resultKind = group.resultKind || group.ads.find((ad) => Boolean(ad.resultKind))?.resultKind || campaign.primary_result_kind || 'result'
+    return {
+      id: groupId,
+      name: group.name,
+      targeting: group.targeting,
+      targetingSummary: group.targetingSummary,
+      context: group.targetingSummary || buildCampaignAdGroupContext(group.ads),
+      spend,
+      results,
+      costPerResult: results > 0 ? spend / results : null,
+      resultKind,
+      adsCount: group.ads.length,
+      ads: group.ads,
+      bestAdId: group.ads.find((ad) => ad.costPerResult !== null)?.id ?? group.ads[0]?.id ?? '',
+    }
+  })
+
+  groups.sort((left, right) => {
+    if (right.spend !== left.spend) {
+      return right.spend - left.spend
+    }
+    if (right.results !== left.results) {
+      return right.results - left.results
+    }
+    return left.id.localeCompare(right.id, locale.value)
+  })
+
+  return groups.map((group, index) => ({
+    ...group,
+    name: group.name || (groups.length === 1 ? copy.value.campaignAdGroupDefaultName : `${copy.value.campaignAdGroupDefaultName} ${index + 1}`),
+  }))
 }
 
 function formatMetricValue(key: MetricKey, value: number | null | undefined) {
@@ -4432,6 +6503,97 @@ function formatDelta(delta: number | null | undefined) {
   return `${prefix}${delta.toFixed(1)}%`
 }
 
+function formatSharePercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '—'
+  }
+  return `${new Intl.NumberFormat(locale.value, {
+    minimumFractionDigits: value > 0 && value < 10 ? 1 : 0,
+    maximumFractionDigits: value >= 10 ? 0 : 1,
+  }).format(value)}%`
+}
+
+function buildAttentionMetrics(
+  resultKind: string,
+  values: { spend: number; results: number; costPerResult: number | null; costDelta?: number | null },
+): AttentionMetricView[] {
+  return [
+    {
+      label: copy.value.metricCopy.spend[0],
+      value: formatMetricValue('spend', values.spend),
+      hint: copy.value.metricCopy.spend[1],
+    },
+    {
+      label: resultKindLabel(resultKind || 'result'),
+      value: formatMetricValue('results', values.results),
+      hint: copy.value.metricCopy.results[1],
+    },
+    {
+      label: copy.value.metricCopy.cost_per_result[0],
+      value: formatMetricValue('cost_per_result', values.costPerResult),
+      hint:
+        values.costDelta === null || values.costDelta === undefined
+          ? copy.value.metricCopy.cost_per_result[1]
+          : `${copy.value.periodCompare}: ${formatDelta(values.costDelta)}`,
+    },
+  ]
+}
+
+function buildAttentionAiQuestion(title: string, reason: string, context: string) {
+  const parts = [`${copy.value.attentionAiQuestionLead} ${title}.`, reason]
+  if (context) {
+    parts.push(`${copy.value.chatContextLabel}: ${context}.`)
+  }
+  parts.push(copy.value.attentionAiQuestionFollowup)
+  return parts.join(' ')
+}
+
+function attentionSeverityRank(severity: AttentionSeverity) {
+  if (severity === 'critical') {
+    return 3
+  }
+  if (severity === 'warning') {
+    return 2
+  }
+  return 1
+}
+
+function attentionSeverityLabel(severity: AttentionSeverity) {
+  if (severity === 'critical') {
+    return copy.value.attentionPriorityCritical
+  }
+  if (severity === 'warning') {
+    return copy.value.attentionPriorityWarning
+  }
+  return copy.value.attentionPriorityRecommendation
+}
+
+function attentionScopeLabel(scope: AttentionScope) {
+  if (scope === 'campaign') {
+    return copy.value.attentionScopeCampaign
+  }
+  if (scope === 'ad_group') {
+    return copy.value.attentionScopeAdGroup
+  }
+  if (scope === 'creative') {
+    return copy.value.attentionScopeCreative
+  }
+  return copy.value.attentionScopeAccount
+}
+
+function attentionActionLabel(alert: AttentionAlert) {
+  if (alert.scope === 'campaign') {
+    return copy.value.attentionActionOpenCampaign
+  }
+  if (alert.scope === 'ad_group') {
+    return copy.value.attentionActionOpenAdGroup
+  }
+  if (alert.scope === 'creative') {
+    return copy.value.attentionActionOpenCreative
+  }
+  return copy.value.attentionActionOpenOverview
+}
+
 function metricPerformanceTone(key: MetricKey, delta: number | null | undefined): SurfaceMetricCard['deltaTone'] {
   if (delta === null || delta === undefined || delta === 0) {
     return 'neutral'
@@ -4473,12 +6635,40 @@ function verdictToneFromMetrics(metrics: MetricCollection) {
   return 'warning'
 }
 
+function verdictToneFromAdGroup(group: CampaignAdGroupRow, campaign: Campaign) {
+  const campaignCostPerResult = Number(campaign.metrics.cost_per_result.current || 0)
+  if (group.results <= 0 && group.spend > 0) {
+    return 'warning'
+  }
+  if (group.costPerResult !== null && campaignCostPerResult > 0) {
+    return group.costPerResult <= campaignCostPerResult ? 'good' : 'warning'
+  }
+  if (group.results > 0) {
+    return 'good'
+  }
+  return 'warning'
+}
+
+function verdictToneFromCreative(ad: CampaignAdRow, campaign: Campaign) {
+  const campaignCostPerResult = Number(campaign.metrics.cost_per_result.current || 0)
+  if (ad.results <= 0 && ad.spend > 0) {
+    return 'warning'
+  }
+  if (ad.costPerResult !== null && campaignCostPerResult > 0) {
+    return ad.costPerResult <= campaignCostPerResult ? 'good' : 'warning'
+  }
+  if (ad.results > 0) {
+    return 'good'
+  }
+  return 'warning'
+}
+
 function verdictStatusLabel(tone: 'good' | 'warning') {
   return tone === 'good' ? copy.value.verdictStatusGood : copy.value.verdictStatusWarning
 }
 
-function buildSurfaceMetricCards(metrics: MetricCollection, resultKind: string): SurfaceMetricCard[] {
-  return overviewMetricKeys.map((key) => {
+function buildSurfaceMetricCards(metrics: MetricCollection, resultKind: string, keys: readonly MetricKey[]): SurfaceMetricCard[] {
+  return keys.map((key) => {
     const metric = metrics[key]
     return {
       key,
@@ -4489,6 +6679,14 @@ function buildSurfaceMetricCards(metrics: MetricCollection, resultKind: string):
       deltaTone: metricPerformanceTone(key, metric.delta_pct),
     }
   })
+}
+
+function toggleOverviewAdditionalMetrics() {
+  overviewAdditionalMetricsOpen.value = !overviewAdditionalMetricsOpen.value
+}
+
+function toggleCampaignAdditionalMetrics() {
+  campaignAdditionalMetricsOpen.value = !campaignAdditionalMetricsOpen.value
 }
 
 function formatTrendAxisCurrency(value: number) {
@@ -4621,6 +6819,281 @@ function statusLabel(status: string) {
   return copy.value.status[tone]
 }
 
+function creativeStatusValue(ad: CampaignAdRow, campaign: Campaign) {
+  return ad.status.trim() || campaign.status || ''
+}
+
+function creativeStatusLabel(ad: CampaignAdRow, campaign: Campaign) {
+  return statusLabel(creativeStatusValue(ad, campaign))
+}
+
+function creativePerformanceDelta(ad: CampaignAdRow, campaign: Campaign) {
+  const campaignCostPerResult = Number(campaign.metrics.cost_per_result.current || 0)
+  if (campaignCostPerResult <= 0 || ad.costPerResult === null) {
+    return null
+  }
+  return ((ad.costPerResult - campaignCostPerResult) / campaignCostPerResult) * 100
+}
+
+function creativePerformanceKey(
+  ad: CampaignAdRow,
+  campaign: Campaign,
+): CampaignCreativePerformanceKey {
+  const deliveryTone = statusTone(creativeStatusValue(ad, campaign))
+  if (!ad.hasData) {
+    return deliveryTone === 'paused' ? 'paused' : 'no_data'
+  }
+  if (ad.results <= 0 && ad.spend > 0) {
+    return 'spend_only'
+  }
+  const delta = creativePerformanceDelta(ad, campaign)
+  if (delta === null) {
+    return deliveryTone === 'paused' ? 'paused' : 'stable'
+  }
+  if (delta <= -15) {
+    return 'strong'
+  }
+  if (delta >= 20) {
+    return 'warning'
+  }
+  if (deliveryTone === 'paused') {
+    return 'paused'
+  }
+  return 'stable'
+}
+
+function creativePerformanceLabel(ad: CampaignAdRow, campaign: Campaign) {
+  const key = creativePerformanceKey(ad, campaign)
+  if (key === 'strong') {
+    return copy.value.campaignCreativePerformanceStrong
+  }
+  if (key === 'warning') {
+    return copy.value.campaignCreativePerformanceWarning
+  }
+  if (key === 'paused') {
+    return copy.value.campaignCreativePerformancePaused
+  }
+  if (key === 'spend_only') {
+    return copy.value.campaignCreativePerformanceSpendOnly
+  }
+  if (key === 'no_data') {
+    return copy.value.campaignCreativePerformanceNoData
+  }
+  return copy.value.campaignCreativePerformanceStable
+}
+
+function creativePerformanceSummary(ad: CampaignAdRow, campaign: Campaign) {
+  const key = creativePerformanceKey(ad, campaign)
+  if (key === 'spend_only') {
+    return copy.value.campaignCreativeComparisonSpendOnly
+  }
+  if (key === 'paused') {
+    return copy.value.campaignCreativeComparisonPaused
+  }
+  if (key === 'no_data') {
+    return copy.value.campaignCreativeComparisonNoData
+  }
+  const delta = creativePerformanceDelta(ad, campaign)
+  if (delta === null) {
+    return copy.value.campaignCreativeComparisonStable
+  }
+  const value = Math.abs(delta).toFixed(0)
+  if (delta <= -15) {
+    return fillTemplate(copy.value.campaignCreativeComparisonBetter, { value })
+  }
+  if (delta >= 20) {
+    return fillTemplate(copy.value.campaignCreativeComparisonWorse, { value })
+  }
+  return copy.value.campaignCreativeComparisonStable
+}
+
+function campaignCreativeInsightTone(key: CampaignCreativePerformanceKey): CampaignCreativeInsightTone {
+  if (key === 'strong') {
+    return 'positive'
+  }
+  if (key === 'warning' || key === 'spend_only') {
+    return 'warning'
+  }
+  return 'neutral'
+}
+
+function campaignCreativeShareTone(
+  spendShare: number | null,
+  resultShare: number | null,
+  focus: 'spend' | 'results',
+): CampaignCreativeInsightTone {
+  if (spendShare === null || resultShare === null) {
+    return 'neutral'
+  }
+  if (focus === 'spend') {
+    if (spendShare >= resultShare + 5) {
+      return 'warning'
+    }
+    if (resultShare >= spendShare + 5) {
+      return 'positive'
+    }
+    return 'neutral'
+  }
+  if (resultShare >= spendShare + 5) {
+    return 'positive'
+  }
+  if (spendShare >= resultShare + 5) {
+    return 'warning'
+  }
+  return 'neutral'
+}
+
+function campaignCreativeAudienceRank(
+  ad: CampaignAdRow,
+  group: CampaignAdGroupRow,
+): { value: string; caption: string; tone: CampaignCreativeInsightTone } | null {
+  const comparableAds = [...group.ads]
+    .filter((item) => item.costPerResult !== null && item.results > 0)
+    .sort((left, right) => (left.costPerResult ?? Number.POSITIVE_INFINITY) - (right.costPerResult ?? Number.POSITIVE_INFINITY))
+
+  if (group.ads.length <= 1) {
+    return {
+      value: '#1 / 1',
+      caption: copy.value.campaignCreativeAudienceRankSingle,
+      tone: 'neutral',
+    }
+  }
+
+  if (comparableAds.length === 0) {
+    return {
+      value: '—',
+      caption: copy.value.campaignCreativeAudienceRankFallback,
+      tone: 'neutral',
+    }
+  }
+
+  const rank = comparableAds.findIndex((item) => item.id === ad.id)
+  if (rank === -1) {
+    return {
+      value: '—',
+      caption: copy.value.campaignCreativeAudienceRankFallback,
+      tone: 'neutral',
+    }
+  }
+
+  return {
+    value: `#${rank + 1} / ${comparableAds.length}`,
+    caption: comparableAds.length === 1 ? copy.value.campaignCreativeAudienceRankSingle : copy.value.campaignCreativeAudienceRankHint,
+    tone: rank === 0 ? 'positive' : rank === comparableAds.length - 1 ? 'warning' : 'neutral',
+  }
+}
+
+function creativePlacementLabel(ad: CampaignAdRow) {
+  return ad.placementSummary || copy.value.campaignCreativePlacementsFallback
+}
+
+function campaignCreativeEfficiencyScore(ad: CampaignAdRow, campaign: Campaign) {
+  const delta = creativePerformanceDelta(ad, campaign)
+  if (delta !== null) {
+    return -delta
+  }
+  if (ad.results > 0) {
+    return ad.results
+  }
+  if (ad.spend > 0) {
+    return -1000 - ad.spend
+  }
+  return -2000
+}
+
+function compareCampaignAds(
+  left: CampaignAdRow,
+  right: CampaignAdRow,
+  campaign: Campaign,
+  sortMode: CampaignCreativeSortMode,
+) {
+  if (sortMode === 'results' && right.results !== left.results) {
+    return right.results - left.results
+  }
+  if (sortMode === 'spend' && right.spend !== left.spend) {
+    return right.spend - left.spend
+  }
+  if (sortMode === 'cost') {
+    if (left.costPerResult !== null && right.costPerResult !== null && left.costPerResult !== right.costPerResult) {
+      return left.costPerResult - right.costPerResult
+    }
+    if (left.costPerResult !== null && right.costPerResult === null) {
+      return -1
+    }
+    if (left.costPerResult === null && right.costPerResult !== null) {
+      return 1
+    }
+  }
+  if (sortMode === 'efficiency') {
+    const leftScore = campaignCreativeEfficiencyScore(left, campaign)
+    const rightScore = campaignCreativeEfficiencyScore(right, campaign)
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore
+    }
+  }
+  if (left.costPerResult !== null && right.costPerResult !== null && left.costPerResult !== right.costPerResult) {
+    return left.costPerResult - right.costPerResult
+  }
+  if (left.costPerResult !== null && right.costPerResult === null) {
+    return -1
+  }
+  if (left.costPerResult === null && right.costPerResult !== null) {
+    return 1
+  }
+  if (right.results !== left.results) {
+    return right.results - left.results
+  }
+  if (right.spend !== left.spend) {
+    return right.spend - left.spend
+  }
+  return left.name.localeCompare(right.name, locale.value)
+}
+
+function matchesCampaignCreativeQuickFilter(
+  ad: CampaignAdRow,
+  campaign: Campaign,
+  filterMode: CampaignCreativeQuickFilter,
+  bestAdId: string,
+) {
+  if (filterMode === 'all') {
+    return true
+  }
+  if (filterMode === 'best') {
+    return ad.id === bestAdId
+  }
+  const deliveryTone = statusTone(creativeStatusValue(ad, campaign))
+  if (filterMode === 'active') {
+    return deliveryTone === 'active'
+  }
+  if (filterMode === 'paused') {
+    return deliveryTone === 'paused'
+  }
+  if (filterMode === 'video') {
+    return ['video', 'vertical'].includes(creativePreviewKind(ad.format))
+  }
+  if (filterMode === 'image') {
+    return creativePreviewKind(ad.format) === 'image'
+  }
+  if (filterMode === 'carousel') {
+    return creativePreviewKind(ad.format) === 'carousel'
+  }
+  return ['warning', 'spend_only', 'no_data'].includes(creativePerformanceKey(ad, campaign))
+}
+
+function buildCreativeAiQuestion(ad: CampaignAdRow, campaign: Campaign) {
+  const parts = [`${copy.value.attentionAiQuestionLead} ${ad.name}.`, creativePerformanceSummary(ad, campaign)]
+  const contextParts = [
+    ad.groupName ? `${copy.value.campaignCreativeAudienceLabel}: ${ad.groupName}` : '',
+    ad.format ? `${copy.value.campaignAdGroupFormatsLabel}: ${ad.format}` : '',
+    ad.placementSummary ? `${copy.value.campaignCreativePlacementsLabel}: ${ad.placementSummary}` : '',
+  ].filter(Boolean)
+  if (contextParts.length > 0) {
+    parts.push(`${copy.value.chatContextLabel}: ${contextParts.join(' · ')}.`)
+  }
+  parts.push(copy.value.attentionAiQuestionFollowup)
+  return parts.join(' ')
+}
+
 function toggleSettingsNotification(preference: SettingsNotificationPreference) {
   settingsNotificationPreferences.value[preference] = !settingsNotificationPreferences.value[preference]
 }
@@ -4628,6 +7101,338 @@ function toggleSettingsNotification(preference: SettingsNotificationPreference) 
 function resultKindLabel(kind: string) {
   const normalized = kind as keyof (typeof translations)['ru']['resultKinds']
   return copy.value.resultKinds[normalized] ?? kind
+}
+
+function fillTemplate(template: string, values: Record<string, string>) {
+  return Object.entries(values).reduce((acc, [key, value]) => acc.split(`{${key}}`).join(value), template)
+}
+
+function normalizeCampaignObjective(campaign: Campaign) {
+  return `${campaign.objective || ''} ${campaign.primary_result_kind || ''}`.trim().toLowerCase()
+}
+
+function campaignGoalSummary(campaign: Campaign) {
+  const normalized = normalizeCampaignObjective(campaign)
+  if (normalized.includes('whatsapp')) {
+    return copy.value.campaignGoalSummaryWhatsApp
+  }
+  if (normalized.includes('message') || normalized.includes('messag') || normalized.includes('chat')) {
+    return copy.value.campaignGoalSummaryMessages
+  }
+  if (normalized.includes('lead')) {
+    return copy.value.campaignGoalSummaryLeads
+  }
+  if (normalized.includes('sale') || normalized.includes('purchase') || normalized.includes('conversion')) {
+    return copy.value.campaignGoalSummarySales
+  }
+  if (normalized.includes('traffic') || normalized.includes('visit') || normalized.includes('click')) {
+    return copy.value.campaignGoalSummaryTraffic
+  }
+  if (normalized.includes('awareness') || normalized.includes('reach')) {
+    return copy.value.campaignGoalSummaryAwareness
+  }
+  return copy.value.campaignGoalSummaryFallback
+}
+
+function campaignGoalHeadline(campaign: Campaign) {
+  return campaignGoalSummary(campaign).replace(/[.!?]+$/u, '')
+}
+
+function humanizeCampaignTargetingAge(value: string) {
+  const normalized = trimText(value)
+  const upToMatch = normalized.match(/^up to\s+(\d+)$/iu)
+  if (upToMatch) {
+    return fillTemplate(copy.value.campaignAdGroupAgeUpTo, { value: upToMatch[1] })
+  }
+  return normalized
+}
+
+function humanizeCampaignTargetingGender(value: string) {
+  const normalized = trimText(value)
+  if (!normalized) {
+    return ''
+  }
+
+  const lower = normalized.toLowerCase()
+  const hasMale = /\b(male|men|man)\b|муж|ер/iu.test(lower)
+  const hasFemale = /\b(female|women|woman)\b|жен|әйел/iu.test(lower)
+
+  if (hasMale && hasFemale) {
+    return copy.value.campaignAdGroupGenderAll
+  }
+  if (hasMale) {
+    return copy.value.campaignAdGroupGenderMale
+  }
+  if (hasFemale) {
+    return copy.value.campaignAdGroupGenderFemale
+  }
+  return normalized
+}
+
+function formatTargetingToken(value: string) {
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function humanizeCampaignPlacement(value: string) {
+  const platformLabels: Record<string, string> = {
+    facebook: 'Facebook',
+    instagram: 'Instagram',
+    messenger: 'Messenger',
+    audience_network: 'Audience Network',
+    whatsapp: 'WhatsApp',
+  }
+
+  const slotLabels: Record<string, string> = {
+    feed: 'Feed',
+    stories: 'Stories',
+    story: 'Stories',
+    reels: 'Reels',
+    reel: 'Reels',
+    marketplace: 'Marketplace',
+    explore: 'Explore',
+    search: 'Search',
+    right_hand_column: 'Right column',
+    instream_video: 'In-stream video',
+    video_feeds: 'Video feed',
+    in_article: 'In-article',
+    profile_feed: 'Profile feed',
+    inbox: 'Inbox',
+  }
+
+  const parts = splitTargetingList(value).map((item) => {
+    const [platformKey, slotKey] = item.split(':')
+    if (!slotKey) {
+      return platformLabels[platformKey] || formatTargetingToken(platformKey)
+    }
+    const platform = platformLabels[platformKey] || formatTargetingToken(platformKey)
+    const slot = slotLabels[slotKey] || formatTargetingToken(slotKey)
+    return [platform, slot].filter(Boolean).join(' ')
+  })
+
+  return dedupeTargetingValues(parts).join(', ')
+}
+
+function humanizeCampaignDevice(value: string) {
+  const deviceLabels: Record<string, string> = {
+    mobile: 'Mobile',
+    desktop: 'Desktop',
+    connected_tv: 'Connected TV',
+  }
+
+  return dedupeTargetingValues(splitTargetingList(value).map((item) => deviceLabels[item] || formatTargetingToken(item))).join(', ')
+}
+
+function parseCampaignAudienceSegments(value: string) {
+  const normalized = trimText(value)
+  const includedMatch = normalized.match(/incl:(.*?)(?=\s+excl:|$)/iu)
+  const excludedMatch = normalized.match(/excl:(.*)$/iu)
+  const included = splitTargetingList(includedMatch?.[1] || '')
+  const excluded = splitTargetingList(excludedMatch?.[1] || '')
+  if (included.length === 0 && excluded.length === 0 && normalized) {
+    return {
+      included: [normalized],
+      excluded: [],
+    }
+  }
+  return { included, excluded }
+}
+
+function campaignAdGroupHasStructuredTargeting(group: CampaignAdGroupRow) {
+  return Boolean(
+    trimText(group.targeting.geo) ||
+      trimText(group.targeting.age) ||
+      trimText(group.targeting.gender) ||
+      trimText(group.targeting.audience) ||
+      trimText(group.targeting.signal) ||
+      trimText(group.targeting.placement) ||
+      trimText(group.targeting.device),
+  )
+}
+
+function campaignAdGroupAudienceType(group: CampaignAdGroupRow) {
+  if (!campaignAdGroupHasStructuredTargeting(group)) {
+    return ''
+  }
+
+  const audienceValue = trimText(group.targeting.audience)
+  const segments = parseCampaignAudienceSegments(audienceValue)
+  const audienceText = `${audienceValue} ${group.name}`.trim()
+  if (LOOKALIKE_AUDIENCE_PATTERN.test(audienceText)) {
+    return copy.value.campaignAdGroupAudienceTypeLookalike
+  }
+  if ((segments.included.length > 0 || segments.excluded.length > 0) && RETARGETING_AUDIENCE_PATTERN.test(audienceText)) {
+    return copy.value.campaignAdGroupAudienceTypeRetargeting
+  }
+  if (segments.included.length > 0 || segments.excluded.length > 0) {
+    return copy.value.campaignAdGroupAudienceTypeCustom
+  }
+  if (trimText(group.targeting.signal)) {
+    return copy.value.campaignAdGroupAudienceTypeInterest
+  }
+  return copy.value.campaignAdGroupAudienceTypeBroad
+}
+
+function campaignAdGroupAudienceSettingValue(group: CampaignAdGroupRow) {
+  const audienceValue = trimText(group.targeting.audience)
+  if (!audienceValue) {
+    return ''
+  }
+
+  const { included, excluded } = parseCampaignAudienceSegments(audienceValue)
+  if (included.length === 0 && excluded.length === 0) {
+    return audienceValue
+  }
+
+  const parts: string[] = []
+  if (included.length > 0) {
+    parts.push(`${copy.value.campaignAdGroupAudienceIncludes}: ${included.join(', ')}`)
+  }
+  if (excluded.length > 0) {
+    parts.push(`${copy.value.campaignAdGroupAudienceExcludes}: ${excluded.join(', ')}`)
+  }
+  return parts.join(' | ')
+}
+
+function campaignAdGroupSignalValue(group: CampaignAdGroupRow) {
+  return dedupeTargetingValues(splitTargetingList(group.targeting.signal)).join(', ')
+}
+
+function campaignAdGroupPrimarySettings(group: CampaignAdGroupRow): CampaignAdGroupSettingView[] {
+  const settings: CampaignAdGroupSettingView[] = []
+  const audienceType = campaignAdGroupAudienceType(group)
+  const geo = trimText(group.targeting.geo)
+  const age = humanizeCampaignTargetingAge(group.targeting.age)
+  const gender = humanizeCampaignTargetingGender(group.targeting.gender)
+
+  if (geo) {
+    settings.push({ id: 'geo', label: copy.value.campaignAdGroupSettingGeo, value: geo })
+  }
+  if (age) {
+    settings.push({ id: 'age', label: copy.value.campaignAdGroupSettingAge, value: age })
+  }
+  if (gender) {
+    settings.push({ id: 'gender', label: copy.value.campaignAdGroupSettingGender, value: gender })
+  }
+  if (audienceType) {
+    settings.push({ id: 'type', label: copy.value.campaignAdGroupSettingType, value: audienceType })
+  }
+  return settings.slice(0, 4)
+}
+
+function campaignAdGroupDetailedSettings(group: CampaignAdGroupRow): CampaignAdGroupSettingView[] {
+  const settings = [...campaignAdGroupPrimarySettings(group)]
+  const audienceValue = campaignAdGroupAudienceSettingValue(group)
+  const signalValue = campaignAdGroupSignalValue(group)
+  const placementValue = humanizeCampaignPlacement(group.targeting.placement)
+  const deviceValue = humanizeCampaignDevice(group.targeting.device)
+
+  if (audienceValue) {
+    settings.push({ id: 'audience', label: copy.value.campaignAdGroupSettingAudience, value: audienceValue })
+  }
+  if (signalValue) {
+    settings.push({ id: 'signal', label: copy.value.campaignAdGroupSettingSignal, value: signalValue })
+  }
+  if (placementValue) {
+    settings.push({ id: 'placements', label: copy.value.campaignAdGroupSettingPlacements, value: placementValue })
+  }
+  if (deviceValue) {
+    settings.push({ id: 'devices', label: copy.value.campaignAdGroupSettingDevices, value: deviceValue })
+  }
+
+  return settings
+}
+
+function campaignAdGroupTargetingSummary(group: CampaignAdGroupRow) {
+  const highlightedSettings = campaignAdGroupPrimarySettings(group).map((setting) => setting.value)
+  if (highlightedSettings.length > 0) {
+    return highlightedSettings.join(' | ')
+  }
+
+  const summary = trimText(group.targetingSummary)
+  if (summary) {
+    return summary.replace(/\s*;\s*/gu, ' | ')
+  }
+  return copy.value.campaignAdGroupLead
+}
+
+function campaignAdGroupHeadlineLead(group: CampaignAdGroupRow) {
+  return campaignAdGroupAudienceSettingValue(group) || campaignAdGroupTargetingSummary(group)
+}
+
+function campaignAdGroupFormatSummary(group: CampaignAdGroupRow) {
+  return buildCampaignAdGroupContext(group.ads)
+}
+
+function campaignAdGroupAdsCountLabel(count: number) {
+  return `${formatCampaignAdsCount(count)} ${copy.value.campaignAdGroupAdsInside}`
+}
+
+function campaignAdGroupPerformanceTone(group: CampaignAdGroupRow, campaign: Campaign): SurfaceMetricCard['deltaTone'] {
+  if (group.results <= 0 && group.spend > 0) {
+    return 'warning'
+  }
+
+  const campaignCostPerResult = Number(campaign.metrics.cost_per_result.current || 0)
+  if (group.costPerResult !== null && campaignCostPerResult > 0) {
+    const delta = ((group.costPerResult - campaignCostPerResult) / campaignCostPerResult) * 100
+    if (delta <= -8) {
+      return 'good'
+    }
+    if (delta >= 8) {
+      return 'warning'
+    }
+    return 'neutral'
+  }
+
+  if (group.results > 0) {
+    return 'good'
+  }
+
+  return 'neutral'
+}
+
+function campaignAdGroupPerformanceLabel(group: CampaignAdGroupRow, campaign: Campaign) {
+  if (group.results <= 0 && group.spend > 0) {
+    return copy.value.campaignAdGroupPerformanceSpendOnly
+  }
+  if (campaignAdGroupPerformanceTone(group, campaign) === 'good') {
+    return copy.value.campaignAdGroupPerformanceStrong
+  }
+  if (campaignAdGroupPerformanceTone(group, campaign) === 'warning') {
+    return copy.value.campaignAdGroupPerformanceWarning
+  }
+  if (group.results > 0 || group.spend > 0) {
+    return copy.value.campaignAdGroupPerformanceStable
+  }
+  return copy.value.campaignAdGroupPerformanceNoData
+}
+
+function campaignAdGroupPerformanceNote(group: CampaignAdGroupRow, campaign: Campaign) {
+  if (group.results <= 0 && group.spend > 0) {
+    return copy.value.campaignAdGroupComparisonSpendOnly
+  }
+
+  const campaignCostPerResult = Number(campaign.metrics.cost_per_result.current || 0)
+  if (group.costPerResult !== null && campaignCostPerResult > 0) {
+    const delta = ((group.costPerResult - campaignCostPerResult) / campaignCostPerResult) * 100
+    const deltaAbs = Math.round(Math.abs(delta))
+    if (deltaAbs < 8) {
+      return copy.value.campaignAdGroupComparisonStable
+    }
+    return fillTemplate(
+      delta < 0 ? copy.value.campaignAdGroupComparisonBetter : copy.value.campaignAdGroupComparisonWorse,
+      { value: String(deltaAbs) },
+    )
+  }
+
+  if (group.results > 0 || group.spend > 0) {
+    return copy.value.campaignAdGroupComparisonStable
+  }
+  return copy.value.campaignAdGroupComparisonNoData
 }
 
 function formatCampaignAdGroupsCount(count: number) {
@@ -4666,6 +7471,23 @@ function formatCampaignAdsCount(count: number) {
     return `${count} объявления`
   }
   return `${count} объявлений`
+}
+
+function formatCampaignAdsActionCount(count: number) {
+  if (locale.value === 'en') {
+    return `${count} ${count === 1 ? 'ad' : 'ads'}`
+  }
+  if (locale.value === 'kz') {
+    return `${count} жарнаманы`
+  }
+  return formatCampaignAdsCount(count)
+}
+
+function campaignAdGroupActionLabel(count: number) {
+  if (count <= 0) {
+    return copy.value.campaignAdGroupViewAll
+  }
+  return copy.value.campaignAdGroupAction.replace('{count}', formatCampaignAdsActionCount(count))
 }
 
 function showMoreAdsLabel(hiddenCount: number) {
@@ -4715,6 +7537,39 @@ function creativeTypeLabel(creative: Creative) {
 
 function creativeTitle(creative: Creative) {
   return creative.name?.trim() || creativeTypeLabel(creative)
+}
+
+function formatCreativeCallToAction(value: string) {
+  return value
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
+function creativeDestinationHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+function creativeSourceLabel(url: string) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    if (host.includes('instagram.com')) {
+      return 'Instagram'
+    }
+    if (host.includes('facebook.com')) {
+      return 'Facebook'
+    }
+    return host
+  } catch {
+    return url
+  }
 }
 
 function creativePreviewKind(format: string) {
@@ -4777,8 +7632,32 @@ watch(useClientCredentials, (enabled) => {
 })
 
 watch(selectedCampaignId, () => {
-  campaignExpandedGroupIds.value = []
+  resetCampaignWorkspaceSelection()
 })
+
+watch(
+  () => [workspaceMode.value, attentionAlerts.value, activeAttentionAlertId.value] as const,
+  ([mode, alerts, activeId]) => {
+    if (mode !== 'attention') {
+      if (activeAttentionAlertId.value) {
+        activeAttentionAlertId.value = ''
+      }
+      return
+    }
+
+    if (!alerts.length) {
+      if (activeAttentionAlertId.value) {
+        activeAttentionAlertId.value = ''
+      }
+      return
+    }
+
+    if (!activeId || !alerts.find((alert) => alert.id === activeId)) {
+      activeAttentionAlertId.value = alerts[0]?.id ?? ''
+    }
+  },
+  { immediate: true },
+)
 
 watch(accountSwitcherOpen, async (isOpen) => {
   if (!isOpen) {
@@ -4793,9 +7672,37 @@ watch(autoVerdictRequestKey, (nextKey, previousKey) => {
     return
   }
 
+  if (previousKey) {
+    resetChatState()
+  }
   resetAutoVerdict()
   triggerAutoVerdictLoad()
 })
+
+watch(
+  () => reportContextKey.value,
+  () => {
+    overviewAdditionalMetricsOpen.value = false
+    campaignAdditionalMetricsOpen.value = false
+  },
+)
+
+watch(
+  () => [
+    selectedCampaignPanel.value,
+    selectedCampaignId.value,
+    campaignCreativeFilterGroupId.value,
+    campaignCreativeFilterMode.value,
+    campaignCreativeSortMode.value,
+    filteredCampaignAds.value.map((ad) => ad.id).join(':'),
+  ],
+  () => {
+    if (selectedCampaignPanel.value !== 'creatives') {
+      return
+    }
+    syncSelectedCampaignCreative()
+  },
+)
 
 watch(
   () => [currentView.value, locale.value, isAuthenticated.value, workspaceScreenTitle.value],
@@ -5139,6 +8046,24 @@ watch(currentView, (view) => {
             <span v-if="!sidebarCollapsed">{{ copy.sidebarOverview }}</span>
             <span v-else class="nav-tooltip">{{ copy.sidebarOverview }}</span>
           </button>
+
+          <button
+            type="button"
+            class="overview-nav attention-nav"
+            :class="{ active: workspaceMode === 'attention', 'icon-only': sidebarCollapsed }"
+            @click="openAttentionPage"
+          >
+            <svg class="overview-nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 9v4m0 4h.01M10.29 3.86l-7.47 12.94A2 2 0 004.55 20h14.9a2 2 0 001.73-3.2L13.71 3.86a2 2 0 00-3.42 0z"
+              />
+            </svg>
+            <span v-if="!sidebarCollapsed">{{ copy.attentionPageTitle }}</span>
+            <span v-else class="nav-tooltip">{{ copy.attentionPageTitle }}</span>
+            <small v-if="attentionAlerts.length && !sidebarCollapsed" class="nav-count-pill">{{ attentionAlerts.length }}</small>
+          </button>
         </section>
 
         <div class="rail-divider"></div>
@@ -5239,6 +8164,27 @@ watch(currentView, (view) => {
           <button
             type="button"
             class="overview-nav"
+            :class="{ active: aiPanelOpen, 'icon-only': sidebarCollapsed }"
+            :aria-pressed="aiPanelOpen"
+            :aria-label="aiPanelOpen ? copy.closeAiPanel : copy.openAiPanel"
+            :title="aiPanelOpen ? copy.closeAiPanel : copy.openAiPanel"
+            @click="toggleAiPanel"
+          >
+            <svg class="overview-nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M8 10h8m-8 4h5m-6 7l-4 1 1-4a9 9 0 1118-4c0 4.971-4.029 9-9 9a8.96 8.96 0 01-4.252-1.064L4 22z"
+              />
+            </svg>
+            <span v-if="!sidebarCollapsed">{{ copy.aiConsultant }}</span>
+            <span v-else class="nav-tooltip">{{ copy.aiConsultant }}</span>
+            <span v-if="hasAutoVerdict && !aiPanelOpen" class="ai-nav-indicator" aria-hidden="true"></span>
+          </button>
+
+          <button
+            type="button"
+            class="overview-nav"
             :class="{ active: workspaceMode === 'accounts', 'icon-only': sidebarCollapsed }"
             @click="openAccountsPage"
           >
@@ -5312,8 +8258,15 @@ watch(currentView, (view) => {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
               </svg>
             </button>
+          </div>
 
-            <div v-if="accountSwitcherOpen" class="account-switcher-menu" :style="accountSwitcherMenuStyle">
+          <Teleport to="body">
+            <div
+              v-if="accountSwitcherOpen"
+              ref="accountSwitcherMenuRef"
+              class="account-switcher-menu account-switcher-menu-portal"
+              :style="accountSwitcherMenuStyle"
+            >
               <p class="account-switcher-eyebrow">{{ copy.yourAccounts }}</p>
               <div v-if="accountPageCards.length === 0" class="empty-note">
                 {{ copy.accountSwitcherEmpty }}
@@ -5367,14 +8320,26 @@ watch(currentView, (view) => {
                 </button>
               </div>
             </div>
-          </div>
+          </Teleport>
 
           <div class="toolbar workspace-toolbar">
-            <button v-if="!aiPanelOpen" type="button" class="ghost-button ai-reopen-button" @click="openAiPanel">
-              <svg class="ai-reopen-icon" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
-              </svg>
-              {{ copy.askAi }}
+            <button
+              v-if="!aiPanelOpen"
+              type="button"
+              class="ghost-button ai-reopen-button"
+              :title="hasAutoVerdict ? copy.openAiVerdict : copy.openAiPanel"
+              @click="openAiPanel"
+            >
+              <span class="ai-reopen-icon-wrap">
+                <svg class="ai-reopen-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                </svg>
+                <span v-if="hasAutoVerdict" class="ai-reopen-icon-dot" aria-hidden="true"></span>
+              </span>
+              <span class="ai-reopen-copy">
+                <strong>{{ copy.askAi }}</strong>
+                <small>{{ aiEntryMetaLine }}</small>
+              </span>
             </button>
             <div v-if="!aiPanelOpen" class="workspace-toolbar-divider" aria-hidden="true"></div>
             <div v-if="user" class="workspace-user">
@@ -5781,63 +8746,182 @@ watch(currentView, (view) => {
                 </p>
               </div>
 
-              <div class="dashboard-period-switcher" :aria-label="copy.days">
-                <button
-                  v-for="days in overviewPeriodOptions"
-                  :key="days"
-                  type="button"
-                  class="dashboard-period-button"
-                  :class="{ active: reportDays === days }"
-                  @click="selectDays(days)"
-                >
-                  {{ copy.dayOptions[days] }}
-                </button>
+              <div class="dashboard-period-shell">
+                <div class="dashboard-period-toolbar">
+                  <div class="dashboard-period-switcher" :aria-busy="reportLoading ? 'true' : 'false'" :aria-label="copy.days">
+                    <button
+                      v-for="option in reportPeriodOptions"
+                      :key="option.value"
+                      type="button"
+                      class="dashboard-period-button"
+                      :class="{ active: reportPeriodPreset === option.value }"
+                      :disabled="reportLoading"
+                      @click="selectPeriodPreset(option.value)"
+                    >
+                      {{ option.label }}
+                    </button>
+                    <button
+                      type="button"
+                      class="dashboard-period-button"
+                      :class="{ active: isCustomPeriodActive || reportCustomEditorOpen }"
+                      :disabled="reportLoading"
+                      @click="toggleCustomPeriodEditor"
+                    >
+                      {{ copy.periodCustom }}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="dashboard-compare-button"
+                    :class="{ active: reportComparisonEnabled }"
+                    :disabled="reportLoading"
+                    @click="togglePeriodComparison"
+                  >
+                    {{ reportComparisonEnabled ? copy.periodCompareOn : copy.periodCompareOff }}
+                  </button>
+                </div>
+                <div v-if="reportCustomEditorOpen" class="dashboard-custom-period">
+                  <label class="dashboard-custom-field">
+                    <span>{{ copy.periodFrom }}</span>
+                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
+                  </label>
+                  <label class="dashboard-custom-field">
+                    <span>{{ copy.periodUntil }}</span>
+                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
+                  </label>
+                  <button type="button" class="ghost-button compact-button dashboard-custom-apply" :disabled="reportLoading" @click="applyCustomPeriod">
+                    {{ copy.periodApply }}
+                  </button>
+                </div>
+                <p v-if="reportCustomError" class="dashboard-period-status is-error">{{ reportCustomError }}</p>
+                <p v-else-if="reportCustomEditorOpen && customPeriodDraftRangeLabel" class="dashboard-period-status">
+                  {{ customPeriodDraftRangeLabel }}
+                </p>
+                <p v-else-if="reportLoading" class="dashboard-period-status">{{ copy.loadingReport }}</p>
               </div>
             </section>
 
-            <section class="ai-surface verdict-surface reference-surface reference-verdict-surface">
-              <div class="verdict-head">
-                <div class="verdict-label-row">
-                  <span class="verdict-icon-chip" aria-hidden="true">
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"
-                      />
+            <section
+              v-if="overviewStatusCard"
+              class="reference-surface overview-status-band"
+              :class="[`tone-${overviewStatusCard.tone}`, { 'surface-refreshing': reportLoading }]"
+            >
+              <div class="overview-status-head">
+                <div class="overview-status-copy">
+                  <p class="chat-context-label">{{ copy.overviewStatusLabel }}</p>
+                  <strong>{{ overviewStatusCard.title }}</strong>
+                </div>
+                <small class="overview-status-range">{{ overviewCurrentRangeLabel }}</small>
+              </div>
+              <p class="overview-status-note">{{ overviewStatusCard.note }}</p>
+            </section>
+
+            <section v-if="showInlineAiEntryCard" class="reference-surface ai-entry-card">
+              <div class="ai-entry-card-copy">
+                <div class="ai-entry-card-head">
+                  <span class="ai-entry-card-icon" aria-hidden="true">
+                    <svg fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
                     </svg>
                   </span>
-                  <div class="verdict-head-copy">
-                    <span>{{ copy.aiVerdictCardTitle }}</span>
-                    <p>{{ copy.aiVerdictHint }}</p>
+                  <div class="ai-entry-card-heading">
+                    <p class="eyebrow">{{ copy.aiConsultant }}</p>
+                    <h3>{{ copy.aiEntryCardTitle }}</h3>
                   </div>
                 </div>
-                <span class="verdict-status-pill" :class="overviewVerdictTone">{{ verdictStatusLabel(overviewVerdictTone) }}</span>
+                <p class="ai-entry-card-context">{{ aiEntryCardContext }}</p>
+                <div class="ai-entry-card-badges">
+                  <span class="ai-entry-card-badge">{{ copy.aiEntryContextReady }}</span>
+                  <span v-if="hasAutoVerdict" class="ai-entry-card-badge is-highlight">{{ copy.aiEntryNewVerdict }}</span>
+                </div>
               </div>
-              <p v-if="verdictLoading" class="empty-note">{{ copy.loadingVerdict }}</p>
-              <div v-else class="verdict-body">
-                <article class="verdict-message" :class="{ 'verdict-message-empty': !autoVerdictDisplay }">
-                  <div v-if="autoVerdictDisplay" class="verdict-text markdown-body" v-html="renderMarkdown(autoVerdictDisplay)"></div>
-                  <div v-else class="verdict-text markdown-body">—</div>
-                </article>
-              </div>
+              <button
+                type="button"
+                class="primary-button compact ai-entry-card-button"
+                :title="hasAutoVerdict ? copy.openAiVerdict : copy.openAiPanel"
+                @click="openAiPanel"
+              >
+                <svg class="ai-entry-card-button-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                </svg>
+                {{ hasAutoVerdict ? copy.openAiVerdict : copy.askAi }}
+              </button>
             </section>
 
-            <section class="metric-grid reference-metric-grid">
-              <article v-for="item in overviewMetrics" :key="item.key" class="metric-tile surface-metric-card">
+            <section class="metric-grid reference-metric-grid" :aria-busy="reportLoading ? 'true' : 'false'">
+              <article
+                v-for="item in overviewMetrics"
+                :key="item.key"
+                class="metric-tile surface-metric-card"
+                :class="{ 'surface-refreshing': reportLoading }"
+              >
                 <div class="surface-metric-head">
                   <p>{{ item.label }}</p>
-                  <small class="surface-delta-pill" :class="item.deltaTone">{{ item.deltaLabel }}</small>
+                  <small v-if="reportComparisonEnabled" class="surface-delta-pill" :class="item.deltaTone">{{ item.deltaLabel }}</small>
                 </div>
                 <strong>{{ item.value }}</strong>
                 <div class="surface-metric-foot">
-                  <span>{{ metricSurfaceHint(item.key, report.summary.metrics[item.key].delta_pct) }}</span>
+                  <span>
+                    {{
+                      reportComparisonEnabled
+                        ? metricSurfaceHint(item.key, report.summary.metrics[item.key].delta_pct)
+                        : copy.metricCopy[item.key][1]
+                    }}
+                  </span>
                   <small>{{ item.subtitle }}</small>
                 </div>
               </article>
             </section>
 
-            <section class="reference-surface trend-surface">
+            <section
+              v-if="overviewAdditionalMetrics.length"
+              class="reference-surface additional-metrics-panel"
+              :class="{ open: overviewAdditionalMetricsOpen, 'surface-refreshing': reportLoading }"
+            >
+              <button
+                type="button"
+                class="additional-metrics-toggle"
+                :aria-expanded="overviewAdditionalMetricsOpen"
+                @click="toggleOverviewAdditionalMetrics"
+              >
+                <div class="additional-metrics-toggle-copy">
+                  <p class="eyebrow">{{ copy.additionalMetricsTitle }}</p>
+                  <strong>{{ copy.additionalMetricsLead }}</strong>
+                  <span>{{ copy.additionalMetricsSupport }}</span>
+                </div>
+                <span class="additional-metrics-toggle-pill">
+                  {{ overviewAdditionalMetricsOpen ? copy.additionalMetricsClose : copy.additionalMetricsOpen }}
+                </span>
+                <svg class="section-toggle-icon" :class="{ open: overviewAdditionalMetricsOpen }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              <div v-if="overviewAdditionalMetricsOpen" class="metric-grid additional-metrics-grid">
+                <article v-for="item in overviewAdditionalMetrics" :key="`overview-${item.key}`" class="metric-tile surface-metric-card secondary">
+                  <div class="surface-metric-head">
+                    <p>{{ item.label }}</p>
+                    <small v-if="reportComparisonEnabled" class="surface-delta-pill" :class="item.deltaTone">{{ item.deltaLabel }}</small>
+                  </div>
+                  <strong>{{ item.value }}</strong>
+                  <div class="surface-metric-foot compact">
+                    <span>
+                      {{
+                        reportComparisonEnabled
+                          ? metricSurfaceHint(item.key, report.summary.metrics[item.key].delta_pct)
+                          : copy.metricCopy[item.key][1]
+                      }}
+                    </span>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section
+              class="reference-surface trend-surface"
+              :class="{ 'surface-refreshing': reportLoading }"
+              :aria-busy="reportLoading ? 'true' : 'false'"
+            >
               <div class="trend-surface-head">
                 <div>
                   <h3>{{ copy.trendTitle }}</h3>
@@ -5883,6 +8967,178 @@ watch(currentView, (view) => {
 
           </template>
 
+          <template v-else-if="workspaceMode === 'attention'">
+            <section class="reference-page-head attention-page-head">
+              <div class="reference-heading">
+                <div class="reference-kicker">
+                  <span class="reference-kicker-bar"></span>
+                  <p class="eyebrow">{{ currentProviderOption.label }} · {{ currentProviderOption.subtitle }}</p>
+                </div>
+                <h2>{{ copy.attentionPageTitle }}</h2>
+                <p class="muted dashboard-hero-copy">{{ copy.attentionPageLead }}</p>
+              </div>
+
+              <div class="dashboard-period-shell">
+                <div class="dashboard-period-toolbar">
+                  <div class="dashboard-period-switcher" :aria-busy="reportLoading ? 'true' : 'false'" :aria-label="copy.days">
+                    <button
+                      v-for="option in reportPeriodOptions"
+                      :key="option.value"
+                      type="button"
+                      class="dashboard-period-button"
+                      :class="{ active: reportPeriodPreset === option.value }"
+                      :disabled="reportLoading"
+                      @click="selectPeriodPreset(option.value)"
+                    >
+                      {{ option.label }}
+                    </button>
+                    <button
+                      type="button"
+                      class="dashboard-period-button"
+                      :class="{ active: isCustomPeriodActive || reportCustomEditorOpen }"
+                      :disabled="reportLoading"
+                      @click="toggleCustomPeriodEditor"
+                    >
+                      {{ copy.periodCustom }}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    class="dashboard-compare-button"
+                    :class="{ active: reportComparisonEnabled }"
+                    :disabled="reportLoading"
+                    @click="togglePeriodComparison"
+                  >
+                    {{ reportComparisonEnabled ? copy.periodCompareOn : copy.periodCompareOff }}
+                  </button>
+                </div>
+                <div v-if="reportCustomEditorOpen" class="dashboard-custom-period">
+                  <label class="dashboard-custom-field">
+                    <span>{{ copy.periodFrom }}</span>
+                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
+                  </label>
+                  <label class="dashboard-custom-field">
+                    <span>{{ copy.periodUntil }}</span>
+                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
+                  </label>
+                  <button type="button" class="ghost-button compact-button dashboard-custom-apply" :disabled="reportLoading" @click="applyCustomPeriod">
+                    {{ copy.periodApply }}
+                  </button>
+                </div>
+                <p v-if="reportCustomError" class="dashboard-period-status is-error">{{ reportCustomError }}</p>
+                <p v-else-if="reportCustomEditorOpen && customPeriodDraftRangeLabel" class="dashboard-period-status">
+                  {{ customPeriodDraftRangeLabel }}
+                </p>
+                <p v-else-if="reportLoading" class="dashboard-period-status">{{ copy.loadingReport }}</p>
+              </div>
+            </section>
+
+            <section class="summary-band attention-summary-band">
+              <article class="summary-chip attention-summary-chip">
+                <span>{{ copy.attentionSignalsLabel }}</span>
+                <strong>{{ attentionAlerts.length }}</strong>
+                <small>{{ copy.days }}: {{ overviewCurrentRangeLabel }}</small>
+              </article>
+              <article class="summary-chip attention-summary-chip critical">
+                <span>{{ copy.attentionCriticalCount }}</span>
+                <strong>{{ attentionCriticalCount }}</strong>
+                <small>{{ copy.attentionPriorityCritical }}</small>
+              </article>
+              <article class="summary-chip attention-summary-chip highlight">
+                <span>{{ copy.attentionTopIssue }}</span>
+                <strong>{{ attentionTopAlert ? attentionTopAlert.title : copy.attentionEmptyTitle }}</strong>
+                <small>{{ attentionTopAlert ? attentionTopAlert.reason : copy.attentionEmptyBody }}</small>
+              </article>
+            </section>
+
+            <section v-if="showInlineAiEntryCard" class="reference-surface ai-entry-card">
+              <div class="ai-entry-card-copy">
+                <div class="ai-entry-card-head">
+                  <span class="ai-entry-card-icon" aria-hidden="true">
+                    <svg fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                    </svg>
+                  </span>
+                  <div class="ai-entry-card-heading">
+                    <p class="eyebrow">{{ copy.aiConsultant }}</p>
+                    <h3>{{ copy.aiEntryCardTitle }}</h3>
+                  </div>
+                </div>
+                <p class="ai-entry-card-context">{{ aiEntryCardContext }}</p>
+                <div class="ai-entry-card-badges">
+                  <span class="ai-entry-card-badge">{{ copy.aiEntryContextReady }}</span>
+                  <span v-if="hasAutoVerdict" class="ai-entry-card-badge is-highlight">{{ copy.aiEntryNewVerdict }}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="primary-button compact ai-entry-card-button"
+                :title="hasAutoVerdict ? copy.openAiVerdict : copy.openAiPanel"
+                @click="openAiPanel"
+              >
+                <svg class="ai-entry-card-button-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                </svg>
+                {{ hasAutoVerdict ? copy.openAiVerdict : copy.askAi }}
+              </button>
+            </section>
+
+            <section v-if="attentionAlerts.length" class="attention-stage">
+              <article
+                v-for="alert in attentionAlerts"
+                :key="alert.id"
+                class="reference-surface attention-card"
+                :class="[alert.severity, { active: attentionActiveAlert?.id === alert.id }]"
+              >
+                <div class="attention-card-head">
+                  <div class="attention-card-title-block">
+                    <div class="attention-card-tags">
+                      <span class="attention-severity-pill" :class="alert.severity">{{ attentionSeverityLabel(alert.severity) }}</span>
+                      <span class="attention-scope-pill">{{ attentionScopeLabel(alert.scope) }}</span>
+                    </div>
+                    <h3>{{ alert.title }}</h3>
+                    <p>{{ alert.reason }}</p>
+                  </div>
+                </div>
+
+                <div class="attention-card-body">
+                  <div class="attention-card-context">
+                    <span>{{ alert.context }}</span>
+                    <small>{{ copy.chatContextLabel }}</small>
+                  </div>
+
+                  <div class="attention-metric-grid">
+                    <article v-for="metric in alert.metrics" :key="`${alert.id}-${metric.label}`" class="attention-metric-card">
+                      <span>{{ metric.label }}</span>
+                      <strong>{{ metric.value }}</strong>
+                      <small>{{ metric.hint }}</small>
+                    </article>
+                  </div>
+                </div>
+
+                <div class="attention-card-actions">
+                  <button type="button" class="ghost-button compact-button" @click="openAttentionAlert(alert)">
+                    {{ attentionActionLabel(alert) }}
+                  </button>
+                  <button type="button" class="primary-button compact" @click="askAiAboutAttention(alert)">
+                    {{ copy.campaignCreativeAskAiPrompt }}
+                  </button>
+                </div>
+              </article>
+            </section>
+
+            <section v-else class="empty-surface attention-empty-surface">
+              <p class="eyebrow">{{ currentProviderOption.label }}</p>
+              <h2>{{ copy.attentionEmptyTitle }}</h2>
+              <p>{{ copy.attentionEmptyBody }}</p>
+              <div class="empty-surface-actions">
+                <button type="button" class="ghost-button" @click="openOverview">
+                  {{ copy.sidebarOverview }}
+                </button>
+              </div>
+            </section>
+          </template>
+
           <template v-else-if="selectedCampaign">
             <button type="button" class="back-link" @click="openOverview">
               <svg class="back-link-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -5893,105 +9149,431 @@ watch(currentView, (view) => {
 
             <section class="reference-page-head campaign-page-head">
               <div class="reference-heading">
+                <div class="campaign-hero-breadcrumbs">
+                  <template v-for="(crumb, index) in campaignHeroBreadcrumbs" :key="crumb.key">
+                    <button
+                      v-if="crumb.action === 'campaign' && selectedCampaign"
+                      type="button"
+                      class="campaign-hero-crumb"
+                      @click="selectCampaign(selectedCampaign.id)"
+                    >
+                      {{ crumb.label }}
+                    </button>
+                    <button
+                      v-else-if="crumb.action === 'ad_group' && selectedCampaignAdGroup"
+                      type="button"
+                      class="campaign-hero-crumb"
+                      @click="selectCampaignAdGroup(selectedCampaignAdGroup.id)"
+                    >
+                      {{ crumb.label }}
+                    </button>
+                    <span v-else class="campaign-hero-crumb current">{{ crumb.label }}</span>
+                    <span v-if="index < campaignHeroBreadcrumbs.length - 1" class="campaign-hero-crumb-separator" aria-hidden="true">/</span>
+                  </template>
+                </div>
                 <div class="reference-kicker">
                   <span class="reference-kicker-bar"></span>
-                  <p class="eyebrow">
-                    {{ copy.campaigns }}
-                    <span v-if="selectedCampaign.objective"> · {{ copy.campaignGoalLabel }}: {{ selectedCampaign.objective }}</span>
-                    <span v-else> · {{ resultKindLabel(selectedCampaign.primary_result_kind || 'result') }}</span>
-                  </p>
+                  <p class="eyebrow">{{ campaignHeroEyebrow }}</p>
                 </div>
                 <div class="campaign-hero-row">
-                  <h2>{{ selectedCampaign.name }}</h2>
-                  <div class="status-badge" :class="statusTone(selectedCampaign.status)">
-                    <i class="status-dot" :class="statusTone(selectedCampaign.status)"></i>
-                    {{ statusLabel(selectedCampaign.status) }}
+                  <h2>{{ campaignHeroTitle }}</h2>
+                  <div class="campaign-hero-pills">
+                    <template v-if="selectedCampaignCreative">
+                      <span class="campaign-ad-performance-pill status" :class="statusTone(creativeStatusValue(selectedCampaignCreative, selectedCampaign))">
+                        {{ creativeStatusLabel(selectedCampaignCreative, selectedCampaign) }}
+                      </span>
+                      <span class="campaign-ad-performance-pill" :class="creativePerformanceKey(selectedCampaignCreative, selectedCampaign)">
+                        {{ creativePerformanceLabel(selectedCampaignCreative, selectedCampaign) }}
+                      </span>
+                    </template>
+                    <template v-else-if="selectedCampaignAdGroup">
+                      <span class="campaign-adset-performance-pill" :class="campaignAdGroupPerformanceTone(selectedCampaignAdGroup, selectedCampaign)">
+                        {{ campaignAdGroupPerformanceLabel(selectedCampaignAdGroup, selectedCampaign) }}
+                      </span>
+                    </template>
+                    <div v-else class="status-badge" :class="statusTone(selectedCampaign.status)">
+                      <i class="status-dot" :class="statusTone(selectedCampaign.status)"></i>
+                      {{ statusLabel(selectedCampaign.status) }}
+                    </div>
                   </div>
                 </div>
-                <p v-if="selectedCampaignBreakdownLine" class="campaign-hero-stats-line">{{ selectedCampaignBreakdownLine }}</p>
+                <p v-if="campaignHeroLead" class="campaign-hero-lead">{{ campaignHeroLead }}</p>
+                <div v-if="campaignHeroMetaItems.length" class="campaign-hero-meta">
+                  <p v-for="item in campaignHeroMetaItems" :key="item" class="campaign-hero-stats-line">{{ item }}</p>
+                </div>
               </div>
             </section>
 
-            <section class="ai-surface verdict-surface reference-surface reference-verdict-surface">
-              <div class="verdict-head">
-                <div class="verdict-label-row">
-                  <span class="verdict-icon-chip" aria-hidden="true">
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4L13 3z"
-                      />
+            <section v-if="showInlineAiEntryCard" class="reference-surface ai-entry-card">
+              <div class="ai-entry-card-copy">
+                <div class="ai-entry-card-head">
+                  <span class="ai-entry-card-icon" aria-hidden="true">
+                    <svg fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
                     </svg>
                   </span>
-                  <div class="verdict-head-copy">
-                    <span>{{ copy.aiVerdictCardTitle }}</span>
-                    <p>{{ copy.aiVerdictHint }}</p>
+                  <div class="ai-entry-card-heading">
+                    <p class="eyebrow">{{ copy.aiConsultant }}</p>
+                    <h3>{{ copy.aiEntryCardTitle }}</h3>
                   </div>
                 </div>
-                <span class="verdict-status-pill" :class="campaignVerdictTone">{{ verdictStatusLabel(campaignVerdictTone) }}</span>
+                <p class="ai-entry-card-context">{{ aiEntryCardContext }}</p>
+                <div class="ai-entry-card-badges">
+                  <span class="ai-entry-card-badge">{{ copy.aiEntryContextReady }}</span>
+                  <span v-if="hasAutoVerdict" class="ai-entry-card-badge is-highlight">{{ copy.aiEntryNewVerdict }}</span>
+                </div>
               </div>
-              <p v-if="verdictLoading" class="empty-note">{{ copy.loadingVerdict }}</p>
-              <div v-else class="verdict-body">
-                <article class="verdict-message" :class="{ 'verdict-message-empty': !autoVerdictDisplay }">
-                  <div v-if="autoVerdictDisplay" class="verdict-text markdown-body" v-html="renderMarkdown(autoVerdictDisplay)"></div>
-                  <div v-else class="verdict-text markdown-body">—</div>
-                </article>
-              </div>
+              <button
+                type="button"
+                class="primary-button compact ai-entry-card-button"
+                :title="hasAutoVerdict ? copy.openAiVerdict : copy.openAiPanel"
+                @click="openAiPanel"
+              >
+                <svg class="ai-entry-card-button-icon" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
+                </svg>
+                {{ hasAutoVerdict ? copy.openAiVerdict : copy.askAi }}
+              </button>
             </section>
 
             <section class="campaign-summary-stack">
-              <div class="reference-section-head">
-                <div class="reference-kicker">
-                  <span class="reference-kicker-bar"></span>
-                  <p class="eyebrow">{{ copy.campaignMetricsTitle }}</p>
+              <article class="campaign-purpose-card">
+                <div class="reference-section-head">
+                  <div class="reference-kicker">
+                    <span class="reference-kicker-bar"></span>
+                    <p class="eyebrow">{{ copy.campaignGoalCardTitle }}</p>
+                  </div>
                 </div>
-              </div>
+                <h3>{{ campaignGoalHeadline(selectedCampaign) }}</h3>
+                <p>{{ copy.campaignGoalSupport }}</p>
+              </article>
 
-              <div class="metric-grid reference-metric-grid">
-                <article v-for="item in campaignSummaryMetrics" :key="item.key" class="metric-tile surface-metric-card">
-                  <div class="surface-metric-head">
-                    <p>{{ item.label }}</p>
-                    <small class="surface-delta-pill" :class="item.deltaTone">{{ item.deltaLabel }}</small>
+              <div class="campaign-metrics-block">
+                <div class="reference-section-head">
+                  <div class="reference-kicker">
+                    <span class="reference-kicker-bar"></span>
+                    <p class="eyebrow">{{ copy.campaignMetricsTitle }}</p>
                   </div>
-                  <strong>{{ item.value }}</strong>
-                  <div class="surface-metric-foot">
-                    <span>{{ metricSurfaceHint(item.key, selectedCampaign.metrics[item.key].delta_pct) }}</span>
-                    <small>{{ item.subtitle }}</small>
+                </div>
+                <p class="campaign-section-note">{{ copy.campaignMetricsLead }}</p>
+
+                <div class="metric-grid reference-metric-grid">
+                  <article v-for="item in campaignSummaryMetrics" :key="item.key" class="metric-tile surface-metric-card">
+                    <div class="surface-metric-head">
+                      <p>{{ item.label }}</p>
+                      <small v-if="reportComparisonEnabled" class="surface-delta-pill" :class="item.deltaTone">{{ item.deltaLabel }}</small>
+                    </div>
+                    <strong>{{ item.value }}</strong>
+                    <div class="surface-metric-foot">
+                      <span>
+                        {{
+                          reportComparisonEnabled
+                            ? metricSurfaceHint(item.key, selectedCampaign.metrics[item.key].delta_pct)
+                            : copy.metricCopy[item.key][1]
+                        }}
+                      </span>
+                      <small>{{ item.subtitle }}</small>
+                    </div>
+                  </article>
+                </div>
+
+                <section
+                  v-if="campaignAdditionalMetrics.length"
+                  class="reference-surface additional-metrics-panel in-campaign"
+                  :class="{ open: campaignAdditionalMetricsOpen }"
+                >
+                  <button
+                    type="button"
+                    class="additional-metrics-toggle"
+                    :aria-expanded="campaignAdditionalMetricsOpen"
+                    @click="toggleCampaignAdditionalMetrics"
+                  >
+                    <div class="additional-metrics-toggle-copy">
+                      <p class="eyebrow">{{ copy.additionalMetricsTitle }}</p>
+                      <strong>{{ copy.additionalMetricsLead }}</strong>
+                      <span>{{ copy.additionalMetricsSupport }}</span>
+                    </div>
+                    <span class="additional-metrics-toggle-pill">
+                      {{ campaignAdditionalMetricsOpen ? copy.additionalMetricsClose : copy.additionalMetricsOpen }}
+                    </span>
+                    <svg class="section-toggle-icon" :class="{ open: campaignAdditionalMetricsOpen }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  <div v-if="campaignAdditionalMetricsOpen" class="metric-grid additional-metrics-grid">
+                    <article v-for="item in campaignAdditionalMetrics" :key="`campaign-${item.key}`" class="metric-tile surface-metric-card secondary">
+                      <div class="surface-metric-head">
+                        <p>{{ item.label }}</p>
+                        <small v-if="reportComparisonEnabled" class="surface-delta-pill" :class="item.deltaTone">{{ item.deltaLabel }}</small>
+                      </div>
+                      <strong>{{ item.value }}</strong>
+                      <div class="surface-metric-foot compact">
+                        <span>
+                          {{
+                            reportComparisonEnabled
+                              ? metricSurfaceHint(item.key, selectedCampaign.metrics[item.key].delta_pct)
+                              : copy.metricCopy[item.key][1]
+                          }}
+                        </span>
+                      </div>
+                    </article>
                   </div>
-                </article>
+                </section>
               </div>
             </section>
 
-            <section class="campaign-adsets-surface">
+            <section class="campaign-workspace-tabs" aria-label="Campaign workspace tabs">
+              <button
+                type="button"
+                class="campaign-workspace-tab"
+                :class="{ active: selectedCampaignPanel === 'results' }"
+                @click="setCampaignPanel('results')"
+              >
+                {{ copy.campaignTabsResults }}
+              </button>
+              <button
+                type="button"
+                class="campaign-workspace-tab"
+                :class="{ active: selectedCampaignPanel === 'ad_groups' }"
+                @click="setCampaignPanel('ad_groups')"
+              >
+                {{ copy.campaignTabsAdGroups }}
+              </button>
+              <button
+                type="button"
+                class="campaign-workspace-tab"
+                :class="{ active: selectedCampaignPanel === 'creatives' }"
+                @click="setCampaignPanel('creatives')"
+              >
+                {{ copy.campaignTabsCreatives }}
+              </button>
+            </section>
+
+            <section v-if="selectedCampaignPanel === 'results'" class="campaign-focus-grid">
+              <article class="campaign-focus-card">
+                <div class="campaign-focus-kicker">
+                  <span>{{ copy.campaignTabsAdGroups }}</span>
+                  <strong>{{ selectedCampaignAdGroups.length }}</strong>
+                </div>
+                <h3>{{ bestCampaignAdGroup?.name || copy.campaignAdGroupDefaultName }}</h3>
+                <p>{{ bestCampaignAdGroup ? campaignAdGroupTargetingSummary(bestCampaignAdGroup) : copy.campaignAdGroupsLead }}</p>
+                <div v-if="bestCampaignAdGroup" class="campaign-focus-metrics">
+                  <div class="campaign-adset-chip">
+                    <span>{{ copy.creativeMetricLabels.spend }}</span>
+                    <strong>{{ formatMetricValue('spend', bestCampaignAdGroup.spend) }}</strong>
+                  </div>
+                  <div class="campaign-adset-chip">
+                    <span>{{ resultKindLabel(bestCampaignAdGroup.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                    <strong>{{ formatCompactNumber(bestCampaignAdGroup.results) }}</strong>
+                  </div>
+                  <div class="campaign-adset-chip">
+                    <span>{{ metricSurfaceLabel('cost_per_result', bestCampaignAdGroup.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                    <strong>{{ formatMetricValue('cost_per_result', bestCampaignAdGroup.costPerResult) }}</strong>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button compact-button"
+                  @click="bestCampaignAdGroup ? selectCampaignAdGroup(bestCampaignAdGroup.id) : setCampaignPanel('ad_groups')"
+                >
+                  {{ copy.campaignAdGroupSettingsAction }}
+                </button>
+              </article>
+
+              <article class="campaign-focus-card">
+                <div class="campaign-focus-kicker">
+                  <span>{{ copy.campaignTabsCreatives }}</span>
+                  <strong>{{ selectedCampaignAds.length }}</strong>
+                </div>
+                <h3>{{ bestCampaignCreative?.name || copy.campaignCreativesTitle }}</h3>
+                <p>{{ copy.campaignCreativesLead }}</p>
+                <div v-if="bestCampaignCreative" class="campaign-focus-metrics">
+                  <div class="campaign-adset-chip">
+                    <span>{{ copy.creativeMetricLabels.spend }}</span>
+                    <strong>{{ formatMetricValue('spend', bestCampaignCreative.spend) }}</strong>
+                  </div>
+                  <div class="campaign-adset-chip">
+                    <span>{{ resultKindLabel(bestCampaignCreative.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                    <strong>{{ formatCompactNumber(bestCampaignCreative.results) }}</strong>
+                  </div>
+                  <div class="campaign-adset-chip">
+                    <span>{{ metricSurfaceLabel('cost_per_result', bestCampaignCreative.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                    <strong>{{ formatMetricValue('cost_per_result', bestCampaignCreative.costPerResult) }}</strong>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="ghost-button compact-button"
+                  @click="bestCampaignCreative ? selectCampaignCreative(bestCampaignCreative.id) : viewCampaignCreatives()"
+                >
+                  {{ copy.campaignCreativeDetails }}
+                </button>
+              </article>
+            </section>
+
+            <section v-else-if="selectedCampaignPanel === 'ad_groups'" class="campaign-adsets-surface">
               <div class="reference-section-head">
                 <div class="reference-kicker">
                   <span class="reference-kicker-bar"></span>
-                  <p class="eyebrow">{{ copy.campaignAdGroupsTitle }} · {{ selectedCampaignAdGroups.length }}</p>
+                  <p class="eyebrow">
+                    {{ selectedCampaignAdGroup ? copy.audienceFocus : copy.campaignAdGroupsTitle }} · {{ selectedCampaignAdGroups.length }}
+                  </p>
                 </div>
+                <h3 v-if="selectedCampaignAdGroup" class="campaign-section-heading">{{ selectedCampaignAdGroup.name }}</h3>
               </div>
+              <p class="campaign-section-note">
+                {{ selectedCampaignAdGroup ? campaignAdGroupHeadlineLead(selectedCampaignAdGroup) : copy.campaignAdGroupsLead }}
+              </p>
+
+              <article v-if="selectedCampaignAdGroup" class="campaign-audience-focus-card">
+                <div class="campaign-audience-focus-head">
+                  <div class="campaign-audience-focus-copy">
+                    <p class="eyebrow">{{ copy.audienceFocus }}</p>
+                    <h3>{{ selectedCampaignAdGroup.name }}</h3>
+                    <p>{{ campaignAdGroupHeadlineLead(selectedCampaignAdGroup) }}</p>
+                  </div>
+                  <div class="campaign-audience-focus-actions">
+                    <button type="button" class="ghost-button compact-button" @click="askAiAboutAdGroup(selectedCampaignAdGroup)">
+                      {{ copy.campaignCreativeAskAiPrompt }}
+                    </button>
+                    <button type="button" class="ghost-button compact-button" @click="clearSelectedCampaignAdGroup()">
+                      {{ copy.campaignCreativeCloseDrawer }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="campaign-audience-focus-context">
+                  <span
+                    class="campaign-adset-performance-pill"
+                    :class="campaignAdGroupPerformanceTone(selectedCampaignAdGroup, selectedCampaign)"
+                  >
+                    {{ campaignAdGroupPerformanceLabel(selectedCampaignAdGroup, selectedCampaign) }}
+                  </span>
+                  <span class="campaign-adset-tag">{{ copy.campaignFocus }}</span>
+                  <p>{{ selectedCampaign.name }}</p>
+                </div>
+
+                <div class="campaign-adset-context-line">
+                  <span class="campaign-adset-tag">{{ copy.campaignAdGroupFormatsLabel }}</span>
+                  <p class="campaign-adset-context">{{ campaignAdGroupFormatSummary(selectedCampaignAdGroup) }}</p>
+                </div>
+
+                <div v-if="campaignAdGroupPrimarySettings(selectedCampaignAdGroup).length > 0" class="campaign-adset-targeting-grid campaign-audience-focus-grid">
+                  <div
+                    v-for="setting in campaignAdGroupPrimarySettings(selectedCampaignAdGroup)"
+                    :key="`${selectedCampaignAdGroup.id}-focus-${setting.id}`"
+                    class="campaign-adset-targeting-item"
+                  >
+                    <span>{{ setting.label }}</span>
+                    <strong>{{ setting.value }}</strong>
+                  </div>
+                </div>
+
+                <div class="campaign-audience-focus-foot">
+                  <div class="campaign-adset-summary campaign-audience-focus-summary">
+                    <div class="campaign-adset-chip">
+                      <span>{{ copy.creativeMetricLabels.spend }}</span>
+                      <strong>{{ formatMetricValue('spend', selectedCampaignAdGroup.spend) }}</strong>
+                    </div>
+                    <div class="campaign-adset-chip">
+                      <span>{{ resultKindLabel(selectedCampaignAdGroup.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                      <strong>{{ formatCompactNumber(selectedCampaignAdGroup.results) }}</strong>
+                    </div>
+                    <div class="campaign-adset-chip">
+                      <span>{{ metricSurfaceLabel('cost_per_result', selectedCampaignAdGroup.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                      <strong>{{ formatMetricValue('cost_per_result', selectedCampaignAdGroup.costPerResult) }}</strong>
+                    </div>
+                    <div class="campaign-adset-chip">
+                      <span>{{ copy.campaignAudienceAdsTitle }}</span>
+                      <strong>{{ formatCampaignAdsCount(selectedCampaignAdGroup.adsCount) }}</strong>
+                    </div>
+                  </div>
+
+                  <div class="campaign-audience-focus-preview">
+                    <div v-if="selectedCampaignAdGroup.ads.length > 0" class="campaign-adset-preview-strip" aria-hidden="true">
+                      <div
+                        v-for="ad in selectedCampaignAdGroup.ads.slice(0, 4)"
+                        :key="`${selectedCampaignAdGroup.id}-focus-preview-${ad.id}`"
+                        class="campaign-adset-preview"
+                        :style="{ '--campaign-preview-gradient': creativePreviewGradient(ad.id, ad.name) }"
+                      >
+                        <img v-if="ad.previewUrl" :src="ad.previewUrl" :alt="ad.name" loading="lazy" decoding="async" />
+                        <span v-else>{{ ad.format }}</span>
+                      </div>
+                      <div v-if="selectedCampaignAdGroup.ads.length > 4" class="campaign-adset-preview more">
+                        +{{ selectedCampaignAdGroup.ads.length - 4 }}
+                      </div>
+                    </div>
+                    <p class="campaign-adset-comparison">{{ campaignAdGroupPerformanceNote(selectedCampaignAdGroup, selectedCampaign) }}</p>
+                  </div>
+
+                  <div class="campaign-audience-focus-actions">
+                    <button
+                      type="button"
+                      class="ghost-button compact-button"
+                      @click="viewCampaignCreatives(selectedCampaignAdGroup.id)"
+                    >
+                      {{ campaignAdGroupActionLabel(selectedCampaignAdGroup.adsCount) }}
+                    </button>
+                  </div>
+                </div>
+              </article>
 
               <article v-if="selectedCampaignAdGroups.length === 0" class="campaign-adsets-empty">
                 <p>{{ copy.emptyCreatives }}</p>
               </article>
 
               <div v-else class="campaign-adsets-stack">
-                <article v-for="group in selectedCampaignAdGroups" :key="group.id" class="campaign-adset-card">
+                <article
+                  v-for="group in selectedCampaignAdGroups"
+                  :key="group.id"
+                  class="campaign-adset-card"
+                  :class="{ active: selectedCampaignAdGroup?.id === group.id }"
+                  tabindex="0"
+                  @click="selectCampaignAdGroup(group.id)"
+                  @keyup.enter="selectCampaignAdGroup(group.id)"
+                >
                   <div class="campaign-adset-head">
                     <div class="campaign-adset-main">
                       <div class="campaign-adset-title-row">
-                        <span class="campaign-adset-icon" aria-hidden="true">
-                          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14-4H5m14 8H5m14 4H5" />
-                          </svg>
+                        <div class="campaign-adset-title-copy">
+                          <span class="campaign-adset-icon" aria-hidden="true">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14-4H5m14 8H5m14 4H5" />
+                            </svg>
+                          </span>
+                          <div class="campaign-adset-title-text">
+                            <h3>{{ group.name }}</h3>
+                            <p class="campaign-adset-technical-note">{{ copy.campaignAdGroupTechnicalLabel }}</p>
+                          </div>
+                        </div>
+                        <span
+                          class="campaign-adset-performance-pill"
+                          :class="campaignAdGroupPerformanceTone(group, selectedCampaign)"
+                        >
+                          {{ campaignAdGroupPerformanceLabel(group, selectedCampaign) }}
                         </span>
-                        <h3>{{ group.name }}</h3>
                       </div>
-                      <div v-if="group.context" class="campaign-adset-context-line">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <p class="campaign-adset-context">{{ group.context }}</p>
+                      <div class="campaign-adset-context-stack">
+                        <div class="campaign-adset-context-line">
+                          <span class="campaign-adset-tag">{{ copy.campaignAdGroupTargetingLabel }}</span>
+                          <p class="campaign-adset-context">{{ campaignAdGroupTargetingSummary(group) }}</p>
+                        </div>
+                        <div v-if="campaignAdGroupPrimarySettings(group).length > 0" class="campaign-adset-targeting-grid">
+                          <article
+                            v-for="setting in campaignAdGroupPrimarySettings(group)"
+                            :key="`${group.id}-${setting.id}`"
+                            class="campaign-adset-targeting-item"
+                          >
+                            <span>{{ setting.label }}</span>
+                            <strong>{{ setting.value }}</strong>
+                          </article>
+                        </div>
+                        <div class="campaign-adset-context-line">
+                          <span class="campaign-adset-tag">{{ copy.campaignAdGroupFormatsLabel }}</span>
+                          <p class="campaign-adset-context">{{ campaignAdGroupFormatSummary(group) }}</p>
+                        </div>
                       </div>
                     </div>
 
@@ -6001,24 +9583,256 @@ watch(currentView, (view) => {
                         <strong>{{ formatMetricValue('spend', group.spend) }}</strong>
                       </div>
                       <div class="campaign-adset-chip">
-                        <span>{{ resultKindLabel(selectedCampaign.primary_result_kind || 'result') }}</span>
+                        <span>{{ resultKindLabel(group.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
                         <strong>{{ formatCompactNumber(group.results) }}</strong>
                       </div>
                       <div class="campaign-adset-chip">
-                        <span>{{ metricSurfaceLabel('cost_per_result', selectedCampaign.primary_result_kind || 'result') }}</span>
+                        <span>{{ metricSurfaceLabel('cost_per_result', group.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
                         <strong>{{ formatMetricValue('cost_per_result', group.costPerResult) }}</strong>
                       </div>
                     </div>
                   </div>
 
+                  <div class="campaign-adset-insights">
+                    <div class="campaign-adset-insight-line">
+                      <div v-if="group.ads.length > 0" class="campaign-adset-preview-strip" aria-hidden="true">
+                        <div
+                          v-for="ad in group.ads.slice(0, 3)"
+                          :key="ad.id"
+                          class="campaign-adset-preview"
+                          :style="{ '--campaign-preview-gradient': creativePreviewGradient(ad.id, ad.name) }"
+                        >
+                          <img v-if="ad.previewUrl" :src="ad.previewUrl" :alt="ad.name" loading="lazy" decoding="async" />
+                          <span v-else>{{ ad.format }}</span>
+                        </div>
+                        <div v-if="group.ads.length > 3" class="campaign-adset-preview more">+{{ group.ads.length - 3 }}</div>
+                      </div>
+                      <span class="campaign-adset-preview-count">{{ campaignAdGroupAdsCountLabel(group.adsCount) }}</span>
+                    </div>
+                    <p class="campaign-adset-comparison">{{ campaignAdGroupPerformanceNote(group, selectedCampaign) }}</p>
+                  </div>
+
+                  <div class="campaign-adset-actions">
+                    <button type="button" class="ghost-button compact-button" @click.stop="selectCampaignAdGroup(group.id)">
+                      {{ copy.campaignAdGroupSettingsAction }}
+                    </button>
+                    <button type="button" class="ghost-button compact-button" @click.stop="viewCampaignCreatives(group.id)">
+                      {{ campaignAdGroupActionLabel(group.adsCount) }}
+                    </button>
+                  </div>
+
+                  <div v-if="selectedCampaignAdGroup?.id === group.id" class="campaign-adset-expanded">
+                    <section class="campaign-adset-settings-card">
+                      <div class="campaign-adset-expanded-head">
+                        <p>{{ copy.campaignAdGroupSettingsTitle }}</p>
+                        <span class="campaign-adset-technical-note">{{ copy.campaignAdGroupTechnicalLabel }}</span>
+                      </div>
+                      <p class="campaign-adset-settings-lead">{{ copy.campaignAdGroupSettingsLead }}</p>
+                      <div v-if="campaignAdGroupDetailedSettings(group).length > 0" class="campaign-adset-settings-grid">
+                        <article
+                          v-for="setting in campaignAdGroupDetailedSettings(group)"
+                          :key="`${group.id}-detail-${setting.id}`"
+                          class="campaign-adset-settings-item"
+                        >
+                          <span>{{ setting.label }}</span>
+                          <strong>{{ setting.value }}</strong>
+                        </article>
+                      </div>
+                      <p v-else class="campaign-adset-settings-empty">{{ copy.campaignAdGroupLead }}</p>
+                    </section>
+
+                    <div class="campaign-adset-expanded-head">
+                      <p>{{ copy.campaignAudienceAdsTitle }} · {{ group.adsCount }}</p>
+                      <button type="button" class="ghost-button compact-button" @click.stop="viewCampaignCreatives(group.id)">
+                        {{ campaignAdGroupActionLabel(group.adsCount) }}
+                      </button>
+                    </div>
+
+                    <article v-if="group.ads.length === 0" class="campaign-adsets-empty">
+                      <p>{{ copy.emptyCreatives }}</p>
+                    </article>
+
+                    <div v-else class="campaign-ads-list">
+	                      <article
+	                        v-for="ad in visibleCampaignAds(group)"
+	                        :key="ad.id"
+	                        class="campaign-ad-card"
+	                        :class="{ best: ad.id === group.bestAdId, active: ad.id === selectedCampaignCreative?.id }"
+	                        tabindex="0"
+	                        @click="selectCampaignCreative(ad.id, { filterGroupId: group.id })"
+	                        @keyup.enter="selectCampaignCreative(ad.id, { filterGroupId: group.id })"
+	                      >
+                        <span v-if="ad.id === group.bestAdId" class="campaign-best-edge" aria-hidden="true"></span>
+
+                        <div class="campaign-ad-card-body">
+                          <div
+                            class="campaign-ad-preview"
+                            :class="creativePreviewKind(ad.format)"
+                            :style="{ '--campaign-preview-gradient': creativePreviewGradient(ad.id, ad.name) }"
+                          >
+                            <img
+                              v-if="ad.previewUrl"
+                              :src="ad.previewUrl"
+                              :alt="ad.name"
+                              class="campaign-ad-preview-image"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <div v-else class="campaign-ad-preview-fallback">
+                              <div v-if="creativePreviewKind(ad.format) === 'video' || creativePreviewKind(ad.format) === 'vertical'" class="campaign-ad-preview-play">
+                                <svg fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                              <div v-else-if="creativePreviewKind(ad.format) === 'carousel'" class="campaign-ad-preview-carousel">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                              </div>
+                              <div v-else-if="creativePreviewKind(ad.format) === 'leadform'" class="campaign-ad-preview-form">
+                                <i></i>
+                                <i></i>
+                                <i></i>
+                                <i></i>
+                              </div>
+                              <svg v-else fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9.5 9.5a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z" />
+                              </svg>
+                              <span v-if="creativePreviewKind(ad.format) === 'vertical'" class="campaign-ad-preview-frame" aria-hidden="true"></span>
+                            </div>
+                            <span class="campaign-ad-preview-badge">{{ ad.format }}</span>
+                          </div>
+
+                          <div class="campaign-ad-copy">
+                            <div class="campaign-ad-copy-head">
+                              <div class="campaign-ad-title-block">
+                                <p :title="ad.name">{{ ad.name }}</p>
+                              </div>
+                              <span v-if="ad.id === group.bestAdId" class="campaign-best-badge">
+                                {{ copy.campaignBestResult }}
+                              </span>
+                            </div>
+
+                            <div v-if="ad.hasData" class="campaign-ad-metrics">
+                              <div class="campaign-ad-stat">
+                                <span>{{ copy.creativeMetricLabels.spend }}</span>
+                                <strong>{{ formatMetricValue('spend', ad.spend) }}</strong>
+                              </div>
+                              <div class="campaign-ad-stat">
+                                <span>{{ resultKindLabel(ad.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                                <strong>{{ formatCompactNumber(ad.results) }}</strong>
+                              </div>
+                              <div class="campaign-ad-stat">
+                                <span>{{ metricSurfaceLabel('cost_per_result', ad.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                                <strong :class="{ accent: ad.id === group.bestAdId }">
+                                  {{ formatMetricValue('cost_per_result', ad.costPerResult) }}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div v-else class="campaign-ad-empty">
+                              {{ copy.campaignAwaitingDelivery }}
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+
+                      <button
+                        v-if="group.ads.length >= 4"
+                        type="button"
+                        class="campaign-ads-toggle"
+                        @click="toggleCampaignAdGroup(group.id)"
+                      >
+                        {{ isCampaignAdGroupExpanded(group.id) ? copy.collapseAds : showMoreAdsLabel(hiddenCampaignAdsCount(group)) }}
+                        <svg
+                          class="campaign-ads-toggle-icon"
+                          :class="{ rotated: isCampaignAdGroupExpanded(group.id) }"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section v-else class="campaign-creatives-surface">
+              <div class="reference-section-head">
+                <div class="reference-kicker">
+                  <span class="reference-kicker-bar"></span>
+                  <p class="eyebrow">{{ copy.campaignCreativesTitle }} · {{ filteredCampaignAds.length }}</p>
+                </div>
+              </div>
+              <p class="campaign-section-note">
+                {{ selectedCampaignCreativeFilterGroup ? copy.campaignCreativeFilterAudience : copy.campaignCreativesLead }}
+              </p>
+
+              <div class="campaign-creative-toolbar">
+                <div class="campaign-creative-toolbar-row">
+                  <button
+                    type="button"
+                    class="campaign-creative-filter"
+                    :class="{ active: !selectedCampaignCreativeGroupId }"
+                    @click="viewCampaignCreatives()"
+                  >
+                    {{ copy.campaignCreativeFilterAll }}
+                  </button>
+                  <button
+                    v-if="selectedCampaignCreativeFilterGroup"
+                    type="button"
+                    class="campaign-creative-filter"
+                    :class="{ active: Boolean(selectedCampaignCreativeGroupId) }"
+                    @click="viewCampaignCreatives(selectedCampaignCreativeFilterGroup.id)"
+                  >
+                    {{ copy.campaignCreativeFilterAudience }} · {{ selectedCampaignCreativeFilterGroup.name }}
+                  </button>
+                </div>
+                <div class="campaign-creative-toolbar-row secondary">
+                  <div class="campaign-creative-quick-filters">
+                    <button
+                      v-for="option in campaignCreativeQuickFilterOptions"
+                      :key="option.key"
+                      type="button"
+                      class="campaign-creative-filter soft"
+                      :class="{ active: campaignCreativeFilterMode === option.key }"
+                      @click="campaignCreativeFilterMode = option.key"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </div>
+                  <label class="campaign-creative-sort">
+                    <span>{{ copy.campaignCreativeSortLabel }}</span>
+                    <select v-model="campaignCreativeSortMode">
+                      <option v-for="option in campaignCreativeSortOptions" :key="option.key" :value="option.key">
+                        {{ option.label }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <article v-if="filteredCampaignAds.length === 0" class="campaign-adsets-empty">
+                <p>{{ copy.emptyCreatives }}</p>
+              </article>
+
+              <div v-else class="campaign-creatives-layout">
+                <div class="campaign-ads-column">
                   <div class="campaign-ads-list">
                     <article
-                      v-for="ad in visibleCampaignAds(group)"
+                      v-for="ad in filteredCampaignAds"
                       :key="ad.id"
                       class="campaign-ad-card"
-                      :class="{ best: ad.id === group.bestAdId }"
+                      :class="{ best: ad.id === filteredCampaignBestAdId, active: ad.id === selectedCampaignCreative?.id }"
+                      tabindex="0"
+                      @click="selectCampaignCreative(ad.id)"
+                      @keyup.enter="selectCampaignCreative(ad.id)"
                     >
-                      <span v-if="ad.id === group.bestAdId" class="campaign-best-edge" aria-hidden="true"></span>
+                      <span v-if="ad.id === filteredCampaignBestAdId" class="campaign-best-edge" aria-hidden="true"></span>
 
                       <div class="campaign-ad-card-body">
                         <div
@@ -6062,11 +9876,37 @@ watch(currentView, (view) => {
                         <div class="campaign-ad-copy">
                           <div class="campaign-ad-copy-head">
                             <div class="campaign-ad-title-block">
+                              <div class="campaign-ad-card-pill-row">
+                                <span v-if="ad.id === filteredCampaignBestAdId" class="campaign-best-badge">
+                                  {{ copy.campaignBestResult }}
+                                </span>
+                                <span class="campaign-ad-performance-pill status" :class="statusTone(creativeStatusValue(ad, selectedCampaign))">
+                                  {{ creativeStatusLabel(ad, selectedCampaign) }}
+                                </span>
+                                <span class="campaign-ad-performance-pill" :class="creativePerformanceKey(ad, selectedCampaign)">
+                                  {{ creativePerformanceLabel(ad, selectedCampaign) }}
+                                </span>
+                              </div>
                               <p :title="ad.name">{{ ad.name }}</p>
                             </div>
-                            <span v-if="ad.id === group.bestAdId" class="campaign-best-badge">
-                              {{ copy.campaignBestResult }}
-                            </span>
+                            <button type="button" class="ghost-button compact-button" @click.stop="selectCampaignCreative(ad.id)">
+                              {{ copy.campaignCreativeDetails }}
+                            </button>
+                          </div>
+
+                          <div class="campaign-ad-context-grid">
+                            <div v-if="ad.groupName" class="campaign-ad-context-inline">
+                              <span class="campaign-adset-tag">{{ copy.campaignCreativeAudienceLabel }}</span>
+                              <p>{{ ad.groupName }}</p>
+                            </div>
+                            <div class="campaign-ad-context-inline">
+                              <span class="campaign-adset-tag">{{ copy.campaignCreativePlacementsLabel }}</span>
+                              <p>{{ creativePlacementLabel(ad) }}</p>
+                            </div>
+                          </div>
+
+                          <div class="campaign-ad-comparison-note">
+                            <p>{{ creativePerformanceSummary(ad, selectedCampaign) }}</p>
                           </div>
 
                           <div v-if="ad.hasData" class="campaign-ad-metrics">
@@ -6080,7 +9920,7 @@ watch(currentView, (view) => {
                             </div>
                             <div class="campaign-ad-stat">
                               <span>{{ metricSurfaceLabel('cost_per_result', ad.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
-                              <strong :class="{ accent: ad.id === group.bestAdId }">
+                              <strong :class="{ accent: ad.id === filteredCampaignBestAdId }">
                                 {{ formatMetricValue('cost_per_result', ad.costPerResult) }}
                               </strong>
                             </div>
@@ -6092,27 +9932,209 @@ watch(currentView, (view) => {
                         </div>
                       </div>
                     </article>
-
-                    <button
-                      v-if="group.ads.length >= 4"
-                      type="button"
-                      class="campaign-ads-toggle"
-                      @click="toggleCampaignAdGroup(group.id)"
-                    >
-                      {{ isCampaignAdGroupExpanded(group.id) ? copy.collapseAds : showMoreAdsLabel(hiddenCampaignAdsCount(group)) }}
-                      <svg
-                        class="campaign-ads-toggle-icon"
-                        :class="{ rotated: isCampaignAdGroupExpanded(group.id) }"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                      >
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
                   </div>
-                </article>
+                </div>
+
+                <aside class="campaign-creative-drawer" :class="{ empty: !selectedCampaignCreative }">
+                  <template v-if="selectedCampaignCreative">
+                    <div class="campaign-creative-drawer-head">
+                      <div class="campaign-creative-drawer-head-copy">
+                        <p class="eyebrow">{{ selectedCampaignCreative.groupName || selectedCampaign.name }}</p>
+                        <h3>{{ selectedCampaignCreative.headline || selectedCampaignCreative.name }}</h3>
+                      </div>
+                      <div class="campaign-creative-drawer-head-actions">
+                        <button type="button" class="ghost-button compact-button" @click="askAiAboutCreative(selectedCampaignCreative)">
+                          {{ copy.campaignCreativeAskAiPrompt }}
+                        </button>
+                        <button type="button" class="ghost-button compact-button" @click="clearSelectedCampaignCreative()">
+                          {{ copy.campaignCreativeCloseDrawer }}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div class="campaign-creative-drawer-preview-shell">
+                      <div
+                        class="campaign-ad-preview campaign-creative-drawer-preview"
+                        :class="creativePreviewKind(selectedCampaignCreative.format)"
+                        :style="{ '--campaign-preview-gradient': creativePreviewGradient(selectedCampaignCreative.id, selectedCampaignCreative.name) }"
+                      >
+                        <img
+                          v-if="selectedCampaignCreative.previewUrl"
+                          :src="selectedCampaignCreative.previewUrl"
+                          :alt="selectedCampaignCreative.name"
+                          class="campaign-ad-preview-image"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <div v-else class="campaign-ad-preview-fallback">
+                          <div
+                            v-if="creativePreviewKind(selectedCampaignCreative.format) === 'video' || creativePreviewKind(selectedCampaignCreative.format) === 'vertical'"
+                            class="campaign-ad-preview-play"
+                          >
+                            <svg fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </div>
+                          <div v-else-if="creativePreviewKind(selectedCampaignCreative.format) === 'carousel'" class="campaign-ad-preview-carousel">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                          </div>
+                          <div v-else-if="creativePreviewKind(selectedCampaignCreative.format) === 'leadform'" class="campaign-ad-preview-form">
+                            <i></i>
+                            <i></i>
+                            <i></i>
+                            <i></i>
+                          </div>
+                          <svg v-else fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9.5 9.5a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z" />
+                          </svg>
+                          <span v-if="creativePreviewKind(selectedCampaignCreative.format) === 'vertical'" class="campaign-ad-preview-frame" aria-hidden="true"></span>
+                        </div>
+                        <span class="campaign-ad-preview-badge">{{ selectedCampaignCreative.format }}</span>
+                      </div>
+                      <div class="campaign-creative-preview-copy-card">
+                        <p class="campaign-creative-preview-text">
+                          {{ selectedCampaignCreative.primaryText || copy.campaignCreativeTextFallback }}
+                        </p>
+                        <strong>{{ selectedCampaignCreative.headline || selectedCampaignCreative.name }}</strong>
+                        <div class="campaign-creative-preview-footer">
+                          <span class="campaign-creative-preview-destination">
+                            {{
+                              selectedCampaignCreative.destinationUrl
+                                ? creativeDestinationHost(selectedCampaignCreative.destinationUrl)
+                                : selectedCampaignCreative.sourceUrl
+                                  ? creativeSourceLabel(selectedCampaignCreative.sourceUrl)
+                                  : selectedCampaignCreative.groupName || selectedCampaign.name
+                            }}
+                          </span>
+                          <span v-if="selectedCampaignCreative.callToAction" class="campaign-creative-preview-cta">
+                            {{ formatCreativeCallToAction(selectedCampaignCreative.callToAction) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="campaign-creative-drawer-badges">
+                      <span v-if="selectedCampaignCreative.id === filteredCampaignBestAdId" class="campaign-best-badge">
+                        {{ copy.campaignBestResult }}
+                      </span>
+                      <span class="campaign-ad-performance-pill status" :class="statusTone(creativeStatusValue(selectedCampaignCreative, selectedCampaign))">
+                        {{ creativeStatusLabel(selectedCampaignCreative, selectedCampaign) }}
+                      </span>
+                      <span class="campaign-ad-performance-pill" :class="creativePerformanceKey(selectedCampaignCreative, selectedCampaign)">
+                        {{ creativePerformanceLabel(selectedCampaignCreative, selectedCampaign) }}
+                      </span>
+                    </div>
+
+                    <section class="campaign-creative-insights">
+                      <div class="campaign-creative-insights-head">
+                        <p class="eyebrow">{{ copy.campaignCreativeSnapshotTitle }}</p>
+                        <p>{{ copy.campaignCreativeSnapshotLead }}</p>
+                      </div>
+                      <div class="campaign-creative-insight-grid">
+                        <article
+                          v-for="card in selectedCampaignCreativeInsightCards"
+                          :key="card.key"
+                          class="campaign-creative-insight-card"
+                          :class="card.tone"
+                        >
+                          <span>{{ card.label }}</span>
+                          <strong>{{ card.value }}</strong>
+                          <p>{{ card.caption }}</p>
+                        </article>
+                      </div>
+                    </section>
+
+                    <div class="campaign-creative-drawer-copy">
+                      <div class="campaign-creative-detail-block">
+                        <span>{{ copy.campaignCreativeStatusLabel }}</span>
+                        <p>{{ creativeStatusLabel(selectedCampaignCreative, selectedCampaign) }}</p>
+                      </div>
+                      <div class="campaign-creative-detail-block">
+                        <span>{{ copy.campaignCreativeAudienceLabel }}</span>
+                        <p>{{ selectedCampaignCreative.groupName || selectedCampaign.name }}</p>
+                      </div>
+                      <div class="campaign-creative-detail-block">
+                        <span>{{ copy.campaignCreativePlacementsLabel }}</span>
+                        <p>{{ creativePlacementLabel(selectedCampaignCreative) }}</p>
+                      </div>
+                      <div class="campaign-creative-detail-block">
+                        <span>{{ copy.campaignCreativeCtaLabel }}</span>
+                        <p>{{ selectedCampaignCreative.callToAction ? formatCreativeCallToAction(selectedCampaignCreative.callToAction) : copy.campaignCreativeCtaFallback }}</p>
+                      </div>
+                      <div class="campaign-creative-detail-block">
+                        <span>{{ copy.campaignCreativeHeadlineLabel }}</span>
+                        <p>{{ selectedCampaignCreative.headline || selectedCampaignCreative.name }}</p>
+                      </div>
+                      <div class="campaign-creative-detail-block">
+                        <span>{{ copy.campaignCreativePrimaryTextLabel }}</span>
+                        <p>{{ selectedCampaignCreative.primaryText || copy.campaignCreativeTextFallback }}</p>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="selectedCampaignCreative.destinationUrl || selectedCampaignCreative.sourceUrl"
+                      class="campaign-creative-link-grid"
+                    >
+                      <a
+                        v-if="selectedCampaignCreative.destinationUrl"
+                        :href="selectedCampaignCreative.destinationUrl"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="campaign-creative-link-card"
+                      >
+                        <span>{{ copy.campaignCreativeDestinationLabel }}</span>
+                        <strong>{{ creativeDestinationHost(selectedCampaignCreative.destinationUrl) }}</strong>
+                      </a>
+                      <a
+                        v-if="selectedCampaignCreative.sourceUrl"
+                        :href="selectedCampaignCreative.sourceUrl"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="campaign-creative-link-card"
+                      >
+                        <span>{{ copy.campaignCreativeSourceLabel }}</span>
+                        <strong>{{ creativeSourceLabel(selectedCampaignCreative.sourceUrl) }}</strong>
+                      </a>
+                    </div>
+
+                    <div class="campaign-creative-drawer-metrics">
+                      <div class="campaign-ad-stat">
+                        <span>{{ copy.creativeMetricLabels.spend }}</span>
+                        <strong>{{ formatMetricValue('spend', selectedCampaignCreative.spend) }}</strong>
+                      </div>
+                      <div class="campaign-ad-stat">
+                        <span>{{ resultKindLabel(selectedCampaignCreative.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                        <strong>{{ formatCompactNumber(selectedCampaignCreative.results) }}</strong>
+                      </div>
+                      <div class="campaign-ad-stat">
+                        <span>{{ metricSurfaceLabel('cost_per_result', selectedCampaignCreative.resultKind || selectedCampaign.primary_result_kind || 'result') }}</span>
+                        <strong :class="{ accent: selectedCampaignCreative.id === filteredCampaignBestAdId }">
+                          {{ formatMetricValue('cost_per_result', selectedCampaignCreative.costPerResult) }}
+                        </strong>
+                      </div>
+                      <div class="campaign-ad-stat">
+                        <span>{{ copy.creativeMetricLabels.impressions }}</span>
+                        <strong>{{ formatCompactNumber(selectedCampaignCreative.impressions) }}</strong>
+                      </div>
+                      <div class="campaign-ad-stat">
+                        <span>{{ copy.creativeMetricLabels.clicks }}</span>
+                        <strong>{{ formatCompactNumber(selectedCampaignCreative.clicks) }}</strong>
+                      </div>
+                      <div class="campaign-ad-stat">
+                        <span>{{ copy.creativeMetricLabels.ctr }}</span>
+                        <strong>{{ formatMetricValue('ctr', selectedCampaignCreative.ctr) }}</strong>
+                      </div>
+                    </div>
+                  </template>
+
+                  <div v-else class="campaign-creative-placeholder">
+                    <p class="eyebrow">{{ copy.campaignCreativeDetails }}</p>
+                    <h3>{{ copy.campaignCreativeEmptySelectionTitle }}</h3>
+                    <p>{{ copy.campaignCreativeEmptySelectionLead }}</p>
+                  </div>
+                </aside>
               </div>
             </section>
           </template>
@@ -6137,7 +10159,7 @@ watch(currentView, (view) => {
 
       <div v-if="aiPanelOpen && isAiOverlay" class="ai-overlay" @click="closeAiPanel"></div>
 
-      <button v-if="!aiPanelOpen" type="button" class="ai-fab" :aria-label="copy.openAiPanel" @click="openAiPanel">
+      <button v-if="!aiPanelOpen && isAiOverlay" type="button" class="ai-fab" :aria-label="copy.openAiPanel" @click="openAiPanel">
         <svg class="ai-fab-icon" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
         </svg>
@@ -6345,6 +10367,24 @@ watch(currentView, (view) => {
 
         <section class="ai-surface chat-surface reference-chat-surface">
           <div class="chat-scroll-region">
+            <div class="chat-context-card">
+              <p class="chat-context-label">{{ copy.chatContextLabel }}</p>
+              <strong>{{ currentAiContextLabel }}</strong>
+              <span v-if="report">{{ copy.days }}: {{ overviewCurrentRangeLabel }}</span>
+              <span v-else>{{ copy.aiChatDataMode }}</span>
+              <span v-if="workspaceMode === 'attention' && attentionActiveAlert" class="chat-context-note">
+                {{ attentionActiveAlert.reason }}
+              </span>
+              <div v-if="workspaceMode === 'attention' && attentionActiveAlert" class="chat-context-actions">
+                <button type="button" class="ghost-button compact-button" @click="openAttentionPage">
+                  {{ copy.attentionPageTitle }}
+                </button>
+                <button type="button" class="ghost-button compact-button" @click="openAttentionAlert(attentionActiveAlert)">
+                  {{ attentionActionLabel(attentionActiveAlert) }}
+                </button>
+              </div>
+            </div>
+
             <div class="chat-stream">
               <div
                 v-for="(message, index) in visibleChatMessages"
@@ -6364,13 +10404,13 @@ watch(currentView, (view) => {
                 ></article>
               </div>
 
-              <div v-if="chatLoading" class="chat-row assistant">
+              <div v-if="verdictLoading || chatLoading" class="chat-row assistant">
                 <span class="chat-avatar" aria-hidden="true">
                   <svg fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 3C7.03 3 3 6.58 3 11c0 2.35 1.16 4.46 3 5.92V21l3.6-2.02c.77.2 1.58.3 2.4.3 4.97 0 9-3.58 9-8s-4.03-8-9-8z" />
                   </svg>
                 </span>
-                <div class="chat-bubble assistant chat-typing-bubble" :aria-label="copy.loadingChat">
+                <div class="chat-bubble assistant chat-typing-bubble" :aria-label="chatLoading ? copy.loadingChat : copy.loadingVerdict">
                   <span class="chat-typing-dot"></span>
                   <span class="chat-typing-dot"></span>
                   <span class="chat-typing-dot"></span>
@@ -6382,7 +10422,7 @@ watch(currentView, (view) => {
               <p class="chat-suggestions-label">{{ copy.chatSuggestionLabel }}</p>
               <div class="suggestion-row">
                 <button
-                  v-for="suggestion in copy.helperQuestions"
+                  v-for="suggestion in contextualHelperQuestions"
                   :key="suggestion"
                   type="button"
                   class="chat-suggestion-chip"
@@ -6397,6 +10437,7 @@ watch(currentView, (view) => {
           <div class="chat-footer">
             <div class="chat-compose">
               <textarea
+                ref="chatTextareaRef"
                 v-model="chatDraft"
                 rows="1"
                 :placeholder="copy.askPlaceholder"

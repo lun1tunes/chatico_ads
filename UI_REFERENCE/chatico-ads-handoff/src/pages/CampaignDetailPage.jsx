@@ -1,6 +1,6 @@
 import { useParams, Navigate, Link } from 'react-router-dom';
 import { getCampaignDetail } from '../data/mockCampaigns';
-import VerdictCard from '../components/overview/VerdictCard';
+import AiChatEntryCard from '../components/ai/AiChatEntryCard';
 import CampaignSummary from '../components/campaigns/CampaignSummary';
 import AdSetList from '../components/campaigns/AdSetList';
 
@@ -65,8 +65,11 @@ export default function CampaignDetailPage() {
         )}
       </div>
 
-      {/* ИИ-вердикт по кампании */}
-      {campaign.verdict && <VerdictCard verdict={campaign.verdict} loading={false} />}
+      {/* Компактный entry point: сам AI-вывод живёт в правом чате */}
+      <AiChatEntryCard
+        context="Контекст кампании и её объявлений передаётся в правый AI-чат, где открывается вердикт и рекомендации."
+        hasVerdict={Boolean(campaign.verdict)}
+      />
 
       {/* Сводка показателей */}
       {campaign.metrics && <CampaignSummary metrics={campaign.metrics} />}

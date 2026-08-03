@@ -99,7 +99,7 @@ class GoogleAdsReportService:
         cache_key = self._cache_key(
             user_id=user_id,
             google_ads_customer_id=customer.id,
-            requested_days=requested_days,
+            periods=periods,
         )
         lock = self._locks.setdefault(cache_key, asyncio.Lock())
         async with lock:
@@ -120,8 +120,14 @@ class GoogleAdsReportService:
         for cache_key in [key for key in self._locks if key.startswith(cache_prefix)]:
             self._locks.pop(cache_key, None)
 
-    def _cache_key(self, *, user_id: str, google_ads_customer_id: str, requested_days: int) -> str:
-        return f"{user_id}:{google_ads_customer_id}:{requested_days}"
+    def _cache_key(self, *, user_id: str, google_ads_customer_id: str, periods: dict[str, dict[str, str]]) -> str:
+        current = periods["current"]
+        previous = periods["previous"]
+        return (
+            f"{user_id}:{google_ads_customer_id}:"
+            f"{current['since']}:{current['until']}:"
+            f"{previous['since']}:{previous['until']}"
+        )
 
     def _get_cached_report(self, cache_key: str) -> dict[str, object] | None:
         if self.cache_ttl_seconds <= 0:
@@ -390,6 +396,7 @@ class GoogleAdsReportService:
                     "object_type": ad_type,
                     "thumbnail_url": None,
                     "image_url": None,
+                    "status": None,
                     "ad_group_id": _optional_string(_mapping_value(ad_group, "id")),
                     "ad_group_name": _optional_string(_mapping_value(ad_group, "name")),
                     "metrics": {

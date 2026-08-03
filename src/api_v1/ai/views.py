@@ -16,7 +16,7 @@ from core.services.ai_prompt_service import PromptMessageError, PromptTemplateEr
 from core.services.google_ads_report_service import GoogleAdsCustomerNotFoundError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from core.services.tiktok_ads_report_service import TikTokAdsAdvertiserNotFoundError
-from core.utils.ai_context import build_report_context, build_scoped_report_context
+from core.utils.ai_context import build_scoped_report_context
 from core.utils.auto_verdict_fallback import build_auto_verdict_fallback_text
 from .schemas import (
     AutoVerdictRequest,
@@ -36,6 +36,14 @@ _AUTO_VERDICT_WORD_RE = re.compile(r"\S+")
 _LATIN_LETTER_RE = re.compile(r"[A-Za-z]")
 _CYRILLIC_LETTER_RE = re.compile(r"[А-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүІі]")
 _AUTO_VERDICT_MAX_WORDS = 120
+
+
+def _period_payload_kwargs(payload: AutoVerdictRequest | ChatRequest) -> dict[str, object]:
+    return {
+        "days": payload.days,
+        "since": payload.since,
+        "until": payload.until,
+    }
 
 
 def _auto_verdict_unavailable_text(language: str) -> str:
@@ -375,6 +383,7 @@ def _build_chat_prompt_bundle(
     report_context: str,
     language: str,
     messages: list[dict[str, str]],
+    scope: str | None = None,
 ):
     try:
         bundle = container.ai_prompt_service().build_chat_bundle(
@@ -387,6 +396,7 @@ def _build_chat_prompt_bundle(
             request_type="chat",
             platform=platform,
             report=report,
+            scope=scope,
         )
         raise
     _log_ai_request_prepared(
@@ -394,6 +404,7 @@ def _build_chat_prompt_bundle(
         platform=platform,
         report=report,
         prompt_checksums=bundle.checksums,
+        scope=scope,
     )
     return bundle
 
@@ -465,7 +476,7 @@ async def auto_verdict(
         report = await container.generate_meta_report_use_case(session=session).execute(
             user_id=user.id,
             ad_account_id=ad_account_id,
-            days=payload.days,
+            **_period_payload_kwargs(payload),
         )
         context, effective_scope, scoped_report = build_scoped_report_context(
             report,
@@ -512,7 +523,7 @@ async def google_auto_verdict(
         report = await container.generate_google_ads_report_use_case(session=session).execute(
             user_id=user.id,
             customer_id=customer_id,
-            days=payload.days,
+            **_period_payload_kwargs(payload),
         )
         context, effective_scope, scoped_report = build_scoped_report_context(
             report,
@@ -559,7 +570,7 @@ async def tiktok_auto_verdict(
         report = await container.generate_tiktok_ads_report_use_case(session=session).execute(
             user_id=user.id,
             advertiser_id=advertiser_id,
-            days=payload.days,
+            **_period_payload_kwargs(payload),
         )
         context, effective_scope, scoped_report = build_scoped_report_context(
             report,
@@ -600,20 +611,29 @@ async def chat(
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
 ):
+    report: dict[str, object] | None = None
+    scoped_report: dict[str, object] | None = None
     try:
         report = await container.generate_meta_report_use_case(session=session).execute(
             user_id=user.id,
             ad_account_id=ad_account_id,
-            days=payload.days,
+            **_period_payload_kwargs(payload),
         )
-        context = build_report_context(report)
+        context, effective_scope, scoped_report = build_scoped_report_context(
+            report,
+            scope=payload.scope,
+            campaign_id=payload.campaign_id,
+            ad_group_id=payload.ad_group_id,
+            creative_id=payload.creative_id,
+        )
         prompt_bundle = _build_chat_prompt_bundle(
             container=container,
             platform="meta",
-            report=report,
+            report=scoped_report or report,
             report_context=context,
             language=payload.language,
             messages=[message.model_dump() for message in payload.messages],
+            scope=effective_scope,
         )
         text = await container.ask_dashboard_use_case(session=session).execute(
             user_id=user.id,
@@ -637,20 +657,29 @@ async def google_chat(
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
 ):
+    report: dict[str, object] | None = None
+    scoped_report: dict[str, object] | None = None
     try:
         report = await container.generate_google_ads_report_use_case(session=session).execute(
             user_id=user.id,
             customer_id=customer_id,
-            days=payload.days,
+            **_period_payload_kwargs(payload),
         )
-        context = build_report_context(report)
+        context, effective_scope, scoped_report = build_scoped_report_context(
+            report,
+            scope=payload.scope,
+            campaign_id=payload.campaign_id,
+            ad_group_id=payload.ad_group_id,
+            creative_id=payload.creative_id,
+        )
         prompt_bundle = _build_chat_prompt_bundle(
             container=container,
             platform="google_ads",
-            report=report,
+            report=scoped_report or report,
             report_context=context,
             language=payload.language,
             messages=[message.model_dump() for message in payload.messages],
+            scope=effective_scope,
         )
         text = await container.ask_dashboard_use_case(session=session).execute(
             user_id=user.id,
@@ -674,20 +703,29 @@ async def tiktok_chat(
     session: AsyncSession = Depends(get_db_session),
     container: Container = Depends(get_di_container),
 ):
+    report: dict[str, object] | None = None
+    scoped_report: dict[str, object] | None = None
     try:
         report = await container.generate_tiktok_ads_report_use_case(session=session).execute(
             user_id=user.id,
             advertiser_id=advertiser_id,
-            days=payload.days,
+            **_period_payload_kwargs(payload),
         )
-        context = build_report_context(report)
+        context, effective_scope, scoped_report = build_scoped_report_context(
+            report,
+            scope=payload.scope,
+            campaign_id=payload.campaign_id,
+            ad_group_id=payload.ad_group_id,
+            creative_id=payload.creative_id,
+        )
         prompt_bundle = _build_chat_prompt_bundle(
             container=container,
             platform="tiktok_ads",
-            report=report,
+            report=scoped_report or report,
             report_context=context,
             language=payload.language,
             messages=[message.model_dump() for message in payload.messages],
+            scope=effective_scope,
         )
         text = await container.ask_dashboard_use_case(session=session).execute(
             user_id=user.id,

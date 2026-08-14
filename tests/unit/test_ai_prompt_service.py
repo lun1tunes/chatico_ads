@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from core.services.ai_prompt_service import AIPromptService, PromptMessageError, PromptTemplateError
+from core.services.ai_prompt_service import (
+    AIPromptService,
+    PROMPT_FILE_MAP,
+    PromptChecksumError,
+    PromptMessageError,
+    PromptTemplateError,
+)
 
 
 @pytest.mark.unit
@@ -147,3 +153,107 @@ def test_prompt_assets_include_domain_and_specialist_guardrails():
     assert "dashboard data alone is insufficient to evaluate competence" in chat_prompt
     assert "If all key metrics are zero or there are no active campaigns, clearly state there is no active delivery." in auto_verdict_prompt
     assert "Keep the answer under 120 words." in auto_verdict_prompt
+
+
+def _seed_prompt_dir(tmp_path: Path) -> Path:
+    source = Path(__file__).resolve().parents[2] / "prompts"
+    for filename in PROMPT_FILE_MAP.values():
+        (tmp_path / filename).write_text((source / filename).read_text(encoding="utf-8"), encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.unit
+@pytest.mark.service
+def test_apply_prompts_updates_overlay_and_revision(tmp_path: Path):
+    _seed_prompt_dir(tmp_path)
+    service = AIPromptService(prompts_dir=tmp_path)
+    original = service.list_prompts()
+    chat_block = next(block for block in original.blocks if block.id == "chat_prompt")
+    updated_body = f"{chat_block.body}\n\nDEBUG_PROMPT_MARKER_OVERLAY"
+
+    catalog = service.apply_prompts({"chat_prompt": updated_body})
+
+    applied = next(block for block in catalog.blocks if block.id == "chat_prompt")
+    assert catalog.revision == original.revision + 1
+    assert applied.body.endswith("DEBUG_PROMPT_MARKER_OVERLAY")
+    assert (tmp_path / "03_chat_prompt.txt").read_text(encoding="utf-8").strip().endswith("DEBUG_PROMPT_MARKER_OVERLAY")
+
+    bundle = service.build_chat_bundle(
+        report_context="acct|Main|123",
+        language="ru",
+        messages=[{"role": "user", "content": "Что произошло?"}],
+    )
+    assert "DEBUG_PROMPT_MARKER_OVERLAY" in bundle.system_prompt
+    assert bundle.source == "overlay"
+    assert bundle.revision == catalog.revision
+    assert bundle.checksums["03_chat_prompt.txt"] == applied.checksum
+
+
+@pytest.mark.unit
+@pytest.mark.service
+def test_request_overrides_win_over_overlay_and_pin_checksums(tmp_path: Path):
+    _seed_prompt_dir(tmp_path)
+    service = AIPromptService(prompts_dir=tmp_path)
+    catalog = service.list_prompts()
+    bodies = {block.id: block.body for block in catalog.blocks}
+    service.apply_prompts({"chat_prompt": f"{bodies['chat_prompt']}\n\nSTALE_OVERLAY"})
+
+    request_chat = f"{bodies['chat_prompt']}\n\nDEBUG_PROMPT_MARKER_REQUEST"
+    request_bodies = {**bodies, "chat_prompt": request_chat}
+    checksums = {
+        PROMPT_FILE_MAP[prompt_id]: service._checksum_text(body)
+        for prompt_id, body in request_bodies.items()
+    }
+
+    bundle = service.build_chat_bundle(
+        report_context="acct|Main|123",
+        language="ru",
+        messages=[{"role": "user", "content": "Что произошло?"}],
+        prompt_overrides=request_bodies,
+        expected_checksums=checksums,
+    )
+
+    assert "DEBUG_PROMPT_MARKER_REQUEST" in bundle.system_prompt
+    assert "STALE_OVERLAY" not in bundle.system_prompt
+    assert bundle.source == "request"
+    assert bundle.checksums["03_chat_prompt.txt"] == checksums["03_chat_prompt.txt"]
+
+
+@pytest.mark.unit
+@pytest.mark.service
+def test_expected_checksum_mismatch_rejects_stale_prompt(tmp_path: Path):
+    _seed_prompt_dir(tmp_path)
+    service = AIPromptService(prompts_dir=tmp_path)
+    catalog = service.list_prompts()
+    chat_block = next(block for block in catalog.blocks if block.id == "chat_prompt")
+
+    with pytest.raises(PromptChecksumError, match="Applied prompt does not match"):
+        service.build_chat_bundle(
+            report_context="acct|Main|123",
+            language="ru",
+            messages=[{"role": "user", "content": "Что произошло?"}],
+            prompt_overrides={"chat_prompt": f"{chat_block.body}\n\nNEW"},
+            expected_checksums={"03_chat_prompt.txt": chat_block.checksum},
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.service
+def test_unused_prompt_checksums_are_ignored_for_the_request(tmp_path: Path):
+    _seed_prompt_dir(tmp_path)
+    service = AIPromptService(prompts_dir=tmp_path)
+    catalog = service.list_prompts()
+    checksums = {block.filename: block.checksum for block in catalog.blocks}
+
+    bundle = service.build_chat_bundle(
+        report_context="acct|Main|123",
+        language="ru",
+        messages=[{"role": "user", "content": "Что произошло?"}],
+        expected_checksums=checksums,
+    )
+
+    assert set(bundle.checksums) == {
+        "01_report_content.txt",
+        "02_shared_ai_philosophy.txt",
+        "03_chat_prompt.txt",
+    }

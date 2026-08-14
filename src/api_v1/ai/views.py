@@ -12,16 +12,19 @@ from core.infrastructure.google_ads_api import GoogleAdsAPIError
 from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.infrastructure.tiktok_ads_api import TikTokAdsAPIError
-from core.services.ai_prompt_service import PromptMessageError, PromptTemplateError
+from core.services.ai_prompt_service import PromptChecksumError, PromptMessageError, PromptTemplateError
 from core.services.google_ads_report_service import GoogleAdsCustomerNotFoundError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from core.services.tiktok_ads_report_service import TikTokAdsAdvertiserNotFoundError
 from core.utils.ai_context import build_scoped_report_context
 from core.utils.auto_verdict_fallback import build_auto_verdict_fallback_text
 from .schemas import (
+    ApplyPromptsRequest,
     AutoVerdictRequest,
     ChatRequest,
+    PromptCatalogResponse,
     ProviderCatalogResponse,
+    ResetPromptsRequest,
     SaveProviderKeyRequest,
     SavedProviderKeyResponse,
     TextResponse,
@@ -44,6 +47,42 @@ def _period_payload_kwargs(payload: AutoVerdictRequest | ChatRequest) -> dict[st
         "since": payload.since,
         "until": payload.until,
     }
+
+
+def _prompt_kwargs(payload: AutoVerdictRequest | ChatRequest) -> dict[str, object]:
+    return {
+        "prompt_overrides": payload.prompt_overrides or None,
+        "expected_checksums": payload.prompt_checksums or None,
+    }
+
+
+def _catalog_response(catalog) -> PromptCatalogResponse:
+    return PromptCatalogResponse(
+        revision=catalog.revision,
+        blocks=[
+            {
+                "id": block.id,
+                "filename": block.filename,
+                "title": block.title,
+                "body": block.body,
+                "checksum": block.checksum,
+                "placeholders": list(block.placeholders),
+                "used_in": list(block.used_in),
+            }
+            for block in catalog.blocks
+        ],
+    )
+
+
+def _text_response(text: str, bundle=None) -> TextResponse:
+    if bundle is None:
+        return TextResponse(text=text)
+    return TextResponse(
+        text=text,
+        prompt_checksums=bundle.checksums,
+        prompt_revision=bundle.revision,
+        prompt_source=bundle.source,
+    )
 
 
 def _auto_verdict_unavailable_text(language: str) -> str:
@@ -233,6 +272,8 @@ def _raise_ai_http_error(exc: Exception) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     if isinstance(exc, (MetaGraphAPIError, GoogleAdsAPIError, TikTokAdsAPIError)):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    if isinstance(exc, PromptChecksumError):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if isinstance(exc, PromptMessageError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, PromptTemplateError):
@@ -308,11 +349,14 @@ def _log_ai_request_prepared(
     platform: str,
     report: dict[str, object],
     prompt_checksums: dict[str, str],
+    prompt_revision: int | None = None,
+    prompt_source: str | None = None,
     scope: str | None = None,
 ) -> None:
     since, until = _report_current_period(report)
     logger.info(
-        "AI request prepared type=%s platform=%s account_id=%s report_since=%s report_until=%s scope=%s prompt_checksums=%s",
+        "AI request prepared type=%s platform=%s account_id=%s report_since=%s report_until=%s "
+        "scope=%s prompt_checksums=%s prompt_revision=%s prompt_source=%s",
         request_type,
         platform,
         _report_account_id(report),
@@ -320,6 +364,8 @@ def _log_ai_request_prepared(
         until,
         scope or "-",
         prompt_checksums,
+        prompt_revision,
+        prompt_source,
     )
 
 
@@ -350,14 +396,18 @@ def _build_auto_verdict_prompt_bundle(
     report_context: str,
     language: str,
     scope: str,
+    prompt_overrides: dict[str, str] | None = None,
+    expected_checksums: dict[str, str] | None = None,
 ):
     try:
         bundle = container.ai_prompt_service().build_auto_verdict_bundle(
             report_context=report_context,
             language=language,
             scope=scope if scope in {"account", "campaign", "ad_group", "creative"} else "account",
+            prompt_overrides=prompt_overrides,
+            expected_checksums=expected_checksums,
         )
-    except PromptTemplateError:
+    except (PromptTemplateError, PromptChecksumError):
         _log_ai_prompt_error(
             request_type="auto_verdict",
             platform=platform,
@@ -370,6 +420,8 @@ def _build_auto_verdict_prompt_bundle(
         platform=platform,
         report=report,
         prompt_checksums=bundle.checksums,
+        prompt_revision=bundle.revision,
+        prompt_source=bundle.source,
         scope=scope,
     )
     return bundle
@@ -384,14 +436,18 @@ def _build_chat_prompt_bundle(
     language: str,
     messages: list[dict[str, str]],
     scope: str | None = None,
+    prompt_overrides: dict[str, str] | None = None,
+    expected_checksums: dict[str, str] | None = None,
 ):
     try:
         bundle = container.ai_prompt_service().build_chat_bundle(
             report_context=report_context,
             language=language,
             messages=messages,
+            prompt_overrides=prompt_overrides,
+            expected_checksums=expected_checksums,
         )
-    except PromptTemplateError:
+    except (PromptTemplateError, PromptChecksumError, PromptMessageError):
         _log_ai_prompt_error(
             request_type="chat",
             platform=platform,
@@ -404,6 +460,8 @@ def _build_chat_prompt_bundle(
         platform=platform,
         report=report,
         prompt_checksums=bundle.checksums,
+        prompt_revision=bundle.revision,
+        prompt_source=bundle.source,
         scope=scope,
     )
     return bundle
@@ -462,6 +520,44 @@ async def delete_provider_key(
         _raise_ai_http_error(exc)
 
 
+@router.get("/prompts", response_model=PromptCatalogResponse)
+async def list_ai_prompts(
+    user=Depends(get_current_user),
+    container: Container = Depends(get_di_container),
+):
+    return _catalog_response(container.ai_prompt_service().list_prompts())
+
+
+@router.put("/prompts", response_model=PromptCatalogResponse)
+async def apply_ai_prompts(
+    payload: ApplyPromptsRequest,
+    user=Depends(get_current_user),
+    container: Container = Depends(get_di_container),
+):
+    try:
+        catalog = container.ai_prompt_service().apply_prompts(
+            {block.id: block.body for block in payload.blocks}
+        )
+    except Exception as exc:  # noqa: BLE001
+        _raise_ai_http_error(exc)
+        raise
+    return _catalog_response(catalog)
+
+
+@router.post("/prompts/reset", response_model=PromptCatalogResponse)
+async def reset_ai_prompts(
+    payload: ResetPromptsRequest | None = None,
+    user=Depends(get_current_user),
+    container: Container = Depends(get_di_container),
+):
+    try:
+        catalog = container.ai_prompt_service().reset_prompts(payload.ids if payload else None)
+    except Exception as exc:  # noqa: BLE001
+        _raise_ai_http_error(exc)
+        raise
+    return _catalog_response(catalog)
+
+
 @router.post("/meta/ad-accounts/{ad_account_id}/auto-verdict", response_model=TextResponse)
 async def auto_verdict(
     ad_account_id: str,
@@ -492,6 +588,7 @@ async def auto_verdict(
             report_context=context,
             language=payload.language,
             scope=effective_scope,
+            **_prompt_kwargs(payload),
         )
         text = await _generate_auto_verdict_text(
             user_id=user.id,
@@ -501,7 +598,10 @@ async def auto_verdict(
             messages=prompt_bundle.messages,
             payload=payload,
         )
-        return TextResponse(text=_auto_verdict_response_text(text=text, report=scoped_report, payload=payload))
+        return _text_response(
+            _auto_verdict_response_text(text=text, report=scoped_report, payload=payload),
+            prompt_bundle,
+        )
     except Exception as exc:  # noqa: BLE001
         fallback_response = _auto_verdict_error_response(exc=exc, payload=payload, report=scoped_report or report)
         if fallback_response is not None:
@@ -539,6 +639,7 @@ async def google_auto_verdict(
             report_context=context,
             language=payload.language,
             scope=effective_scope,
+            **_prompt_kwargs(payload),
         )
         text = await _generate_auto_verdict_text(
             user_id=user.id,
@@ -548,7 +649,10 @@ async def google_auto_verdict(
             messages=prompt_bundle.messages,
             payload=payload,
         )
-        return TextResponse(text=_auto_verdict_response_text(text=text, report=scoped_report, payload=payload))
+        return _text_response(
+            _auto_verdict_response_text(text=text, report=scoped_report, payload=payload),
+            prompt_bundle,
+        )
     except Exception as exc:  # noqa: BLE001
         fallback_response = _auto_verdict_error_response(exc=exc, payload=payload, report=scoped_report or report)
         if fallback_response is not None:
@@ -586,6 +690,7 @@ async def tiktok_auto_verdict(
             report_context=context,
             language=payload.language,
             scope=effective_scope,
+            **_prompt_kwargs(payload),
         )
         text = await _generate_auto_verdict_text(
             user_id=user.id,
@@ -595,7 +700,10 @@ async def tiktok_auto_verdict(
             messages=prompt_bundle.messages,
             payload=payload,
         )
-        return TextResponse(text=_auto_verdict_response_text(text=text, report=scoped_report, payload=payload))
+        return _text_response(
+            _auto_verdict_response_text(text=text, report=scoped_report, payload=payload),
+            prompt_bundle,
+        )
     except Exception as exc:  # noqa: BLE001
         fallback_response = _auto_verdict_error_response(exc=exc, payload=payload, report=scoped_report or report)
         if fallback_response is not None:
@@ -634,6 +742,7 @@ async def chat(
             language=payload.language,
             messages=[message.model_dump() for message in payload.messages],
             scope=effective_scope,
+            **_prompt_kwargs(payload),
         )
         text = await container.ask_dashboard_use_case(session=session).execute(
             user_id=user.id,
@@ -644,7 +753,7 @@ async def chat(
             system_prompt=prompt_bundle.system_prompt,
             messages=prompt_bundle.messages,
         )
-        return TextResponse(text=text)
+        return _text_response(text, prompt_bundle)
     except Exception as exc:  # noqa: BLE001
         _raise_ai_http_error(exc)
 
@@ -680,6 +789,7 @@ async def google_chat(
             language=payload.language,
             messages=[message.model_dump() for message in payload.messages],
             scope=effective_scope,
+            **_prompt_kwargs(payload),
         )
         text = await container.ask_dashboard_use_case(session=session).execute(
             user_id=user.id,
@@ -690,7 +800,7 @@ async def google_chat(
             system_prompt=prompt_bundle.system_prompt,
             messages=prompt_bundle.messages,
         )
-        return TextResponse(text=text)
+        return _text_response(text, prompt_bundle)
     except Exception as exc:  # noqa: BLE001
         _raise_ai_http_error(exc)
 
@@ -726,6 +836,7 @@ async def tiktok_chat(
             language=payload.language,
             messages=[message.model_dump() for message in payload.messages],
             scope=effective_scope,
+            **_prompt_kwargs(payload),
         )
         text = await container.ask_dashboard_use_case(session=session).execute(
             user_id=user.id,
@@ -736,6 +847,6 @@ async def tiktok_chat(
             system_prompt=prompt_bundle.system_prompt,
             messages=prompt_bundle.messages,
         )
-        return TextResponse(text=text)
+        return _text_response(text, prompt_bundle)
     except Exception as exc:  # noqa: BLE001
         _raise_ai_http_error(exc)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -10,7 +11,7 @@ from core.infrastructure.google_ads_api import GoogleAdsConfigurationError
 from core.infrastructure.llm_clients import LLMProxyError
 from core.infrastructure.meta_graph_api import MetaGraphAPIError
 from core.infrastructure.tiktok_ads_api import TikTokAdsConfigurationError
-from core.services.ai_prompt_service import AIPromptService, PromptTemplateError
+from core.services.ai_prompt_service import AIPromptService, PROMPT_FILE_MAP, PromptTemplateError
 from core.use_cases.meta_data_deletion import MetaDataDeletionUseCaseError
 from core.services.meta_report_service import MetaAdAccountNotFoundError
 from main import app
@@ -1164,3 +1165,113 @@ async def test_auto_verdict_route_accepts_client_credentials(async_client):
     assert execute_call["provider"] == "openai"
     assert execute_call["api_key"] == "client-openai-key"
     assert execute_call["model"] == "gpt-5-mini"
+
+
+def _seed_prompt_dir(tmp_path: Path) -> Path:
+    source = Path(__file__).resolve().parents[2] / "prompts"
+    for filename in PROMPT_FILE_MAP.values():
+        (tmp_path / filename).write_text((source / filename).read_text(encoding="utf-8"), encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_prompts_catalog_route_returns_all_blocks(async_client):
+    container = FakeContainer()
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    response = await async_client.get("/api/v1/ai/prompts")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [block["id"] for block in payload["blocks"]] == [
+        "report_content",
+        "shared_ai_philosophy",
+        "chat_prompt",
+        "auto_verdict_prompt",
+    ]
+    assert all(block["body"] and block["checksum"] and block["filename"] for block in payload["blocks"])
+
+
+@pytest.mark.integration
+@pytest.mark.api
+async def test_apply_prompts_then_chat_uses_new_prompt_and_rejects_stale_checksum(async_client, tmp_path):
+    _seed_prompt_dir(tmp_path)
+    service = AIPromptService(prompts_dir=tmp_path)
+    container = FakeContainer()
+    container.ai_prompt_service = Mock(return_value=service)
+    container.generate_meta_report_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value=_sample_auto_verdict_report()),
+    )
+    container.ask_dashboard_use_case.return_value = SimpleNamespace(
+        execute=AsyncMock(return_value="chat-answer"),
+    )
+
+    app.dependency_overrides[get_current_user] = _override_current_user
+    app.dependency_overrides[get_db_session] = _override_db_session
+    app.dependency_overrides[get_di_container] = lambda: container
+
+    catalog_response = await async_client.get("/api/v1/ai/prompts")
+    assert catalog_response.status_code == 200
+    catalog = catalog_response.json()
+    chat_block = next(block for block in catalog["blocks"] if block["id"] == "chat_prompt")
+    updated_body = f"{chat_block['body']}\n\nDEBUG_PROMPT_MARKER_APPLY"
+
+    apply_response = await async_client.put(
+        "/api/v1/ai/prompts",
+        json={"blocks": [{"id": "chat_prompt", "body": updated_body}]},
+    )
+    assert apply_response.status_code == 200
+    applied = apply_response.json()
+    applied_chat = next(block for block in applied["blocks"] if block["id"] == "chat_prompt")
+    assert applied["revision"] == catalog["revision"] + 1
+    assert applied_chat["body"].endswith("DEBUG_PROMPT_MARKER_APPLY")
+
+    overrides = {block["id"]: block["body"] for block in applied["blocks"]}
+    checksums = {block["filename"]: block["checksum"] for block in applied["blocks"]}
+
+    chat_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "ru",
+            "messages": [{"role": "user", "content": "Что произошло?"}],
+            "prompt_overrides": overrides,
+            "prompt_checksums": checksums,
+        },
+    )
+    assert chat_response.status_code == 200
+    payload = chat_response.json()
+    execute_call = container.ask_dashboard_use_case.return_value.execute.await_args.kwargs
+    assert "DEBUG_PROMPT_MARKER_APPLY" in execute_call["system_prompt"]
+    assert payload["prompt_source"] == "request"
+    assert payload["prompt_checksums"]["03_chat_prompt.txt"] == applied_chat["checksum"]
+    assert payload["prompt_revision"] == applied["revision"]
+
+    overlay_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "ru",
+            "messages": [{"role": "user", "content": "Что произошло?"}],
+        },
+    )
+    assert overlay_response.status_code == 200
+    overlay_call = container.ask_dashboard_use_case.return_value.execute.await_args.kwargs
+    assert "DEBUG_PROMPT_MARKER_APPLY" in overlay_call["system_prompt"]
+    assert overlay_response.json()["prompt_source"] == "overlay"
+
+    stale_response = await async_client.post(
+        "/api/v1/ai/meta/ad-accounts/act_1/chat",
+        json={
+            "days": 30,
+            "language": "ru",
+            "messages": [{"role": "user", "content": "Что произошло?"}],
+            "prompt_overrides": overrides,
+            "prompt_checksums": {**checksums, "03_chat_prompt.txt": chat_block["checksum"]},
+        },
+    )
+    assert stale_response.status_code == 409
+    assert stale_response.json()["detail"] == "Applied prompt does not match the prompt used for this request"

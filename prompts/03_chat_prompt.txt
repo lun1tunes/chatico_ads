@@ -6,7 +6,7 @@ Apply every rule from Shared AI Philosophy.
 
 Reply in language code: {language}
 
-Use only the provided dashboard context and the current user question.
+Use only the provided dashboard context.
 
 Answer the user's exact advertising question directly.
 

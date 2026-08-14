@@ -36,6 +36,8 @@ class AutoVerdictRequest(PeriodSelectionRequest):
     provider: str | None = None
     api_key: str | None = Field(default=None, min_length=10, max_length=512)
     model: str | None = None
+    prompt_overrides: dict[str, str] = Field(default_factory=dict)
+    prompt_checksums: dict[str, str] = Field(default_factory=dict)
 
 
 class ChatMessage(BaseModel):
@@ -54,6 +56,8 @@ class ChatRequest(PeriodSelectionRequest):
     api_key: str | None = Field(default=None, min_length=10, max_length=512)
     model: str | None = None
     messages: list[ChatMessage]
+    prompt_overrides: dict[str, str] = Field(default_factory=dict)
+    prompt_checksums: dict[str, str] = Field(default_factory=dict)
 
 
 class SaveProviderKeyRequest(BaseModel):
@@ -82,3 +86,34 @@ class SavedProviderKeyResponse(BaseModel):
 
 class TextResponse(BaseModel):
     text: str
+    prompt_checksums: dict[str, str] = Field(default_factory=dict)
+    prompt_revision: int | None = None
+    prompt_source: str | None = None
+
+
+class PromptBlockResponse(BaseModel):
+    id: str
+    filename: str
+    title: str
+    body: str
+    checksum: str
+    placeholders: list[str]
+    used_in: list[str]
+
+
+class PromptCatalogResponse(BaseModel):
+    revision: int
+    blocks: list[PromptBlockResponse]
+
+
+class PromptBlockUpdate(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    body: str = Field(min_length=1, max_length=100_000)
+
+
+class ApplyPromptsRequest(BaseModel):
+    blocks: list[PromptBlockUpdate] = Field(min_length=1)
+
+
+class ResetPromptsRequest(BaseModel):
+    ids: list[str] = Field(default_factory=list)

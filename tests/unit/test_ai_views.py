@@ -144,4 +144,6 @@ async def test_chat_uses_effective_scope_without_mutating_request(monkeypatch):
         report_context="scope|campaign|cmp-1|Creative drilldown",
         language="en",
         messages=[{"role": "user", "content": "Why is this ad weak?"}],
+        prompt_overrides=None,
+        expected_checksums=None,
     )

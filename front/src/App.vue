@@ -2957,18 +2957,6 @@ const accountSwitcherOpen = ref(false)
 const adSetSwitcherOpen = ref(false)
 const adSetSwitcherRef = ref<HTMLElement | null>(null)
 const audienceDetailsOpen = ref(false)
-
-function openAudienceDetailsPanel() {
-  audienceDetailsOpen.value = true
-}
-
-function closeAudienceDetailsPanel() {
-  audienceDetailsOpen.value = false
-}
-
-function toggleAudienceDetailsPanel() {
-  audienceDetailsOpen.value = !audienceDetailsOpen.value
-}
 const brokenCreativePreviewUrls = ref<Set<string>>(new Set())
 const proxiedCreativePreviewUrls = ref<Record<string, string>>({})
 const creativePreviewProxyInFlight = new Set<string>()
@@ -6568,12 +6556,16 @@ function updatePeriodMenuPosition() {
   }
 
   const rect = trigger.getBoundingClientRect()
-  const panelWidth = Math.min(288, Math.max(240, rect.right - 16))
-  const left = Math.max(16, rect.right - panelWidth)
-  const top = rect.bottom + 8
+  const panelWidth = Math.min(288, Math.max(240, window.innerWidth - 32))
+  const left = Math.min(
+    Math.max(16, rect.right - panelWidth),
+    Math.max(16, window.innerWidth - panelWidth - 16),
+  )
+  const top = Math.min(rect.bottom + 8, Math.max(16, window.innerHeight - 240))
   const maxHeight = Math.max(220, window.innerHeight - top - 16)
 
   periodMenuStyle.value = {
+    position: 'fixed',
     top: `${top}px`,
     left: `${left}px`,
     width: `${panelWidth}px`,
@@ -6593,6 +6585,8 @@ async function togglePeriodMenu() {
   }
   periodCustomPanelOpen.value = false
   reportCustomError.value = ''
+  reportCustomEditorOpen.value = false
+  updatePeriodMenuPosition()
   periodMenuOpen.value = true
   await nextTick()
   updatePeriodMenuPosition()
@@ -8086,31 +8080,16 @@ function campaignAdGroupDetailSections(group: CampaignAdGroupRow) {
   return sections.filter((section) => section.values.length > 0)
 }
 
-function clearAudienceDetailsHoverTimer() {
-  if (audienceDetailsHoverTimer) {
-    clearTimeout(audienceDetailsHoverTimer)
-    audienceDetailsHoverTimer = null
-  }
-}
-
 function openAudienceDetailsPanel() {
-  clearAudienceDetailsHoverTimer()
   audienceDetailsOpen.value = true
-  audienceDetailsPinned.value = true
 }
 
 function closeAudienceDetailsPanel() {
-  clearAudienceDetailsHoverTimer()
   audienceDetailsOpen.value = false
-  audienceDetailsPinned.value = false
 }
 
 function toggleAudienceDetailsPanel() {
-  if (audienceDetailsOpen.value) {
-    closeAudienceDetailsPanel()
-    return
-  }
-  openAudienceDetailsPanel()
+  audienceDetailsOpen.value = !audienceDetailsOpen.value
 }
 
 function formatTargetingToken(value: string) {
@@ -9008,12 +8987,30 @@ watch(accountSwitcherOpen, async (isOpen) => {
 
 watch(periodMenuOpen, async (isOpen) => {
   if (!isOpen) {
+    window.removeEventListener('resize', updatePeriodMenuPosition)
+    window.removeEventListener('scroll', updatePeriodMenuPosition, true)
+    return
+  }
+  await nextTick()
+  updatePeriodMenuPosition()
+  window.addEventListener('resize', updatePeriodMenuPosition)
+  window.addEventListener('scroll', updatePeriodMenuPosition, true)
+})
+
+watch(periodCustomPanelOpen, async (isOpen) => {
+  if (!periodMenuOpen.value || !isOpen) {
     return
   }
   await nextTick()
   updatePeriodMenuPosition()
 })
 
+watch(workspaceMode, (mode) => {
+  if (mode !== 'attention') {
+    reportCustomEditorOpen.value = false
+  }
+  closePeriodMenu()
+})
 
 watch(isPromptsSection, (isPrompts) => {
   if (!isPrompts || !user.value) {
@@ -10871,7 +10868,7 @@ watch(currentView, (view) => {
                           type="button"
                           ref="periodPillRef"
                           class="campaign-period-pill"
-                          :class="{ open: periodMenuOpen }"
+                          :class="{ open: periodMenuOpen || reportCustomEditorOpen }"
                           :disabled="reportLoading"
                           @click="togglePeriodMenu"
                         >
@@ -10881,7 +10878,7 @@ watch(currentView, (view) => {
                             viewBox="0 0 24 24"
                             stroke="currentColor"
                             stroke-width="2.5"
-                            :class="{ open: periodMenuOpen }"
+                            :class="{ open: periodMenuOpen || reportCustomEditorOpen }"
                           >
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
                           </svg>
@@ -10893,7 +10890,6 @@ watch(currentView, (view) => {
                     </div>
                   </div>
                 </div>
-
               </section>
 
               <div class="metric-grid reference-metric-grid campaign-compact-metrics">

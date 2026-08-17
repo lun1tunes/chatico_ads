@@ -43,6 +43,14 @@ class IMetaGraphClient(Protocol):
 
     async def list_ad_sets(self, *, account_id: str, access_token: str) -> list[dict[str, Any]]: ...
 
+    async def get_reach_estimate(
+        self,
+        *,
+        account_id: str,
+        access_token: str,
+        targeting_spec: dict[str, Any],
+    ) -> dict[str, Any] | None: ...
+
     async def get_account_insights(
         self, *, account_id: str, access_token: str, since: str, until: str
     ) -> dict[str, Any] | None: ...

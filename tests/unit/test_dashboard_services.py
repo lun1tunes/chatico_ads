@@ -83,6 +83,21 @@ class FakeMetaReportClient:
             },
         ]
 
+    async def get_reach_estimate(
+        self,
+        *,
+        account_id: str,
+        access_token: str,
+        targeting_spec: dict[str, object],
+    ) -> dict[str, object] | None:
+        assert account_id == "act_1"
+        assert access_token == "meta-token"
+        assert isinstance(targeting_spec.get("geo_locations"), dict)
+        cities = targeting_spec.get("geo_locations", {}).get("cities") if isinstance(targeting_spec.get("geo_locations"), dict) else None
+        if cities:
+            return {"users_lower_bound": 1_000_000, "users_upper_bound": 2_000_000}
+        return {"users_lower_bound": 800_000, "users_upper_bound": 1_200_000}
+
     async def get_account_insights(self, *, account_id: str, access_token: str, since: str, until: str):
         self.account_insight_calls += 1
         if since == "2026-05-17":
@@ -373,12 +388,30 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     assert report["trend"]["previous"][-1]["date"] == "2026-04-18"
     assert report["campaigns"][0]["name"] == "Lead Gen"
     assert report["campaigns"][0]["ad_groups"][0]["name"] == "Prospecting"
-    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["geo"] == "KZ, Almaty"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["geo"] == "KZ, Алматы"
     assert report["campaigns"][0]["ad_groups"][0]["targeting"]["gender"] == "female"
-    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["signal"] == "Marketing, Entrepreneurship"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["signal"] == "Маркетинг, Предпринимательство"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["details"]["interests"] == [
+        "Маркетинг",
+        "Предпринимательство",
+    ]
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["audience_reach"] == "1 000 000 – 2 000 000"
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["details"]["retargeting"] is False
+    assert report["campaigns"][0]["ad_groups"][0]["targeting"]["details"]["placements"]["included"] == [
+        "facebook:feed",
+        "instagram:story",
+        "instagram:reels",
+    ]
+    assert "instagram:stream" in report["campaigns"][0]["ad_groups"][0]["targeting"]["details"]["placements"]["excluded"]
+    assert "facebook:story" in report["campaigns"][0]["ad_groups"][0]["targeting"]["details"]["placements"]["excluded"]
     assert report["campaigns"][1]["ad_groups"][0]["targeting"]["audience"] == (
         "incl:Website Visitors 30d excl:Purchasers 180d"
     )
+    assert report["campaigns"][1]["ad_groups"][0]["targeting"]["audience_reach"] == "800 000 – 1 200 000"
+    assert report["campaigns"][1]["ad_groups"][0]["targeting"]["details"]["custom_audiences"] == [
+        "Website Visitors 30d"
+    ]
+    assert report["campaigns"][1]["ad_groups"][0]["targeting"]["details"]["retargeting"] is True
     assert report["campaigns"][0]["creatives"][0]["name"] == "Creative A"
     assert report["campaigns"][0]["creatives"][0]["ad_group_id"] == "adset_1"
     assert report["campaigns"][0]["creatives"][0]["ad_group_name"] == "Prospecting"
@@ -405,7 +438,7 @@ async def test_generate_meta_report_use_case_builds_sorted_dashboard_payload(db_
     context = build_report_context(report)
     assert "acct|Main account|111|USD|Asia/Almaty" in context
     assert "sum|leads|1|2|sp:150,120,25" in context
-    assert "grp|Prospecting|KZ, Almaty|25-45|female|~|Marketing, Entrepreneurship|facebook:feed, instagram:story, instagram:reels|~|120|9000|220|2.4444|12|leads" in context
+    assert "grp|Prospecting|KZ, Алматы|25-45|female|~|Маркетинг, Предпринимательство|facebook:feed, instagram:story, instagram:reels|~|120|9000|220|2.4444|12|leads" in context
     assert "grp|Retargeting|KZ|18-65|~|incl:Website Visitors 30d excl:Purchasers 180d|~|facebook, instagram|~|30|3000|80|2.6667|3|leads" in context
     assert "crt|Creative A|IMAGE|50|4000|100|2.5|6|leads" in context
     assert "crt|Пока вы занимаетесь|VIDEO|40|2000|50|2.5|3|leads" in context
@@ -655,6 +688,24 @@ def test_reporting_helpers():
 
     result_kind, result_value = extract_primary_result([{"action_type": "lead", "value": "7"}])
     assert (result_kind, result_value) == ("leads", 7)
+    assert extract_primary_result(
+        [
+            {"action_type": "onsite_conversion.messaging_conversation_started_7d", "value": "1"},
+            {"action_type": "lead", "value": "24"},
+        ]
+    ) == ("leads", 24)
+    assert extract_primary_result(
+        [
+            {"action_type": "onsite_conversion.messaging_conversation_started_7d", "value": "18"},
+            {"action_type": "lead", "value": "3"},
+        ]
+    ) == ("messages", 18)
+    assert extract_primary_result(
+        [
+            {"action_type": "onsite_conversion.messaging_conversation_started_7d", "value": "5"},
+            {"action_type": "lead", "value": "5"},
+        ]
+    ) == ("messages", 5)
     assert percentage_delta(120, 100) == 20.0
     assert group_ads_by_campaign([{"id": "1", "campaign_id": "cmp"}, {"id": "2"}]) == {
         "cmp": [{"id": "1", "campaign_id": "cmp"}]

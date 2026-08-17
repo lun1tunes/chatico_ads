@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import urlencode
 
 import httpx
@@ -159,6 +160,28 @@ class MetaGraphAPIClient:
                 "access_token": access_token,
             },
         )
+
+    async def get_reach_estimate(
+        self,
+        *,
+        account_id: str,
+        access_token: str,
+        targeting_spec: dict[str, object],
+    ) -> dict[str, object] | None:
+        """Estimated Audience Size range for a targeting spec (users_lower_bound / users_upper_bound)."""
+        data = await self._get(
+            f"{account_id}/reachestimate",
+            params={
+                "targeting_spec": json.dumps(targeting_spec, ensure_ascii=False, separators=(",", ":")),
+                "access_token": access_token,
+            },
+        )
+        payload = data.get("data", data)
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        if not isinstance(payload, dict):
+            return None
+        return payload
 
     async def get_account_insights(
         self, *, account_id: str, access_token: str, since: str, until: str

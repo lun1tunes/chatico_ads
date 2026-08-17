@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from collections import defaultdict
 from copy import deepcopy
 from datetime import date, timedelta
@@ -13,6 +15,10 @@ from ..repositories.meta_ad_account import MetaAdAccountRepository
 from ..repositories.meta_report_snapshot import MetaReportSnapshotRepository
 from ..utils.time import utcnow
 from ..utils.reporting import build_metric, extract_primary_result, group_ads_by_campaign, to_float
+
+logger = logging.getLogger(__name__)
+
+_REACH_ESTIMATE_CONCURRENCY = 4
 
 
 class MetaReportError(Exception):
@@ -165,6 +171,32 @@ def _dedupe_strings(values: list[str]) -> list[str]:
     return unique
 
 
+_TARGETING_LABEL_RU: dict[str, str] = {
+    "small business": "Малый бизнес",
+    "small and medium enterprises": "Малый и средний бизнес",
+    "small and medium-sized enterprises": "Малый и средний бизнес",
+    "small & medium enterprises": "Малый и средний бизнес",
+    "sme": "Малый и средний бизнес",
+    "smes": "Малый и средний бизнес",
+    "entrepreneurship": "Предпринимательство",
+    "marketing": "Маркетинг",
+    "individual entrepreneur": "Индивидуальный предприниматель",
+    "individual entrepreneur or business": "Индивидуальный предприниматель или Бизнес",
+    "business owner": "Владелец бизнеса",
+    "small business owners": "Владельцы малых предприятий",
+    "small business owner": "Владелец малого предприятия",
+    "almaty": "Алматы",
+    "tselinograd": "Целиноград",
+    "astana": "Астана",
+    "nur-sultan": "Нур-Султан",
+}
+
+
+def _localize_targeting_label(value: str) -> str:
+    key = " ".join(value.replace("‐", "-").replace("–", "-").replace("—", "-").split()).casefold()
+    return _TARGETING_LABEL_RU.get(key, value)
+
+
 def _extract_named_values(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -174,11 +206,11 @@ def _extract_named_values(value: object) -> list[str]:
         if isinstance(item, dict):
             label = _first_non_empty(item.get("name"), item.get("label"), item.get("key"), item.get("id"))
             if label:
-                values.append(label)
+                values.append(_localize_targeting_label(label))
         elif item is not None:
             label = str(item).strip()
             if label:
-                values.append(label)
+                values.append(_localize_targeting_label(label))
 
     return _dedupe_strings(values)
 
@@ -247,15 +279,207 @@ def _extract_flexible_spec_signals(targeting: dict[str, object]) -> list[str]:
     return _dedupe_strings(values)
 
 
+def _extract_flexible_spec_named(targeting: dict[str, object], *keys: str) -> list[str]:
+    flexible_spec = targeting.get("flexible_spec")
+    if not isinstance(flexible_spec, list):
+        return []
+
+    values: list[str] = []
+    for item in flexible_spec:
+        if not isinstance(item, dict):
+            continue
+        for key in keys:
+            values.extend(_extract_named_values(item.get(key)))
+
+    return _dedupe_strings(values)
+
+
 def _extract_signal_summary(targeting: dict[str, object]) -> str | None:
     signals = _dedupe_strings(
         [
             *_extract_named_values(targeting.get("interests")),
             *_extract_named_values(targeting.get("behaviors")),
+            *_extract_named_values(targeting.get("work_positions")),
             *_extract_flexible_spec_signals(targeting),
         ]
     )
     return ", ".join(signals) or None
+
+
+def _audience_name_suggests_lookalike(name: str) -> bool:
+    lowered = name.casefold()
+    return any(token in lowered for token in ("lookalike", "lal", "похож", "ұқсас"))
+
+
+def _audience_name_suggests_retargeting(name: str) -> bool:
+    lowered = name.casefold()
+    markers = (
+        "retarget",
+        "remarket",
+        "visitor",
+        "website",
+        "purchase",
+        "checkout",
+        "cart",
+        "engage",
+        "ретаргет",
+        "посет",
+        "клиент",
+    )
+    return any(token in lowered for token in markers)
+
+
+def _targeting_has_lookalike_fields(targeting: dict[str, object]) -> bool:
+    for key in ("lookalike_spec", "lookalike", "lookalikes"):
+        value = targeting.get(key)
+        if value:
+            return True
+    return False
+
+
+_PLACEMENT_POSITION_CATALOGS: dict[str, tuple[str, ...]] = {
+    "facebook": (
+        "feed",
+        "right_hand_column",
+        "marketplace",
+        "video_feeds",
+        "story",
+        "search",
+        "instream_video",
+        "facebook_reels",
+        "profile_feed",
+        "notification",
+    ),
+    "instagram": (
+        "stream",
+        "story",
+        "explore",
+        "explore_home",
+        "reels",
+        "profile_feed",
+        "ig_search",
+        "profile_reels",
+    ),
+    "messenger": (
+        "messenger_home",
+        "sponsored_messages",
+        "story",
+    ),
+    "audience_network": (
+        "classic",
+        "instream_video",
+        "rewarded_video",
+    ),
+    "whatsapp": ("status",),
+}
+
+_PLACEMENT_POSITION_KEYS: tuple[tuple[str, str], ...] = (
+    ("facebook_positions", "facebook"),
+    ("instagram_positions", "instagram"),
+    ("messenger_positions", "messenger"),
+    ("audience_network_positions", "audience_network"),
+    ("whatsapp_positions", "whatsapp"),
+)
+
+
+def _placement_key(platform: str, position: str) -> str:
+    return f"{platform}:{position}"
+
+
+def _extract_placements_breakdown(targeting: dict[str, object]) -> dict[str, list[str]]:
+    explicit_by_platform: dict[str, list[str]] = {}
+    for key, platform in _PLACEMENT_POSITION_KEYS:
+        values = _extract_named_values(targeting.get(key))
+        if values:
+            explicit_by_platform[platform] = values
+
+    publisher_platforms = {
+        value.casefold()
+        for value in _extract_named_values(targeting.get("publisher_platforms"))
+    }
+
+    included: list[str] = []
+    excluded: list[str] = []
+
+    if explicit_by_platform:
+        active_platforms = set(explicit_by_platform) | {
+            platform
+            for platform in _PLACEMENT_POSITION_CATALOGS
+            if platform in publisher_platforms
+        }
+        for platform, catalog in _PLACEMENT_POSITION_CATALOGS.items():
+            selected = {
+                value.casefold()
+                for value in explicit_by_platform.get(platform, [])
+            }
+            if platform in explicit_by_platform:
+                for position in catalog:
+                    key = _placement_key(platform, position)
+                    if position.casefold() in selected:
+                        included.append(key)
+                    else:
+                        excluded.append(key)
+                for position in explicit_by_platform[platform]:
+                    marker = position.casefold()
+                    if marker not in {item.casefold() for item in catalog}:
+                        included.append(_placement_key(platform, position))
+            elif platform in active_platforms:
+                included.extend(_placement_key(platform, position) for position in catalog)
+            else:
+                excluded.extend(_placement_key(platform, position) for position in catalog)
+    elif publisher_platforms:
+        for platform, catalog in _PLACEMENT_POSITION_CATALOGS.items():
+            keys = [_placement_key(platform, position) for position in catalog]
+            if platform in publisher_platforms:
+                included.extend(keys)
+            else:
+                excluded.extend(keys)
+
+    return {
+        "included": _dedupe_strings(included),
+        "excluded": _dedupe_strings(excluded),
+    }
+
+
+def _extract_targeting_details(targeting: dict[str, object]) -> dict[str, object]:
+    interests = _dedupe_strings(
+        [
+            *_extract_named_values(targeting.get("interests")),
+            *_extract_flexible_spec_named(targeting, "interests"),
+        ]
+    )
+    behaviors = _dedupe_strings(
+        [
+            *_extract_named_values(targeting.get("behaviors")),
+            *_extract_flexible_spec_named(targeting, "behaviors", "industry", "life_events"),
+        ]
+    )
+    job_titles = _dedupe_strings(
+        [
+            *_extract_named_values(targeting.get("work_positions")),
+            *_extract_flexible_spec_named(targeting, "work_positions"),
+        ]
+    )
+    custom_audiences = _extract_named_values(targeting.get("custom_audiences"))
+    excluded_audiences = _extract_named_values(targeting.get("excluded_custom_audiences"))
+    audience_names = [*custom_audiences, *excluded_audiences]
+
+    lookalike = _targeting_has_lookalike_fields(targeting) or any(
+        _audience_name_suggests_lookalike(name) for name in audience_names
+    )
+    retargeting = (not lookalike) and any(
+        _audience_name_suggests_retargeting(name) for name in audience_names
+    )
+
+    return {
+        "interests": interests,
+        "behaviors": behaviors,
+        "job_titles": job_titles,
+        "custom_audiences": custom_audiences,
+        "lookalike": lookalike,
+        "retargeting": retargeting,
+        "placements": _extract_placements_breakdown(targeting),
+    }
 
 
 def _extract_audience_summary(targeting: dict[str, object]) -> str | None:
@@ -272,15 +496,7 @@ def _extract_audience_summary(targeting: dict[str, object]) -> str | None:
 
 def _extract_placement_summary(targeting: dict[str, object]) -> str | None:
     placements: list[str] = []
-    placement_groups = (
-        ("facebook_positions", "facebook"),
-        ("instagram_positions", "instagram"),
-        ("messenger_positions", "messenger"),
-        ("audience_network_positions", "audience_network"),
-        ("whatsapp_positions", "whatsapp"),
-    )
-
-    for key, prefix in placement_groups:
+    for key, prefix in _PLACEMENT_POSITION_KEYS:
         values = _extract_named_values(targeting.get(key))
         placements.extend(f"{prefix}:{value}" for value in values)
 
@@ -299,9 +515,62 @@ def _extract_device_summary(targeting: dict[str, object]) -> str | None:
     return ", ".join(devices) or None
 
 
-def _normalize_targeting(targeting_spec: object) -> dict[str, str | None]:
+def _targeting_has_geo_for_reach(targeting: dict[str, object]) -> bool:
+    geo = targeting.get("geo_locations")
+    if not isinstance(geo, dict):
+        return False
+    countries = geo.get("countries")
+    if isinstance(countries, list) and any(isinstance(item, str) and item.strip() for item in countries):
+        return True
+    country_groups = geo.get("country_groups")
+    if isinstance(country_groups, list) and country_groups:
+        return True
+    regions = geo.get("regions")
+    cities = geo.get("cities")
+    if (isinstance(regions, list) and regions) or (isinstance(cities, list) and cities):
+        return True
+    return False
+
+
+def _format_audience_reach_bounds(lower: object, upper: object) -> str | None:
+    try:
+        lower_value = int(float(str(lower)))
+        upper_value = int(float(str(upper)))
+    except (TypeError, ValueError):
+        return None
+    # Meta returns -1 when estimate is unavailable for some custom audiences.
+    if lower_value < 0 or upper_value < 0:
+        return None
+    if lower_value == 0 and upper_value == 0:
+        return None
+
+    def _fmt(value: int) -> str:
+        return f"{value:,}".replace(",", " ")
+
+    if lower_value == upper_value:
+        return _fmt(lower_value)
+    low, high = sorted((lower_value, upper_value))
+    return f"{_fmt(low)} – {_fmt(high)}"
+
+
+def _extract_reach_bounds(payload: dict[str, object]) -> tuple[object, object] | None:
+    lower = payload.get("users_lower_bound")
+    upper = payload.get("users_upper_bound")
+    if lower is not None and upper is not None:
+        return lower, upper
+    estimate = payload.get("estimate_mau_lower_bound"), payload.get("estimate_mau_upper_bound")
+    if estimate[0] is not None and estimate[1] is not None:
+        return estimate
+    return None
+
+
+def _normalize_targeting(
+    targeting_spec: object,
+    *,
+    audience_reach: str | None = None,
+) -> dict[str, object]:
     targeting = targeting_spec if isinstance(targeting_spec, dict) else {}
-    normalized = {
+    normalized: dict[str, object] = {
         "geo": _extract_geo_summary(targeting),
         "age": _format_age_summary(targeting),
         "gender": _format_gender_summary(targeting),
@@ -309,6 +578,8 @@ def _normalize_targeting(targeting_spec: object) -> dict[str, str | None]:
         "signal": _extract_signal_summary(targeting),
         "placement": _extract_placement_summary(targeting),
         "device": _extract_device_summary(targeting),
+        "details": _extract_targeting_details(targeting),
+        "audience_reach": audience_reach,
     }
 
     summary_parts = [
@@ -553,6 +824,60 @@ class MetaReportService:
             },
         }
 
+    async def _resolve_audience_reach_by_ad_set(
+        self,
+        *,
+        account_id: str,
+        access_token: str,
+        ad_sets: list[dict[str, object]],
+    ) -> dict[str, str]:
+        """Map ad set id → formatted Estimated Audience Size via /reachestimate."""
+        unique_targeting: dict[str, dict[str, object]] = {}
+        ad_set_to_key: dict[str, str] = {}
+
+        for ad_set in ad_sets:
+            ad_set_id = _optional_string(ad_set.get("id"))
+            targeting = ad_set.get("targeting")
+            if not ad_set_id or not isinstance(targeting, dict) or not _targeting_has_geo_for_reach(targeting):
+                continue
+            cache_key = json.dumps(targeting, sort_keys=True, ensure_ascii=False, default=str)
+            ad_set_to_key[ad_set_id] = cache_key
+            unique_targeting.setdefault(cache_key, targeting)
+
+        if not unique_targeting:
+            return {}
+
+        semaphore = asyncio.Semaphore(_REACH_ESTIMATE_CONCURRENCY)
+
+        async def _estimate_key(cache_key: str, targeting: dict[str, object]) -> tuple[str, str | None]:
+            async with semaphore:
+                try:
+                    payload = await self.meta_client.get_reach_estimate(
+                        account_id=account_id,
+                        access_token=access_token,
+                        targeting_spec=targeting,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed to fetch Meta reachestimate")
+                    return cache_key, None
+
+            if not isinstance(payload, dict):
+                return cache_key, None
+            bounds = _extract_reach_bounds(payload)
+            if bounds is None:
+                return cache_key, None
+            return cache_key, _format_audience_reach_bounds(bounds[0], bounds[1])
+
+        estimated = await asyncio.gather(
+            *(_estimate_key(cache_key, targeting) for cache_key, targeting in unique_targeting.items())
+        )
+        reach_by_key = {cache_key: reach for cache_key, reach in estimated if reach}
+        return {
+            ad_set_id: reach_by_key[cache_key]
+            for ad_set_id, cache_key in ad_set_to_key.items()
+            if cache_key in reach_by_key
+        }
+
     async def _build_report_payload(
         self,
         *,
@@ -641,6 +966,12 @@ class MetaReportService:
             if campaign_id:
                 ad_set_ids_by_campaign[campaign_id].add(ad_group_id)
 
+        audience_reach_by_ad_set = await self._resolve_audience_reach_by_ad_set(
+            account_id=account.external_id,
+            access_token=access_token,
+            ad_sets=ad_sets,
+        )
+
         current_result_kind, current_result_count = extract_primary_result(
             current_account_insights.get("actions") if current_account_insights else None
         )
@@ -717,7 +1048,10 @@ class MetaReportService:
                 ad_group_result_kind, ad_group_results = extract_primary_result(actions)
                 ad_group_impressions = int(ad_group_metrics.get("impressions") or 0)
                 ad_group_clicks = int(ad_group_metrics.get("clicks") or 0)
-                ad_group_targeting = _normalize_targeting(ad_set.get("targeting"))
+                ad_group_targeting = _normalize_targeting(
+                    ad_set.get("targeting"),
+                    audience_reach=audience_reach_by_ad_set.get(ad_group_id),
+                )
 
                 ad_groups.append(
                     {

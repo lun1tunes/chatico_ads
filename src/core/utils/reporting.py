@@ -29,11 +29,22 @@ def extract_primary_result(actions: list[dict[str, object]] | None) -> tuple[str
         return ("result", 0)
 
     action_map = {str(item.get("action_type", "")): to_int(item.get("value")) for item in actions}
-    for action_type in RESULT_PRIORITY:
-        if action_type in action_map:
-            kind = "messages" if "messaging" in action_type else "leads"
-            return (kind, action_map[action_type])
-    return ("result", 0)
+    # Prefer the dominant result count among known action types.
+    # Tie-break by RESULT_PRIORITY order so WhatsApp-first accounts keep messaging when counts match.
+    best: tuple[int, int, str, int] | None = None  # (-count, priority_index, kind, count)
+    for index, action_type in enumerate(RESULT_PRIORITY):
+        if action_type not in action_map:
+            continue
+        count = action_map[action_type]
+        if count <= 0:
+            continue
+        kind = "messages" if "messaging" in action_type else "leads"
+        candidate = (-count, index, kind, count)
+        if best is None or candidate < best:
+            best = candidate
+    if best is None:
+        return ("result", 0)
+    return (best[2], best[3])
 
 
 def percentage_delta(current: float | int | None, previous: float | int | None) -> float | None:

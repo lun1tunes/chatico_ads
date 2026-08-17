@@ -124,6 +124,20 @@ interface CampaignAdGroupSnapshot {
     placement?: string | null
     device?: string | null
     summary?: string | null
+    audience_reach?: string | null
+    details?: {
+      interests?: string[]
+      behaviors?: string[]
+      job_titles?: string[]
+      custom_audiences?: string[]
+      lookalike?: boolean
+      retargeting?: boolean
+      audience_reach?: string | null
+      placements?: {
+        included?: string[]
+        excluded?: string[]
+      } | null
+    } | null
   } | null
   targeting_summary?: string | null
   metrics: {
@@ -136,6 +150,21 @@ interface CampaignAdGroupSnapshot {
   }
 }
 
+interface CampaignAdGroupPlacementsView {
+  included: string[]
+  excluded: string[]
+}
+
+interface CampaignAdGroupTargetingDetailsView {
+  interests: string[]
+  behaviors: string[]
+  job_titles: string[]
+  custom_audiences: string[]
+  lookalike: boolean
+  retargeting: boolean
+  placements: CampaignAdGroupPlacementsView
+}
+
 interface CampaignAdGroupTargetingView {
   geo: string
   age: string
@@ -145,6 +174,8 @@ interface CampaignAdGroupTargetingView {
   placement: string
   device: string
   summary: string
+  audienceReach: string
+  details: CampaignAdGroupTargetingDetailsView
 }
 
 interface CampaignAdGroupSettingView {
@@ -1355,6 +1386,13 @@ const translations = {
     periodFrom: 'От',
     periodUntil: 'До',
     periodApply: 'Применить',
+    periodBack: 'Назад',
+    periodCompareWith: 'Сравнение с {range}',
+    periodCompareToggle: 'Сравнивать с предыдущим периодом',
+    periodMenu7d: 'Последние 7 дней',
+    periodMenu14d: 'Последние 14 дней',
+    periodMenu30d: 'Последние 30 дней',
+    periodMenuCustom: 'Выбрать даты',
     periodCompareOn: 'Сравнение: вкл',
     periodCompareOff: 'Сравнение: выкл',
     periodCustomError: 'Выберите корректный диапазон дат.',
@@ -1686,7 +1724,7 @@ const translations = {
     campaignAdGroupAgeUpTo: 'до {value} лет',
     campaignAdGroupAction: '{count} →',
     campaignAdGroupPriceLabel: 'Цена',
-    campaignAdGroupProsePeople: 'Это люди',
+    campaignAdGroupProsePeople: 'Люди',
     campaignAdGroupProseFrom: 'из {place}',
     campaignAdGroupProseAge: '{age} лет',
     campaignAdGroupProseLookalike: 'похожие по поведению на ваших текущих клиентов',
@@ -1694,6 +1732,18 @@ const translations = {
     campaignAdGroupProseInterest: 'отобраны по интересам: {topics}',
     campaignAdGroupProseSmb: 'Чаще всего это владельцы и руководители малого и среднего бизнеса.',
     campaignAdGroupProseLeaders: 'Чаще всего это руководители и люди, принимающие решения в компании.',
+    campaignAdGroupDetailedTargeting: 'Детальный таргетинг из кабинета',
+    campaignAdGroupDetailInterests: 'Интересы',
+    campaignAdGroupDetailBehaviors: 'Поведение',
+    campaignAdGroupDetailJobTitles: 'Должности',
+    audienceReachLabel: 'Охват аудитории',
+    audienceDetailsMore: 'Подробнее',
+    audienceDetailsClose: 'Закрыть',
+    audienceSectionTitle: 'Аудитория',
+    placementsSectionTitle: 'Места размещения',
+    placementIncluded: 'Включено',
+    placementExcluded: 'Исключено',
+    placementSummaryShort: '{platform}: {included} вкл., {excluded} искл.',
     adFormatVideo: 'Видео',
     adFormatImage: 'Баннер',
     adFormatCarousel: 'Карусель',
@@ -1839,6 +1889,13 @@ const translations = {
     periodFrom: 'Басы',
     periodUntil: 'Соңы',
     periodApply: 'Қолдану',
+    periodBack: 'Артқа',
+    periodCompareWith: 'Салыстыру: {range}',
+    periodCompareToggle: 'Алдыңғы кезеңмен салыстыру',
+    periodMenu7d: 'Соңғы 7 күн',
+    periodMenu14d: 'Соңғы 14 күн',
+    periodMenu30d: 'Соңғы 30 күн',
+    periodMenuCustom: 'Күндерді таңдау',
     periodCompareOn: 'Салыстыру: қосулы',
     periodCompareOff: 'Салыстыру: өшірулі',
     periodCustomError: 'Дұрыс күн диапазонын таңдаңыз.',
@@ -2170,7 +2227,7 @@ const translations = {
     campaignAdGroupAgeUpTo: '{value} жасқа дейін',
     campaignAdGroupAction: '{count} →',
     campaignAdGroupPriceLabel: 'Баға',
-    campaignAdGroupProsePeople: 'Бұл адамдар',
+    campaignAdGroupProsePeople: 'Адамдар',
     campaignAdGroupProseFrom: '{place} ішінен',
     campaignAdGroupProseAge: '{age} жас',
     campaignAdGroupProseLookalike: 'қазіргі клиенттеріңізге мінез-құлқы жағынан ұқсас',
@@ -2178,6 +2235,18 @@ const translations = {
     campaignAdGroupProseInterest: 'қызығушылық бойынша іріктелген: {topics}',
     campaignAdGroupProseSmb: 'Көбінесе бұл шағын және орта бизнес иелері мен басшылары.',
     campaignAdGroupProseLeaders: 'Көбінесе бұл шешім қабылдайтын басшылар.',
+    campaignAdGroupDetailedTargeting: 'Кабинеттен егжей-тегжейлі таргетинг',
+    campaignAdGroupDetailInterests: 'Қызығушылықтар',
+    campaignAdGroupDetailBehaviors: 'Мінез-құлық',
+    campaignAdGroupDetailJobTitles: 'Лауазымдар',
+    audienceReachLabel: 'Аудитория қамтуы',
+    audienceDetailsMore: 'Толығырақ',
+    audienceDetailsClose: 'Жабу',
+    audienceSectionTitle: 'Аудитория',
+    placementsSectionTitle: 'Орналастыру орындары',
+    placementIncluded: 'Қосылған',
+    placementExcluded: 'Алып тасталған',
+    placementSummaryShort: '{platform}: {included} қос., {excluded} алып т.',
     adFormatVideo: 'Бейне',
     adFormatImage: 'Баннер',
     adFormatCarousel: 'Карусель',
@@ -2323,6 +2392,13 @@ const translations = {
     periodFrom: 'From',
     periodUntil: 'Until',
     periodApply: 'Apply',
+    periodBack: 'Back',
+    periodCompareWith: 'Compared with {range}',
+    periodCompareToggle: 'Compare with previous period',
+    periodMenu7d: 'Last 7 days',
+    periodMenu14d: 'Last 14 days',
+    periodMenu30d: 'Last 30 days',
+    periodMenuCustom: 'Choose dates',
     periodCompareOn: 'Compare: on',
     periodCompareOff: 'Compare: off',
     periodCustomError: 'Choose a valid date range.',
@@ -2654,7 +2730,7 @@ const translations = {
     campaignAdGroupAgeUpTo: 'up to {value}',
     campaignAdGroupAction: '{count} →',
     campaignAdGroupPriceLabel: 'Price',
-    campaignAdGroupProsePeople: 'These are people',
+    campaignAdGroupProsePeople: 'People',
     campaignAdGroupProseFrom: 'from {place}',
     campaignAdGroupProseAge: 'aged {age}',
     campaignAdGroupProseLookalike: 'similar in behavior to your current customers',
@@ -2662,6 +2738,18 @@ const translations = {
     campaignAdGroupProseInterest: 'selected by interests: {topics}',
     campaignAdGroupProseSmb: 'Most often these are owners and managers of small and medium businesses.',
     campaignAdGroupProseLeaders: 'Most often these are decision-makers and company leaders.',
+    campaignAdGroupDetailedTargeting: 'Detailed targeting from Ads Manager',
+    campaignAdGroupDetailInterests: 'Interests',
+    campaignAdGroupDetailBehaviors: 'Behaviors',
+    campaignAdGroupDetailJobTitles: 'Job titles',
+    audienceReachLabel: 'Audience reach',
+    audienceDetailsMore: 'Details',
+    audienceDetailsClose: 'Close',
+    audienceSectionTitle: 'Audience',
+    placementsSectionTitle: 'Placements',
+    placementIncluded: 'Included',
+    placementExcluded: 'Excluded',
+    placementSummaryShort: '{platform}: {included} on, {excluded} off',
     adFormatVideo: 'Video',
     adFormatImage: 'Banner',
     adFormatCarousel: 'Carousel',
@@ -2829,6 +2917,11 @@ const reportCustomRange = ref<DateRangeDraft>(defaultCustomRange())
 const reportCustomDraft = ref<DateRangeDraft>({ ...reportCustomRange.value })
 const reportCustomError = ref('')
 const reportCustomEditorOpen = ref(false)
+const periodMenuOpen = ref(false)
+const periodCustomPanelOpen = ref(false)
+const periodPillRef = ref<HTMLElement | null>(null)
+const periodMenuRef = ref<HTMLElement | null>(null)
+const periodMenuStyle = ref<Record<string, string>>({})
 const overviewAdditionalMetricsOpen = ref(false)
 const campaignAdditionalMetricsOpen = ref(false)
 const accounts = ref<MetaAccount[]>([])
@@ -2863,6 +2956,124 @@ const providerKeyNotice = ref('')
 const accountSwitcherOpen = ref(false)
 const adSetSwitcherOpen = ref(false)
 const adSetSwitcherRef = ref<HTMLElement | null>(null)
+const audienceDetailsOpen = ref(false)
+
+function openAudienceDetailsPanel() {
+  audienceDetailsOpen.value = true
+}
+
+function closeAudienceDetailsPanel() {
+  audienceDetailsOpen.value = false
+}
+
+function toggleAudienceDetailsPanel() {
+  audienceDetailsOpen.value = !audienceDetailsOpen.value
+}
+const brokenCreativePreviewUrls = ref<Set<string>>(new Set())
+const proxiedCreativePreviewUrls = ref<Record<string, string>>({})
+const creativePreviewProxyInFlight = new Set<string>()
+
+function isMetaCreativeCdnHost(host: string) {
+  const normalized = host.toLowerCase().replace(/\.$/, '')
+  const exact = new Set([
+    'fbcdn.net',
+    'facebook.com',
+    'fbsbx.com',
+    'cdninstagram.com',
+    'instagram.com',
+    'fbcdn.com',
+  ])
+  if (exact.has(normalized)) {
+    return true
+  }
+  return (
+    normalized.endsWith('.fbcdn.net') ||
+    normalized.endsWith('.facebook.com') ||
+    normalized.endsWith('.fbsbx.com') ||
+    normalized.endsWith('.cdninstagram.com') ||
+    normalized.endsWith('.instagram.com') ||
+    normalized.endsWith('.fbcdn.com')
+  )
+}
+
+function isMetaCreativeCdnUrl(url: string) {
+  try {
+    return isMetaCreativeCdnHost(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
+function clearProxiedCreativePreviews() {
+  for (const objectUrl of Object.values(proxiedCreativePreviewUrls.value)) {
+    if (objectUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(objectUrl)
+    }
+  }
+  proxiedCreativePreviewUrls.value = {}
+  brokenCreativePreviewUrls.value = new Set()
+  creativePreviewProxyInFlight.clear()
+}
+
+function creativePreviewDisplayUrl(url: string) {
+  const normalized = trimText(url)
+  if (!normalized) {
+    return ''
+  }
+  return proxiedCreativePreviewUrls.value[normalized] || normalized
+}
+
+async function hydrateCreativePreviewProxy(url: string) {
+  const normalized = trimText(url)
+  if (!normalized || !accessToken.value || !isMetaCreativeCdnUrl(normalized)) {
+    return
+  }
+  if (proxiedCreativePreviewUrls.value[normalized] || creativePreviewProxyInFlight.has(normalized)) {
+    return
+  }
+  if (brokenCreativePreviewUrls.value.has(normalized)) {
+    return
+  }
+
+  creativePreviewProxyInFlight.add(normalized)
+  try {
+    const response = await fetch(`${API_BASE_URL}/media/preview?url=${encodeURIComponent(normalized)}`, {
+      method: 'GET',
+      headers: {
+        authorization: `Bearer ${accessToken.value}`,
+      },
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      markCreativePreviewBroken(normalized)
+      return
+    }
+    const blob = await response.blob()
+    if (!blob.type.startsWith('image/')) {
+      markCreativePreviewBroken(normalized)
+      return
+    }
+    const objectUrl = URL.createObjectURL(blob)
+    const previous = proxiedCreativePreviewUrls.value[normalized]
+    proxiedCreativePreviewUrls.value = {
+      ...proxiedCreativePreviewUrls.value,
+      [normalized]: objectUrl,
+    }
+    if (previous && previous.startsWith('blob:')) {
+      URL.revokeObjectURL(previous)
+    }
+  } catch {
+    markCreativePreviewBroken(normalized)
+  } finally {
+    creativePreviewProxyInFlight.delete(normalized)
+  }
+}
+
+function queueCreativePreviewHydration(urls: readonly string[]) {
+  for (const url of urls) {
+    void hydrateCreativePreviewProxy(url)
+  }
+}
 const platformMenuOpen = ref(false)
 const connectModalOpen = ref(false)
 const connectModalProvider = ref<OAuthProvider | null>(null)
@@ -2956,6 +3167,25 @@ function periodPresetLabel(preset: (typeof overviewQuickPeriodOptions)[number] |
     return copy.value.periodCustom
   }
   return copy.value.dayOptions[Number.parseInt(preset, 10) as 7 | 14 | 30]
+}
+
+function periodMenuLabel(preset: (typeof overviewQuickPeriodOptions)[number] | 'custom') {
+  if (preset === '7d') {
+    return copy.value.periodMenu7d
+  }
+  if (preset === '14d') {
+    return copy.value.periodMenu14d
+  }
+  if (preset === '30d') {
+    return copy.value.periodMenu30d
+  }
+  if (preset === 'this_month') {
+    return copy.value.periodThisMonth
+  }
+  if (preset === 'last_month') {
+    return copy.value.periodLastMonth
+  }
+  return copy.value.periodMenuCustom
 }
 
 function buildDateRangeLabel(since: string, until: string) {
@@ -3235,6 +3465,8 @@ const showSidebarAllCampaignsLink = computed(() => (report.value?.campaigns?.len
 const isAdsNavActive = computed(
   () => workspaceMode.value === 'campaign' || workspaceMode.value === 'campaigns',
 )
+const isCampaignsListActive = computed(() => workspaceMode.value === 'campaigns')
+const isWelcomeHome = computed(() => workspaceMode.value === 'overview')
 const selectedCampaign = computed(() => {
   const campaigns = report.value?.campaigns ?? []
   return campaigns.find((campaign) => campaign.id === selectedCampaignId.value) ?? null
@@ -3816,8 +4048,11 @@ const currentAiContextLabel = computed(() => {
   if (currentAiScope.value === 'campaign' && selectedCampaign.value) {
     return `${copy.value.campaignFocus}: ${selectedCampaign.value.name}`
   }
+  if (workspaceMode.value === 'overview' || workspaceMode.value === 'campaigns') {
+    return ''
+  }
   const accountName = report.value?.account.name || selectedAccount.value?.name || ''
-  return accountName ? `${copy.value.overviewAccount}: ${accountName}` : copy.value.overviewAccount
+  return accountName || ''
 })
 const workspaceMode = computed<WorkspaceSection>(() => {
   if (isAttentionSection.value) {
@@ -4049,6 +4284,24 @@ const overviewCurrentRangeLabel = computed(() => {
   }
   return buildDateRangeLabel(report.value.periods.current.since, report.value.periods.current.until)
 })
+const overviewPreviousRangeLabel = computed(() => {
+  if (!report.value) {
+    return ''
+  }
+  return buildDateRangeLabel(report.value.periods.previous.since, report.value.periods.previous.until)
+})
+const periodComparisonNote = computed(() => {
+  if (!reportComparisonEnabled.value || !overviewPreviousRangeLabel.value) {
+    return ''
+  }
+  return copy.value.periodCompareWith.replace('{range}', overviewPreviousRangeLabel.value)
+})
+const periodMenuOptions = computed(() =>
+  ([...overviewQuickPeriodOptions, 'custom'] as const).map((preset) => ({
+    value: preset,
+    label: periodMenuLabel(preset),
+  })),
+)
 const overviewTrendChart = computed<TrendChartModel>(() => buildTrendChartModel(overviewTrendPoints.value))
 const overviewStatusCard = computed<{
   tone: 'stable' | 'improving' | 'attention' | 'critical' | 'paused' | 'empty'
@@ -4403,6 +4656,7 @@ function navigateToView(view: AppView) {
 }
 
 function navigateToWorkspace(section: WorkspaceSection, options: { campaignId?: string; replace?: boolean } = {}) {
+  closePeriodMenu()
   const campaignId = options.campaignId ?? selectedCampaignId.value
   const target = routePathForWorkspace(section, campaignId)
   const method = options.replace ? 'replaceState' : 'pushState'
@@ -5737,6 +5991,7 @@ async function loadReport(options: { forceRefresh?: boolean } = {}) {
 
   if (reportContextKey.value !== nextContextKey) {
     resetChatState()
+    clearProxiedCreativePreviews()
   }
 
   try {
@@ -5751,33 +6006,33 @@ async function loadReport(options: { forceRefresh?: boolean } = {}) {
       query.set('force_refresh', 'true')
     }
     const payload = await apiRequest<DashboardReport>(buildDashboardReportPath(selectedProvider.value, selectedAccountId.value, query.toString()))
-	    report.value = payload
-	    reportContextKey.value = nextContextKey
-	    selectedCampaignId.value = payload.campaigns.find((campaign) => campaign.id === selectedCampaignId.value)?.id ?? ''
-	    if (selectedCampaignAdGroupId.value && !selectedCampaignAdGroups.value.find((group) => group.id === selectedCampaignAdGroupId.value)) {
-	      selectedCampaignAdGroupId.value = ''
-	    }
-	    if (campaignCreativeFilterGroupId.value && !selectedCampaignAdGroups.value.find((group) => group.id === campaignCreativeFilterGroupId.value)) {
-	      campaignCreativeFilterGroupId.value = ''
-	    }
-	    if (selectedCampaignCreativeId.value && !selectedCampaignAds.value.find((ad) => ad.id === selectedCampaignCreativeId.value)) {
-	      selectedCampaignCreativeId.value = ''
-	    }
-	    if (
-	      selectedCampaignCreativeId.value &&
-	      campaignCreativeFilterGroupId.value &&
-	      !selectedCampaignAds.value.find(
-	        (ad) => ad.id === selectedCampaignCreativeId.value && resolveCampaignAdGroupId(ad) === campaignCreativeFilterGroupId.value,
-	      )
-	    ) {
-	      selectedCampaignCreativeId.value = ''
-	    }
-	    if (selectedCampaignPanel.value === 'creatives') {
-	      syncSelectedCampaignCreative()
-	    }
-	    if (workspaceSection.value === 'campaign' && !selectedCampaignId.value) {
-	      navigateToWorkspace('campaigns', { replace: true })
-	    }
+    report.value = payload
+    reportContextKey.value = nextContextKey
+    selectedCampaignId.value = payload.campaigns.find((campaign) => campaign.id === selectedCampaignId.value)?.id ?? ''
+    if (selectedCampaignAdGroupId.value && !selectedCampaignAdGroups.value.find((group) => group.id === selectedCampaignAdGroupId.value)) {
+      selectedCampaignAdGroupId.value = ''
+    }
+    if (campaignCreativeFilterGroupId.value && !selectedCampaignAdGroups.value.find((group) => group.id === campaignCreativeFilterGroupId.value)) {
+      campaignCreativeFilterGroupId.value = ''
+    }
+    if (selectedCampaignCreativeId.value && !selectedCampaignAds.value.find((ad) => ad.id === selectedCampaignCreativeId.value)) {
+      selectedCampaignCreativeId.value = ''
+    }
+    if (
+      selectedCampaignCreativeId.value &&
+      campaignCreativeFilterGroupId.value &&
+      !selectedCampaignAds.value.find(
+        (ad) => ad.id === selectedCampaignCreativeId.value && resolveCampaignAdGroupId(ad) === campaignCreativeFilterGroupId.value,
+      )
+    ) {
+      selectedCampaignCreativeId.value = ''
+    }
+    if (selectedCampaignPanel.value === 'creatives') {
+      syncSelectedCampaignCreative()
+    }
+    if (workspaceSection.value === 'campaign' && !selectedCampaignId.value) {
+      navigateToWorkspace('overview', { replace: true })
+    }
   } catch (error) {
     pageError.value = formatUnexpectedError(error)
   } finally {
@@ -5946,6 +6201,9 @@ function handleViewportResize() {
   if (accountSwitcherOpen.value) {
     updateAccountSwitcherMenuPosition()
   }
+  if (periodMenuOpen.value) {
+    updatePeriodMenuPosition()
+  }
 }
 
 function focusAiComposer() {
@@ -6092,10 +6350,12 @@ function toggleAccountSwitcher() {
 }
 
 function handleGlobalScroll() {
-  if (!accountSwitcherOpen.value) {
-    return
+  if (accountSwitcherOpen.value) {
+    updateAccountSwitcherMenuPosition()
   }
-  updateAccountSwitcherMenuPosition()
+  if (periodMenuOpen.value) {
+    updatePeriodMenuPosition()
+  }
 }
 
 function providerEmptyMessage(providerOption: OAuthProvider) {
@@ -6233,6 +6493,11 @@ function handleGlobalPointer(event: MouseEvent) {
   if (platformMenuRef.value && !platformMenuRef.value.contains(target)) {
     platformMenuOpen.value = false
   }
+  const insidePeriodMenu =
+    periodPillRef.value?.contains(target) || periodMenuRef.value?.contains(target)
+  if (periodMenuOpen.value && !insidePeriodMenu) {
+    closePeriodMenu()
+  }
 }
 
 function handleGlobalKeydown(event: KeyboardEvent) {
@@ -6243,6 +6508,8 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   adSetSwitcherOpen.value = false
   platformMenuOpen.value = false
   connectModalOpen.value = false
+  closeAudienceDetailsPanel()
+  closePeriodMenu()
   if (aiPanelOpen.value) {
     closeAiPanel()
   }
@@ -6272,26 +6539,89 @@ function selectAccount(provider: OAuthProvider, accountId: string) {
 }
 
 function selectPeriodPreset(preset: (typeof overviewQuickPeriodOptions)[number]) {
+  closePeriodMenu()
+  reportCustomEditorOpen.value = false
+  reportCustomError.value = ''
   if (reportPeriodPreset.value === preset) {
     return
   }
   reportPeriodPreset.value = preset
-  reportCustomEditorOpen.value = false
-  reportCustomError.value = ''
   resetChatState()
   void loadReport()
 }
 
-function toggleCustomPeriodEditor() {
-  if (!reportCustomEditorOpen.value) {
-    if (reportPeriodPreset.value === 'custom') {
-      reportCustomDraft.value = { ...reportCustomRange.value }
-    } else if (report.value) {
-      reportCustomDraft.value = {
-        since: report.value.periods.current.since,
-        until: report.value.periods.current.until,
-      }
+function seedCustomPeriodDraft() {
+  if (reportPeriodPreset.value === 'custom') {
+    reportCustomDraft.value = { ...reportCustomRange.value }
+  } else if (report.value) {
+    reportCustomDraft.value = {
+      since: report.value.periods.current.since,
+      until: report.value.periods.current.until,
     }
+  }
+}
+
+function updatePeriodMenuPosition() {
+  const trigger = periodPillRef.value
+  if (!trigger) {
+    return
+  }
+
+  const rect = trigger.getBoundingClientRect()
+  const panelWidth = Math.min(288, Math.max(240, rect.right - 16))
+  const left = Math.max(16, rect.right - panelWidth)
+  const top = rect.bottom + 8
+  const maxHeight = Math.max(220, window.innerHeight - top - 16)
+
+  periodMenuStyle.value = {
+    top: `${top}px`,
+    left: `${left}px`,
+    width: `${panelWidth}px`,
+    maxHeight: `${maxHeight}px`,
+  }
+}
+
+function closePeriodMenu() {
+  periodMenuOpen.value = false
+  periodCustomPanelOpen.value = false
+}
+
+async function togglePeriodMenu() {
+  if (periodMenuOpen.value) {
+    closePeriodMenu()
+    return
+  }
+  periodCustomPanelOpen.value = false
+  reportCustomError.value = ''
+  periodMenuOpen.value = true
+  await nextTick()
+  updatePeriodMenuPosition()
+}
+
+function openPeriodCustomPanel() {
+  seedCustomPeriodDraft()
+  reportCustomError.value = ''
+  periodCustomPanelOpen.value = true
+  nextTick(() => {
+    updatePeriodMenuPosition()
+  })
+}
+
+function selectPeriodMenuOption(preset: (typeof overviewQuickPeriodOptions)[number] | 'custom') {
+  if (preset === 'custom') {
+    openPeriodCustomPanel()
+    return
+  }
+  selectPeriodPreset(preset)
+}
+
+function toggleCustomPeriodEditor() {
+  if (!isAttentionSection.value) {
+    void togglePeriodMenu()
+    return
+  }
+  if (!reportCustomEditorOpen.value) {
+    seedCustomPeriodDraft()
   }
   reportCustomError.value = ''
   reportCustomEditorOpen.value = !reportCustomEditorOpen.value
@@ -6312,7 +6642,8 @@ function applyCustomPeriod() {
   }
 
   reportCustomError.value = ''
-  reportCustomEditorOpen.value = true
+  reportCustomEditorOpen.value = false
+  closePeriodMenu()
   if (
     reportPeriodPreset.value === 'custom' &&
     reportCustomRange.value.since === since &&
@@ -6399,6 +6730,7 @@ function selectCampaignAdGroup(groupId: string) {
   if (!nextGroup) {
     return
   }
+  closeAudienceDetailsPanel()
   selectedCampaignPanel.value = 'ad_groups'
   selectedCampaignAdGroupId.value = nextGroup.id
   selectedCampaignCreativeId.value = ''
@@ -6409,6 +6741,7 @@ function selectCampaignAdGroup(groupId: string) {
 }
 
 function viewCampaignCreatives(groupId = '') {
+  closeAudienceDetailsPanel()
   selectedCampaignPanel.value = 'creatives'
   selectedCampaignAdGroupId.value = groupId
   campaignCreativeFilterGroupId.value = groupId
@@ -6416,6 +6749,7 @@ function viewCampaignCreatives(groupId = '') {
 }
 
 function clearSelectedCampaignAdGroup() {
+  closeAudienceDetailsPanel()
   selectedCampaignAdGroupId.value = ''
   selectedCampaignCreativeId.value = ''
   selectedCampaignPanel.value = 'results'
@@ -6496,6 +6830,21 @@ function resolveCampaignAdGroupId(ad: Pick<CampaignAdRow, 'groupId'>) {
   return ad.groupId || `${selectedCampaign.value?.id || 'campaign'}-primary-group`
 }
 
+const emptyCampaignAdGroupPlacements: CampaignAdGroupPlacementsView = {
+  included: [],
+  excluded: [],
+}
+
+const emptyCampaignAdGroupTargetingDetails: CampaignAdGroupTargetingDetailsView = {
+  interests: [],
+  behaviors: [],
+  job_titles: [],
+  custom_audiences: [],
+  lookalike: false,
+  retargeting: false,
+  placements: emptyCampaignAdGroupPlacements,
+}
+
 const emptyCampaignAdGroupTargeting: CampaignAdGroupTargetingView = {
   geo: '',
   age: '',
@@ -6505,9 +6854,11 @@ const emptyCampaignAdGroupTargeting: CampaignAdGroupTargetingView = {
   placement: '',
   device: '',
   summary: '',
+  audienceReach: '',
+  details: emptyCampaignAdGroupTargetingDetails,
 }
 
-type CampaignAdGroupTargetingField = Exclude<keyof CampaignAdGroupTargetingView, 'summary'>
+type CampaignAdGroupTargetingField = Exclude<keyof CampaignAdGroupTargetingView, 'summary' | 'details'>
 
 const TARGETING_SUMMARY_FIELD_MAP: Record<string, CampaignAdGroupTargetingField> = {
   geo: 'geo',
@@ -6557,12 +6908,62 @@ function parseCampaignAdGroupTargetingSummary(summary: string) {
   return parsed
 }
 
+function normalizeCampaignAdGroupPlacements(
+  placements?: NonNullable<NonNullable<CampaignAdGroupSnapshot['targeting']>['details']>['placements'],
+): CampaignAdGroupPlacementsView {
+  if (!placements || typeof placements !== 'object') {
+    return { included: [], excluded: [] }
+  }
+  return {
+    included: Array.isArray(placements.included)
+      ? placements.included.map((item) => trimText(String(item))).filter(Boolean)
+      : [],
+    excluded: Array.isArray(placements.excluded)
+      ? placements.excluded.map((item) => trimText(String(item))).filter(Boolean)
+      : [],
+  }
+}
+
+function normalizeCampaignAdGroupTargetingDetails(
+  details?: NonNullable<CampaignAdGroupSnapshot['targeting']>['details'],
+): CampaignAdGroupTargetingDetailsView {
+  if (!details || typeof details !== 'object') {
+    return {
+      interests: [],
+      behaviors: [],
+      job_titles: [],
+      custom_audiences: [],
+      lookalike: false,
+      retargeting: false,
+      placements: { included: [], excluded: [] },
+    }
+  }
+  return {
+    interests: Array.isArray(details.interests)
+      ? details.interests.map((item) => trimText(String(item))).filter(Boolean)
+      : [],
+    behaviors: Array.isArray(details.behaviors)
+      ? details.behaviors.map((item) => trimText(String(item))).filter(Boolean)
+      : [],
+    job_titles: Array.isArray(details.job_titles)
+      ? details.job_titles.map((item) => trimText(String(item))).filter(Boolean)
+      : [],
+    custom_audiences: Array.isArray(details.custom_audiences)
+      ? details.custom_audiences.map((item) => trimText(String(item))).filter(Boolean)
+      : [],
+    lookalike: Boolean(details.lookalike),
+    retargeting: Boolean(details.retargeting),
+    placements: normalizeCampaignAdGroupPlacements(details.placements),
+  }
+}
+
 function normalizeCampaignAdGroupTargeting(
   targeting?: CampaignAdGroupSnapshot['targeting'] | null,
   targetingSummary?: string | null,
 ): CampaignAdGroupTargetingView {
   const summary = trimText(targeting?.summary) || trimText(targetingSummary)
   const parsed = parseCampaignAdGroupTargetingSummary(summary)
+  const details = normalizeCampaignAdGroupTargetingDetails(targeting?.details)
   return {
     geo: trimText(targeting?.geo) || parsed.geo || '',
     age: trimText(targeting?.age) || parsed.age || '',
@@ -6572,6 +6973,9 @@ function normalizeCampaignAdGroupTargeting(
     placement: trimText(targeting?.placement) || parsed.placement || '',
     device: trimText(targeting?.device) || parsed.device || '',
     summary,
+    audienceReach:
+      trimText(targeting?.audience_reach) || trimText(targeting?.details?.audience_reach) || '',
+    details,
   }
 }
 
@@ -7532,7 +7936,13 @@ function campaignGeoLabelPair(code: string): [string, string] | null {
 
 function humanizeCampaignGeo(value: string) {
   return splitTargetingList(value)
-    .map((item) => campaignGeoLabelPair(item)?.[0] || formatTargetingToken(item))
+    .map((item) => {
+      const country = campaignGeoLabelPair(item)?.[0]
+      if (country) {
+        return country
+      }
+      return humanizeTargetingTopic(item) || formatTargetingToken(item)
+    })
     .join(', ')
 }
 
@@ -7573,6 +7983,136 @@ function humanizeCampaignTargetingGender(value: string) {
   return normalized
 }
 
+const TARGETING_TOPIC_RU_MAP: Record<string, string> = {
+  'small business': 'Малый бизнес',
+  'small and medium enterprises': 'Малый и средний бизнес',
+  'small and medium-sized enterprises': 'Малый и средний бизнес',
+  'small & medium enterprises': 'Малый и средний бизнес',
+  sme: 'Малый и средний бизнес',
+  smes: 'Малый и средний бизнес',
+  entrepreneurship: 'Предпринимательство',
+  marketing: 'Маркетинг',
+  'individual entrepreneur': 'Индивидуальный предприниматель',
+  'individual entrepreneur or business': 'Индивидуальный предприниматель или Бизнес',
+  business: 'Бизнес',
+  'business owner': 'Владелец бизнеса',
+  'small business owners': 'Владельцы малых предприятий',
+  'small business owner': 'Владелец малого предприятия',
+  owner: 'Владелец',
+  'owner/manager/ceo': 'Owner/Manager/CEO',
+  founder: 'Основатель',
+  director: 'Директор',
+  ceo: 'CEO',
+  'managing director': 'Managing Director',
+  'director general': 'Генеральный директор',
+  'director (business)': 'Director (business)',
+  almaty: 'Алматы',
+  tselinograd: 'Целиноград',
+  astana: 'Астана',
+  nur: 'Нур-Султан',
+  'nur-sultan': 'Нур-Султан',
+}
+
+function normalizeTargetingTopicKey(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[‐‑‒–—―]/gu, '-')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function humanizeTargetingTopic(value: string): string {
+  const normalized = trimText(value)
+  if (!normalized) {
+    return ''
+  }
+  if (locale.value === 'en') {
+    return normalized
+  }
+  const mapped = TARGETING_TOPIC_RU_MAP[normalizeTargetingTopicKey(normalized)]
+  return mapped || normalized
+}
+
+function humanizeTargetingTopics(values: readonly string[]): string[] {
+  return dedupeTargetingValues(values.map((item) => humanizeTargetingTopic(item)).filter(Boolean))
+}
+
+function campaignAdGroupInterestTopics(group: CampaignAdGroupRow): string[] {
+  const fromDetails = humanizeTargetingTopics(group.targeting.details.interests)
+  if (fromDetails.length > 0) {
+    return fromDetails
+  }
+  return humanizeTargetingTopics(splitTargetingList(group.targeting.signal))
+}
+
+function campaignAdGroupHasDetailedTargeting(group: CampaignAdGroupRow) {
+  const details = group.targeting.details
+  return Boolean(details.interests.length || details.behaviors.length || details.job_titles.length)
+}
+
+function campaignAdGroupHasPlacementBreakdown(group: CampaignAdGroupRow) {
+  const placements = group.targeting.details.placements
+  return Boolean(placements.included.length || placements.excluded.length)
+}
+
+function campaignAdGroupCanOpenAudienceDetails(group: CampaignAdGroupRow) {
+  return Boolean(
+    campaignAdGroupOverviewSettings(group).length ||
+      campaignAdGroupHasDetailedTargeting(group) ||
+      campaignAdGroupHasPlacementBreakdown(group) ||
+      trimText(group.targeting.audienceReach),
+  )
+}
+
+function campaignAdGroupDetailSections(group: CampaignAdGroupRow) {
+  const sections = [
+    {
+      id: 'interests',
+      label: copy.value.campaignAdGroupDetailInterests,
+      values: humanizeTargetingTopics(group.targeting.details.interests),
+    },
+    {
+      id: 'behaviors',
+      label: copy.value.campaignAdGroupDetailBehaviors,
+      values: humanizeTargetingTopics(group.targeting.details.behaviors),
+    },
+    {
+      id: 'job_titles',
+      label: copy.value.campaignAdGroupDetailJobTitles,
+      values: humanizeTargetingTopics(group.targeting.details.job_titles),
+    },
+  ]
+  return sections.filter((section) => section.values.length > 0)
+}
+
+function clearAudienceDetailsHoverTimer() {
+  if (audienceDetailsHoverTimer) {
+    clearTimeout(audienceDetailsHoverTimer)
+    audienceDetailsHoverTimer = null
+  }
+}
+
+function openAudienceDetailsPanel() {
+  clearAudienceDetailsHoverTimer()
+  audienceDetailsOpen.value = true
+  audienceDetailsPinned.value = true
+}
+
+function closeAudienceDetailsPanel() {
+  clearAudienceDetailsHoverTimer()
+  audienceDetailsOpen.value = false
+  audienceDetailsPinned.value = false
+}
+
+function toggleAudienceDetailsPanel() {
+  if (audienceDetailsOpen.value) {
+    closeAudienceDetailsPanel()
+    return
+  }
+  openAudienceDetailsPanel()
+}
+
 function formatTargetingToken(value: string) {
   return value
     .split('_')
@@ -7581,43 +8121,183 @@ function formatTargetingToken(value: string) {
     .join(' ')
 }
 
-function humanizeCampaignPlacement(value: string) {
-  const platformLabels: Record<string, string> = {
+function placementPlatformLabel(platform: string) {
+  const labels: Record<string, string> = {
     facebook: 'Facebook',
     instagram: 'Instagram',
     messenger: 'Messenger',
     audience_network: 'Audience Network',
     whatsapp: 'WhatsApp',
   }
+  return labels[platform] || formatTargetingToken(platform)
+}
 
-  const slotLabels: Record<string, string> = {
-    feed: 'Feed',
-    stories: 'Stories',
-    story: 'Stories',
-    reels: 'Reels',
-    reel: 'Reels',
-    marketplace: 'Marketplace',
-    explore: 'Explore',
-    search: 'Search',
-    right_hand_column: 'Right column',
-    instream_video: 'In-stream video',
-    video_feeds: 'Video feed',
-    in_article: 'In-article',
-    profile_feed: 'Profile feed',
-    inbox: 'Inbox',
+function humanizePlacementKey(value: string) {
+  const normalized = trimText(value)
+  if (!normalized) {
+    return ''
   }
 
-  const parts = splitTargetingList(value).map((item) => {
-    const [platformKey, slotKey] = item.split(':')
-    if (!slotKey) {
-      return platformLabels[platformKey] || formatTargetingToken(platformKey)
-    }
-    const platform = platformLabels[platformKey] || formatTargetingToken(platformKey)
-    const slot = slotLabels[slotKey] || formatTargetingToken(slotKey)
-    return [platform, slot].filter(Boolean).join(' ')
-  })
+  const localizedLabels: Record<'ru' | 'kz' | 'en', Record<string, string>> = {
+    ru: {
+      'instagram:story': 'Истории в Instagram',
+      'instagram:reels': 'Instagram Reels',
+      'instagram:stream': 'Лента Instagram',
+      'instagram:explore': 'Instagram Explore',
+      'instagram:explore_home': 'Главная Explore',
+      'instagram:profile_feed': 'Профиль Instagram',
+      'instagram:ig_search': 'Поиск Instagram',
+      'instagram:profile_reels': 'Reels в профиле Instagram',
+      'facebook:story': 'Истории на Facebook',
+      'facebook:feed': 'Лента Facebook',
+      'facebook:facebook_reels': 'Facebook Reels',
+      'facebook:marketplace': 'Marketplace',
+      'facebook:video_feeds': 'Видеолента Facebook',
+      'facebook:right_hand_column': 'Правая колонка Facebook',
+      'facebook:search': 'Результаты поиска Facebook',
+      'facebook:instream_video': 'Видео In-Stream Facebook',
+      'facebook:profile_feed': 'Профиль Facebook',
+      'facebook:notification': 'Уведомления Facebook',
+      'messenger:messenger_home': 'Лента Messenger',
+      'messenger:story': 'Истории Messenger',
+      'messenger:sponsored_messages': 'Спонсорские сообщения',
+      'audience_network:classic': 'Audience Network',
+      'audience_network:instream_video': 'In-stream Audience Network',
+      'audience_network:rewarded_video': 'Rewarded Video',
+      'whatsapp:status': 'Статус WhatsApp',
+    },
+    kz: {
+      'instagram:story': 'Instagram Stories',
+      'instagram:reels': 'Instagram Reels',
+      'instagram:stream': 'Instagram лентасы',
+      'instagram:explore': 'Instagram Explore',
+      'instagram:explore_home': 'Explore басты беті',
+      'instagram:profile_feed': 'Instagram профилі',
+      'instagram:ig_search': 'Instagram іздеу',
+      'instagram:profile_reels': 'Профильдегі Instagram Reels',
+      'facebook:story': 'Facebook Stories',
+      'facebook:feed': 'Facebook лентасы',
+      'facebook:facebook_reels': 'Facebook Reels',
+      'facebook:marketplace': 'Marketplace',
+      'facebook:video_feeds': 'Facebook бейне лентасы',
+      'facebook:right_hand_column': 'Facebook оң бағаны',
+      'facebook:search': 'Facebook іздеу',
+      'facebook:instream_video': 'Facebook In-Stream бейне',
+      'facebook:profile_feed': 'Facebook профилі',
+      'facebook:notification': 'Facebook хабарландырулары',
+      'messenger:messenger_home': 'Messenger лентасы',
+      'messenger:story': 'Messenger Stories',
+      'messenger:sponsored_messages': 'Демеуші хабарламалар',
+      'audience_network:classic': 'Audience Network',
+      'audience_network:instream_video': 'Audience Network in-stream',
+      'audience_network:rewarded_video': 'Rewarded Video',
+      'whatsapp:status': 'WhatsApp статусы',
+    },
+    en: {
+      'instagram:story': 'Instagram Stories',
+      'instagram:reels': 'Instagram Reels',
+      'instagram:stream': 'Instagram Feed',
+      'instagram:explore': 'Instagram Explore',
+      'instagram:explore_home': 'Explore home',
+      'instagram:profile_feed': 'Instagram profile',
+      'instagram:ig_search': 'Instagram Search',
+      'instagram:profile_reels': 'Instagram profile Reels',
+      'facebook:story': 'Facebook Stories',
+      'facebook:feed': 'Facebook Feed',
+      'facebook:facebook_reels': 'Facebook Reels',
+      'facebook:marketplace': 'Marketplace',
+      'facebook:video_feeds': 'Facebook video feeds',
+      'facebook:right_hand_column': 'Facebook right column',
+      'facebook:search': 'Facebook Search',
+      'facebook:instream_video': 'Facebook In-Stream video',
+      'facebook:profile_feed': 'Facebook profile',
+      'facebook:notification': 'Facebook notifications',
+      'messenger:messenger_home': 'Messenger Feed',
+      'messenger:story': 'Messenger Stories',
+      'messenger:sponsored_messages': 'Sponsored messages',
+      'audience_network:classic': 'Audience Network',
+      'audience_network:instream_video': 'Audience Network in-stream',
+      'audience_network:rewarded_video': 'Rewarded video',
+      'whatsapp:status': 'WhatsApp Status',
+    },
+  }
 
-  return dedupeTargetingValues(parts).join(', ')
+  const mapped = localizedLabels[locale.value][normalized.toLowerCase()]
+  if (mapped) {
+    return mapped
+  }
+
+  const [platformKey, slotKey] = normalized.split(':')
+  if (!slotKey) {
+    return placementPlatformLabel(platformKey)
+  }
+  return `${placementPlatformLabel(platformKey)} ${formatTargetingToken(slotKey)}`
+}
+
+function humanizeCampaignPlacement(value: string) {
+  return dedupeTargetingValues(splitTargetingList(value).map((item) => humanizePlacementKey(item))).join(', ')
+}
+
+function campaignAdGroupPlacementSummaryLines(group: CampaignAdGroupRow): string[] {
+  const placements = group.targeting.details.placements
+  if (!placements.included.length && !placements.excluded.length) {
+    return []
+  }
+
+  const counts = new Map<string, { included: number; excluded: number }>()
+  for (const key of placements.included) {
+    const platform = key.split(':')[0] || key
+    const entry = counts.get(platform) || { included: 0, excluded: 0 }
+    entry.included += 1
+    counts.set(platform, entry)
+  }
+  for (const key of placements.excluded) {
+    const platform = key.split(':')[0] || key
+    const entry = counts.get(platform) || { included: 0, excluded: 0 }
+    entry.excluded += 1
+    counts.set(platform, entry)
+  }
+
+  const preferred = Array.from(counts.entries()).filter(([, value]) => value.included > 0)
+  const rows = preferred.length > 0 ? preferred : Array.from(counts.entries())
+  return rows.map(([platform, value]) =>
+    fillTemplate(copy.value.placementSummaryShort, {
+      platform: placementPlatformLabel(platform),
+      included: String(value.included),
+      excluded: String(value.excluded),
+    }),
+  )
+}
+
+function markCreativePreviewBroken(url: string) {
+  const normalized = trimText(url)
+  if (!normalized || brokenCreativePreviewUrls.value.has(normalized)) {
+    return
+  }
+  const next = new Set(brokenCreativePreviewUrls.value)
+  next.add(normalized)
+  brokenCreativePreviewUrls.value = next
+}
+
+function isCreativePreviewBroken(url: string) {
+  return Boolean(url && brokenCreativePreviewUrls.value.has(url))
+}
+
+function handleCreativePreviewError(url: string) {
+  const normalized = trimText(url)
+  if (!normalized) {
+    return
+  }
+  const display = creativePreviewDisplayUrl(normalized)
+  if (display.startsWith('blob:')) {
+    markCreativePreviewBroken(normalized)
+    return
+  }
+  if (isMetaCreativeCdnUrl(normalized) && !proxiedCreativePreviewUrls.value[normalized]) {
+    void hydrateCreativePreviewProxy(normalized)
+    return
+  }
+  markCreativePreviewBroken(normalized)
 }
 
 function humanizeCampaignDevice(value: string) {
@@ -7704,7 +8384,7 @@ function campaignAdGroupAudienceSettingValue(group: CampaignAdGroupRow) {
 }
 
 function campaignAdGroupSignalValue(group: CampaignAdGroupRow) {
-  return dedupeTargetingValues(splitTargetingList(group.targeting.signal)).join(', ')
+  return humanizeTargetingTopics(splitTargetingList(group.targeting.signal)).join(', ')
 }
 
 function campaignAdGroupPrimarySettings(group: CampaignAdGroupRow): CampaignAdGroupSettingView[] {
@@ -7786,8 +8466,9 @@ function campaignAdGroupTargetingProse(group: CampaignAdGroupRow): string[] {
   const geo = trimText(group.targeting.geo)
   const age = humanizeCampaignTargetingAge(group.targeting.age)
   const audienceType = campaignAdGroupAudienceType(group)
-  const signal = campaignAdGroupSignalValue(group)
-  const haystack = `${group.name} ${group.targeting.audience} ${signal}`.toLowerCase()
+  const interestTopics = campaignAdGroupInterestTopics(group)
+  const signal = interestTopics.join(', ') || campaignAdGroupSignalValue(group)
+  const haystack = `${group.name} ${group.targeting.audience} ${group.targeting.signal} ${interestTopics.join(' ')}`.toLowerCase()
 
   if (!geo && !age && !audienceType && !signal) {
     return []
@@ -7803,16 +8484,16 @@ function campaignAdGroupTargetingProse(group: CampaignAdGroupRow): string[] {
   }
 
   let mechanism = ''
-  if (audienceType === copy.value.campaignAdGroupAudienceTypeLookalike || LOOKALIKE_AUDIENCE_PATTERN.test(haystack)) {
+  if (audienceType === copy.value.campaignAdGroupAudienceTypeLookalike || LOOKALIKE_AUDIENCE_PATTERN.test(haystack) || group.targeting.details.lookalike) {
     mechanism = copy.value.campaignAdGroupProseLookalike
-  } else if (audienceType === copy.value.campaignAdGroupAudienceTypeRetargeting || RETARGETING_AUDIENCE_PATTERN.test(haystack)) {
-    mechanism = copy.value.campaignAdGroupProseRetargeting
-  } else if (signal) {
-    const topics = splitTargetingList(signal)
+  } else if (interestTopics.length > 0) {
+    const topics = interestTopics
       .slice(0, 3)
-      .map((item) => item.toLowerCase())
+      .map((item) => (locale.value === 'en' ? item.toLowerCase() : item.toLocaleLowerCase(locale.value === 'kz' ? 'kk' : 'ru')))
       .join(', ')
     mechanism = copy.value.campaignAdGroupProseInterest.replace('{topics}', topics)
+  } else if (audienceType === copy.value.campaignAdGroupAudienceTypeRetargeting || RETARGETING_AUDIENCE_PATTERN.test(haystack) || group.targeting.details.retargeting) {
+    mechanism = copy.value.campaignAdGroupProseRetargeting
   } else if (audienceType) {
     mechanism = audienceType.toLowerCase()
   }
@@ -7864,6 +8545,11 @@ function campaignAdFormatLabel(ad: CampaignAdRow) {
   return copy.value.adFormatImage
 }
 
+function campaignAdShowsPlayIcon(ad: CampaignAdRow) {
+  const kind = creativePreviewKind(ad.format || ad.name)
+  return kind === 'video' || kind === 'vertical'
+}
+
 function campaignAdHasDelivery(ad: CampaignAdRow) {
   return ad.spend > 0 || ad.results > 0 || ad.impressions > 0
 }
@@ -7874,6 +8560,7 @@ function toggleAdSetSwitcher() {
 
 function chooseAdSetFromSwitcher(groupId: string) {
   adSetSwitcherOpen.value = false
+  closeAudienceDetailsPanel()
   if (!groupId) {
     clearSelectedCampaignAdGroup()
     return
@@ -8269,6 +8956,24 @@ watch(selectedCampaignId, () => {
   resetCampaignWorkspaceSelection()
 })
 
+watch(selectedAccountId, (accountId, previousAccountId) => {
+  if (accountId !== previousAccountId) {
+    clearProxiedCreativePreviews()
+  }
+})
+
+watch(
+  () => {
+    const groupAds = selectedCampaignAdGroup.value?.ads ?? []
+    const campaignAds = selectedCampaignAds.value ?? []
+    return [...groupAds, ...campaignAds].map((ad) => ad.previewUrl).filter(Boolean)
+  },
+  (urls) => {
+    queueCreativePreviewHydration(urls)
+  },
+  { immediate: true },
+)
+
 watch(
   () => [workspaceMode.value, attentionAlerts.value, activeAttentionAlertId.value] as const,
   ([mode, alerts, activeId]) => {
@@ -8299,6 +9004,14 @@ watch(accountSwitcherOpen, async (isOpen) => {
   }
   await nextTick()
   updateAccountSwitcherMenuPosition()
+})
+
+watch(periodMenuOpen, async (isOpen) => {
+  if (!isOpen) {
+    return
+  }
+  await nextTick()
+  updatePeriodMenuPosition()
 })
 
 
@@ -8675,11 +9388,10 @@ watch(currentView, (view) => {
           <div class="rail-campaigns-panel is-always-open">
             <button
               type="button"
-              class="overview-nav rail-campaigns-parent"
-              :class="{ active: isAdsNavActive }"
-              @click="openCampaignsList"
+              class="rail-campaigns-heading"
+              :class="{ home: isWelcomeHome }"
+              @click="openOverview"
             >
-              <span v-if="isAdsNavActive" class="campaign-tree-marker rail-campaigns-parent-marker"></span>
               <svg class="overview-nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
@@ -8707,10 +9419,10 @@ watch(currentView, (view) => {
                 v-if="showSidebarAllCampaignsLink"
                 type="button"
                 class="campaign-nav campaign-nav-all"
-                :class="{ active: workspaceMode === 'campaigns' }"
+                :class="{ active: isCampaignsListActive }"
                 @click="openCampaignsList"
               >
-                <span v-if="workspaceMode === 'campaigns'" class="campaign-tree-marker"></span>
+                <span v-if="isCampaignsListActive" class="campaign-tree-marker"></span>
                 <strong>{{ copy.navAllCampaigns }}</strong>
               </button>
             </div>
@@ -8723,10 +9435,10 @@ watch(currentView, (view) => {
             <button
               type="button"
               class="overview-nav icon-only rail-campaigns-icon-button"
-              :class="{ active: isAdsNavActive }"
-              @click="openCampaignsList"
+              :class="{ active: isAdsNavActive || isWelcomeHome }"
+              @click="openOverview"
             >
-              <span v-if="isAdsNavActive" class="campaign-tree-marker"></span>
+              <span v-if="isAdsNavActive || isWelcomeHome" class="campaign-tree-marker"></span>
               <svg class="overview-nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
@@ -8753,7 +9465,7 @@ watch(currentView, (view) => {
                   v-if="showSidebarAllCampaignsLink"
                   type="button"
                   class="campaign-nav campaign-nav-all"
-                  :class="{ active: workspaceMode === 'campaigns' }"
+                  :class="{ active: isCampaignsListActive }"
                   @click="openCampaignsList"
                 >
                   <strong>{{ copy.navAllCampaigns }}</strong>
@@ -8898,6 +9610,71 @@ watch(currentView, (view) => {
                     <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
                   {{ copy.manageAccounts }}
+                </button>
+              </div>
+            </div>
+          </Teleport>
+
+          <Teleport to="body">
+            <div
+              v-if="periodMenuOpen"
+              ref="periodMenuRef"
+              class="period-menu-panel"
+              :style="periodMenuStyle"
+              role="dialog"
+              aria-label="period"
+            >
+              <div class="period-menu-body">
+                <ul v-if="!periodCustomPanelOpen" class="period-menu-list" role="listbox">
+                  <li v-for="option in periodMenuOptions" :key="`period-menu-${option.value}`">
+                    <button
+                      type="button"
+                      role="option"
+                      class="period-menu-option"
+                      :class="{ active: reportPeriodPreset === option.value }"
+                      :aria-selected="reportPeriodPreset === option.value"
+                      :disabled="reportLoading"
+                      @click="selectPeriodMenuOption(option.value)"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </li>
+                </ul>
+                <div v-else class="period-menu-custom">
+                  <p class="period-menu-custom-title">{{ copy.periodMenuCustom }}</p>
+                  <label class="dashboard-custom-field">
+                    <span>{{ copy.periodFrom }}</span>
+                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
+                  </label>
+                  <label class="dashboard-custom-field">
+                    <span>{{ copy.periodUntil }}</span>
+                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
+                  </label>
+                  <p v-if="reportCustomError" class="dashboard-period-status is-error">{{ reportCustomError }}</p>
+                </div>
+              </div>
+
+              <div v-if="periodCustomPanelOpen" class="period-menu-actions">
+                <button type="button" class="period-menu-back" :disabled="reportLoading" @click="periodCustomPanelOpen = false">
+                  {{ copy.periodBack }}
+                </button>
+                <button type="button" class="period-menu-apply" :disabled="reportLoading" @click="applyCustomPeriod">
+                  {{ copy.periodApply }}
+                </button>
+              </div>
+
+              <div class="period-menu-footer">
+                <span class="period-menu-compare-label">{{ copy.periodCompareToggle }}</span>
+                <button
+                  type="button"
+                  class="period-compare-switch"
+                  role="switch"
+                  :aria-checked="reportComparisonEnabled"
+                  :class="{ on: reportComparisonEnabled }"
+                  :disabled="reportLoading"
+                  @click="togglePeriodComparison"
+                >
+                  <span class="period-compare-switch-thumb"></span>
                 </button>
               </div>
             </div>
@@ -9556,59 +10333,33 @@ watch(currentView, (view) => {
                 </div>
                 <div class="campaign-hero-row">
                   <h2>{{ copy.campaignsListTitle }}</h2>
-                  <button
-                    v-if="overviewCurrentRangeLabel"
-                    type="button"
-                    class="campaign-period-pill"
-                    :disabled="reportLoading"
-                    @click="toggleCustomPeriodEditor"
-                  >
-                    {{ overviewCurrentRangeLabel }}
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+                  <div class="campaign-period-control">
+                    <button
+                      v-if="overviewCurrentRangeLabel"
+                      type="button"
+                      ref="periodPillRef"
+                      class="campaign-period-pill"
+                      :class="{ open: periodMenuOpen }"
+                      :disabled="reportLoading"
+                      @click="togglePeriodMenu"
+                    >
+                      {{ overviewCurrentRangeLabel }}
+                      <svg
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        :class="{ open: periodMenuOpen }"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    <p v-if="periodComparisonNote && !periodMenuOpen" class="campaign-period-compare-note">
+                      {{ periodComparisonNote }}
+                    </p>
+                  </div>
                 </div>
                 <p class="muted dashboard-hero-copy">{{ copy.campaignsListLead }}</p>
-              </div>
-              <div v-if="reportCustomEditorOpen" class="dashboard-period-shell campaign-period-shell">
-                <div class="dashboard-period-toolbar">
-                  <div class="dashboard-period-switcher" :aria-label="copy.days">
-                    <button
-                      v-for="option in reportPeriodOptions"
-                      :key="`list-p-${option.value}`"
-                      type="button"
-                      class="dashboard-period-button"
-                      :class="{ active: reportPeriodPreset === option.value }"
-                      :disabled="reportLoading"
-                      @click="selectPeriodPreset(option.value)"
-                    >
-                      {{ option.label }}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    class="dashboard-compare-button"
-                    :class="{ active: reportComparisonEnabled }"
-                    :disabled="reportLoading"
-                    @click="togglePeriodComparison"
-                  >
-                    {{ reportComparisonEnabled ? copy.periodCompareOn : copy.periodCompareOff }}
-                  </button>
-                </div>
-                <div class="dashboard-custom-period">
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodFrom }}</span>
-                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodUntil }}</span>
-                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <button type="button" class="ghost-button compact-button" :disabled="reportLoading" @click="applyCustomPeriod">
-                    {{ copy.periodApply }}
-                  </button>
-                </div>
               </div>
             </section>
 
@@ -9663,113 +10414,77 @@ watch(currentView, (view) => {
                 {{ copy.campaignBackToCampaign }}
               </button>
 
-              <section class="reference-page-head campaign-page-head">
-                <div class="reference-heading">
-                  <div class="reference-kicker">
-                    <span class="reference-kicker-bar"></span>
-                    <p class="eyebrow">{{ copy.audienceEyebrow }}</p>
-                  </div>
-                  <div class="campaign-hero-row">
-                    <h1>{{ selectedCampaignAdGroup.name }}</h1>
-                    <div class="campaign-hero-pills">
-                      <div ref="adSetSwitcherRef" class="adset-switcher">
-                        <button
-                          type="button"
-                          class="adset-switcher-trigger"
-                          :aria-expanded="adSetSwitcherOpen ? 'true' : 'false'"
-                          @click="toggleAdSetSwitcher"
-                        >
-                          {{ copy.audienceChangeGroup }}
-                          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" :class="{ open: adSetSwitcherOpen }">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        <ul v-if="adSetSwitcherOpen" class="adset-switcher-menu" role="listbox">
-                          <li>
-                            <button type="button" @click="chooseAdSetFromSwitcher('')">{{ copy.audienceAllGroups }}</button>
-                          </li>
-                          <li v-for="group in selectedCampaignAdGroups" :key="`switch-${group.id}`">
-                            <button
-                              type="button"
-                              :class="{ active: group.id === selectedCampaignAdGroup.id }"
-                              @click="chooseAdSetFromSwitcher(group.id)"
+              <div
+                class="audience-targeting-card audience-adgroup-card"
+                :class="{ 'has-details': campaignAdGroupHasDetailedTargeting(selectedCampaignAdGroup) }"
+                :tabindex="campaignAdGroupHasDetailedTargeting(selectedCampaignAdGroup) ? 0 : undefined"
+              >
+                <section class="reference-page-head campaign-page-head audience-adgroup-head">
+                  <div class="reference-heading">
+                    <div class="reference-kicker">
+                      <span class="reference-kicker-bar"></span>
+                      <p class="eyebrow">{{ copy.audienceEyebrow }}</p>
+                    </div>
+                    <div class="campaign-hero-row">
+                      <h1>{{ selectedCampaignAdGroup.name }}</h1>
+                      <div class="campaign-hero-pills">
+                        <div ref="adSetSwitcherRef" class="adset-switcher">
+                          <button
+                            type="button"
+                            class="adset-switcher-trigger"
+                            :aria-expanded="adSetSwitcherOpen ? 'true' : 'false'"
+                            @click="toggleAdSetSwitcher"
+                          >
+                            {{ copy.audienceChangeGroup }}
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" :class="{ open: adSetSwitcherOpen }">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          <ul v-if="adSetSwitcherOpen" class="adset-switcher-menu" role="listbox">
+                            <li>
+                              <button type="button" @click="chooseAdSetFromSwitcher('')">{{ copy.audienceAllGroups }}</button>
+                            </li>
+                            <li v-for="group in selectedCampaignAdGroups" :key="`switch-${group.id}`">
+                              <button
+                                type="button"
+                                :class="{ active: group.id === selectedCampaignAdGroup.id }"
+                                @click="chooseAdSetFromSwitcher(group.id)"
+                              >
+                                {{ group.name }}
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
+                        <div class="campaign-period-control">
+                          <button
+                            v-if="overviewCurrentRangeLabel"
+                            type="button"
+                            ref="periodPillRef"
+                            class="campaign-period-pill"
+                            :class="{ open: periodMenuOpen }"
+                            :disabled="reportLoading"
+                            @click="togglePeriodMenu"
+                          >
+                            {{ overviewCurrentRangeLabel }}
+                            <svg
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              stroke-width="2.5"
+                              :class="{ open: periodMenuOpen }"
                             >
-                              {{ group.name }}
-                            </button>
-                          </li>
-                        </ul>
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          <p v-if="periodComparisonNote && !periodMenuOpen" class="campaign-period-compare-note">
+                            {{ periodComparisonNote }}
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        v-if="overviewCurrentRangeLabel"
-                        type="button"
-                        class="campaign-period-pill"
-                        :disabled="reportLoading"
-                        @click="toggleCustomPeriodEditor"
-                      >
-                        {{ overviewCurrentRangeLabel }}
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
                     </div>
                   </div>
-                </div>
+                </section>
 
-              <div v-if="reportCustomEditorOpen" class="dashboard-period-shell campaign-period-shell">
-                <div class="dashboard-period-toolbar">
-                  <div class="dashboard-period-switcher" :aria-label="copy.days">
-                    <button
-                      v-for="option in reportPeriodOptions"
-                      :key="`camp-p-${option.value}`"
-                      type="button"
-                      class="dashboard-period-button"
-                      :class="{ active: reportPeriodPreset === option.value }"
-                      :disabled="reportLoading"
-                      @click="selectPeriodPreset(option.value)"
-                    >
-                      {{ option.label }}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    class="dashboard-compare-button"
-                    :class="{ active: reportComparisonEnabled }"
-                    :disabled="reportLoading"
-                    @click="togglePeriodComparison"
-                  >
-                    {{ reportComparisonEnabled ? copy.periodCompareOn : copy.periodCompareOff }}
-                  </button>
-                </div>
-                <div class="dashboard-custom-period">
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodFrom }}</span>
-                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodUntil }}</span>
-                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <button type="button" class="ghost-button compact-button" :disabled="reportLoading" @click="applyCustomPeriod">
-                    {{ copy.periodApply }}
-                  </button>
-                </div>
-              </div>
-              </section>
-
-              <div
-                v-if="campaignAdGroupOverviewSettings(selectedCampaignAdGroup).length"
-                class="audience-targeting-card"
-              >
-                <div class="audience-targeting-grid">
-                  <article
-                    v-for="setting in campaignAdGroupOverviewSettings(selectedCampaignAdGroup)"
-                    :key="`audience-${setting.id}`"
-                    class="audience-targeting-item"
-                  >
-                    <span>{{ setting.label }}</span>
-                    <strong>{{ setting.value }}</strong>
-                  </article>
-                </div>
                 <div v-if="campaignAdGroupTargetingProse(selectedCampaignAdGroup).length" class="audience-targeting-prose">
                   <p
                     v-for="(line, index) in campaignAdGroupTargetingProse(selectedCampaignAdGroup)"
@@ -9779,26 +10494,144 @@ watch(currentView, (view) => {
                     {{ line }}
                   </p>
                 </div>
+                <p v-if="selectedCampaignAdGroup.targeting.audienceReach" class="audience-reach-line">
+                  {{ copy.audienceReachLabel }}:
+                  <strong>{{ selectedCampaignAdGroup.targeting.audienceReach }}</strong>
+                </p>
+                <div
+                  v-if="campaignAdGroupHasDetailedTargeting(selectedCampaignAdGroup)"
+                  class="audience-targeting-popup"
+                  role="tooltip"
+                >
+                  <p class="audience-targeting-popup-title">{{ copy.campaignAdGroupDetailedTargeting }}</p>
+                  <div
+                    v-for="section in campaignAdGroupDetailSections(selectedCampaignAdGroup)"
+                    :key="`popup-${section.id}`"
+                    class="audience-targeting-popup-section"
+                  >
+                    <p class="audience-targeting-popup-label">{{ section.label }}</p>
+                    <ul class="audience-targeting-popup-chips">
+                      <li v-for="(item, itemIndex) in section.values" :key="`popup-${section.id}-${itemIndex}`">
+                        {{ item }}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div
+                  v-if="campaignAdGroupPlacementSummaryLines(selectedCampaignAdGroup).length || campaignAdGroupCanOpenAudienceDetails(selectedCampaignAdGroup)"
+                  class="audience-placement-summary"
+                >
+                  <p v-if="campaignAdGroupPlacementSummaryLines(selectedCampaignAdGroup).length">
+                    {{ campaignAdGroupPlacementSummaryLines(selectedCampaignAdGroup).join(' · ') }}
+                  </p>
+                  <button
+                    v-if="campaignAdGroupCanOpenAudienceDetails(selectedCampaignAdGroup)"
+                    type="button"
+                    class="audience-details-link"
+                    :aria-expanded="audienceDetailsOpen ? 'true' : 'false'"
+                    @click.stop="toggleAudienceDetailsPanel"
+                  >
+                    {{ copy.audienceDetailsMore }}
+                  </button>
+                </div>
+                <div
+                  v-if="audienceDetailsOpen && campaignAdGroupCanOpenAudienceDetails(selectedCampaignAdGroup)"
+                  class="audience-details-backdrop"
+                  @click="closeAudienceDetailsPanel"
+                ></div>
+                <div
+                  v-if="audienceDetailsOpen && campaignAdGroupCanOpenAudienceDetails(selectedCampaignAdGroup)"
+                  class="audience-details-panel"
+                  role="dialog"
+                  aria-modal="true"
+                  :aria-label="copy.audienceSectionTitle"
+                  @click.stop
+                >
+                  <div class="audience-details-panel-head">
+                    <button type="button" class="audience-details-close" @click="closeAudienceDetailsPanel">
+                      {{ copy.audienceDetailsClose }}
+                    </button>
+                  </div>
+
+                  <section
+                    v-if="campaignAdGroupOverviewSettings(selectedCampaignAdGroup).length || selectedCampaignAdGroup.targeting.audienceReach"
+                    class="audience-details-section audience-details-section-audience"
+                  >
+                    <p class="audience-details-section-title">{{ copy.audienceSectionTitle }}</p>
+                    <dl class="audience-details-facts">
+                      <div v-for="setting in campaignAdGroupOverviewSettings(selectedCampaignAdGroup)" :key="`detail-fact-${setting.id}`">
+                        <dt>{{ setting.label }}</dt>
+                        <dd>{{ setting.value }}</dd>
+                      </div>
+                    </dl>
+                    <div v-if="selectedCampaignAdGroup.targeting.audienceReach" class="audience-details-reach">
+                      <span>{{ copy.audienceReachLabel }}</span>
+                      <strong>{{ selectedCampaignAdGroup.targeting.audienceReach }}</strong>
+                    </div>
+                  </section>
+
+                  <section
+                    v-if="campaignAdGroupDetailSections(selectedCampaignAdGroup).length"
+                    class="audience-details-section audience-details-section-targeting"
+                  >
+                    <p class="audience-details-section-subtitle">{{ copy.campaignAdGroupDetailedTargeting }}</p>
+                    <div
+                      v-for="section in campaignAdGroupDetailSections(selectedCampaignAdGroup)"
+                      :key="`detail-section-${section.id}`"
+                      class="audience-details-chips-block"
+                    >
+                      <p class="audience-details-chip-label">{{ section.label }}</p>
+                      <p class="audience-details-values">{{ section.values.join(', ') }}</p>
+                    </div>
+                  </section>
+
+                  <section
+                    v-if="campaignAdGroupHasPlacementBreakdown(selectedCampaignAdGroup)"
+                    class="audience-details-section audience-details-section-placements"
+                  >
+                    <p class="audience-details-section-title">{{ copy.placementsSectionTitle }}</p>
+                    <div
+                      v-if="selectedCampaignAdGroup.targeting.details.placements.included.length"
+                      class="audience-placement-box included"
+                    >
+                      <p class="audience-placement-list-label included">{{ copy.placementIncluded }}</p>
+                      <ul class="audience-placement-list">
+                        <li
+                          v-for="item in selectedCampaignAdGroup.targeting.details.placements.included"
+                          :key="`inc-${item}`"
+                          class="included"
+                        >
+                          <span aria-hidden="true">✓</span>
+                          {{ humanizePlacementKey(item) }}
+                        </li>
+                      </ul>
+                    </div>
+                    <div
+                      v-if="selectedCampaignAdGroup.targeting.details.placements.excluded.length"
+                      class="audience-placement-box excluded"
+                    >
+                      <p class="audience-placement-list-label excluded">{{ copy.placementExcluded }}</p>
+                      <ul class="audience-placement-list">
+                        <li
+                          v-for="item in selectedCampaignAdGroup.targeting.details.placements.excluded"
+                          :key="`exc-${item}`"
+                          class="excluded"
+                        >
+                          <span aria-hidden="true">✕</span>
+                          {{ humanizePlacementKey(item) }}
+                        </li>
+                      </ul>
+                    </div>
+                  </section>
+                </div>
               </div>
 
-              <div class="metric-grid reference-metric-grid campaign-compact-metrics">
+              <div class="metric-grid reference-metric-grid campaign-compact-metrics campaign-adgroup-spend-only">
                 <article class="metric-tile surface-metric-card">
                   <div class="surface-metric-head">
                     <p>{{ copy.creativeMetricLabels.spend }}</p>
                   </div>
                   <strong>{{ formatMetricValue('spend', selectedCampaignAdGroup.spend) }}</strong>
-                </article>
-                <article class="metric-tile surface-metric-card">
-                  <div class="surface-metric-head">
-                    <p>{{ resultKindLabel(selectedCampaignAdGroup.resultKind || selectedCampaign.primary_result_kind || 'result') }}</p>
-                  </div>
-                  <strong>{{ formatCompactNumber(selectedCampaignAdGroup.results) }}</strong>
-                </article>
-                <article class="metric-tile surface-metric-card">
-                  <div class="surface-metric-head">
-                    <p>{{ metricSurfaceLabel('cost_per_result', selectedCampaignAdGroup.resultKind || selectedCampaign.primary_result_kind || 'result') }}</p>
-                  </div>
-                  <strong>{{ formatMetricValue('cost_per_result', selectedCampaignAdGroup.costPerResult) }}</strong>
                 </article>
               </div>
 
@@ -9815,11 +10648,44 @@ watch(currentView, (view) => {
                   class="campaign-ad-preview-card"
                 >
                   <div
-                    class="campaign-adset-preview campaign-ad-preview-media"
+                    class="campaign-ad-preview-media-wrap"
+                    tabindex="0"
                     :style="{ '--campaign-preview-gradient': creativePreviewGradient(ad.id, ad.name) }"
                   >
-                    <img v-if="ad.previewUrl" :src="ad.previewUrl" :alt="ad.name" loading="lazy" decoding="async" />
-                    <em class="campaign-ad-thumb-badge">{{ campaignAdFormatLabel(ad) }}</em>
+                    <div class="campaign-adset-preview campaign-ad-preview-media">
+                      <img
+                        v-if="ad.previewUrl && !isCreativePreviewBroken(ad.previewUrl)"
+                        :src="creativePreviewDisplayUrl(ad.previewUrl)"
+                        :alt="ad.name"
+                        loading="lazy"
+                        decoding="async"
+                        referrerpolicy="no-referrer"
+                        @error="handleCreativePreviewError(ad.previewUrl)"
+                      />
+                      <span v-else class="campaign-ad-preview-fallback">{{ campaignAdFormatLabel(ad) }}</span>
+                      <span v-if="campaignAdShowsPlayIcon(ad)" class="campaign-ad-thumb-play" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                      </span>
+                      <em class="campaign-ad-thumb-badge">{{ campaignAdFormatLabel(ad) }}</em>
+                    </div>
+                    <div class="campaign-ad-creative-popup" role="tooltip">
+                      <div class="campaign-ad-creative-popup-media">
+                        <img
+                          v-if="ad.previewUrl && !isCreativePreviewBroken(ad.previewUrl)"
+                          :src="creativePreviewDisplayUrl(ad.previewUrl)"
+                          :alt="ad.name"
+                          referrerpolicy="no-referrer"
+                          @error="handleCreativePreviewError(ad.previewUrl)"
+                        />
+                        <span v-else class="campaign-ad-creative-popup-fallback">{{ campaignAdFormatLabel(ad) }}</span>
+                        <em class="campaign-ad-thumb-badge">{{ campaignAdFormatLabel(ad) }}</em>
+                      </div>
+                      <div v-if="ad.headline || ad.primaryText || ad.callToAction" class="campaign-ad-creative-popup-copy">
+                        <strong v-if="ad.headline">{{ ad.headline }}</strong>
+                        <p v-if="ad.primaryText">{{ ad.primaryText }}</p>
+                        <span v-if="ad.callToAction" class="campaign-ad-creative-popup-cta">{{ ad.callToAction }}</span>
+                      </div>
+                    </div>
                   </div>
                   <div class="campaign-ad-preview-body">
                     <div class="campaign-ad-preview-top">
@@ -9868,61 +10734,35 @@ watch(currentView, (view) => {
                   </div>
                   <div class="campaign-hero-row">
                     <h2>{{ selectedCampaign.name }}</h2>
-                    <button
-                      v-if="overviewCurrentRangeLabel"
-                      type="button"
-                      class="campaign-period-pill"
-                      :disabled="reportLoading"
-                      @click="toggleCustomPeriodEditor"
-                    >
-                      {{ overviewCurrentRangeLabel }}
-                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
+                    <div class="campaign-period-control">
+                      <button
+                        v-if="overviewCurrentRangeLabel"
+                        type="button"
+                        ref="periodPillRef"
+                        class="campaign-period-pill"
+                        :class="{ open: periodMenuOpen }"
+                        :disabled="reportLoading"
+                        @click="togglePeriodMenu"
+                      >
+                        {{ overviewCurrentRangeLabel }}
+                        <svg
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                          :class="{ open: periodMenuOpen }"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      <p v-if="periodComparisonNote && !periodMenuOpen" class="campaign-period-compare-note">
+                        {{ periodComparisonNote }}
+                      </p>
+                    </div>
                   </div>
                   <p class="campaign-hero-lead">{{ copy.campaignCreativesLead }}</p>
                 </div>
 
-              <div v-if="reportCustomEditorOpen" class="dashboard-period-shell campaign-period-shell">
-                <div class="dashboard-period-toolbar">
-                  <div class="dashboard-period-switcher" :aria-label="copy.days">
-                    <button
-                      v-for="option in reportPeriodOptions"
-                      :key="`camp-p-${option.value}`"
-                      type="button"
-                      class="dashboard-period-button"
-                      :class="{ active: reportPeriodPreset === option.value }"
-                      :disabled="reportLoading"
-                      @click="selectPeriodPreset(option.value)"
-                    >
-                      {{ option.label }}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    class="dashboard-compare-button"
-                    :class="{ active: reportComparisonEnabled }"
-                    :disabled="reportLoading"
-                    @click="togglePeriodComparison"
-                  >
-                    {{ reportComparisonEnabled ? copy.periodCompareOn : copy.periodCompareOff }}
-                  </button>
-                </div>
-                <div class="dashboard-custom-period">
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodFrom }}</span>
-                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodUntil }}</span>
-                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <button type="button" class="ghost-button compact-button" :disabled="reportLoading" @click="applyCustomPeriod">
-                    {{ copy.periodApply }}
-                  </button>
-                </div>
-              </div>
               </section>
               <section class="campaign-ads-simple">
                 <article
@@ -9931,18 +10771,51 @@ watch(currentView, (view) => {
                   class="campaign-ad-preview-card"
                 >
                   <div
-                    class="campaign-adset-preview campaign-ad-preview-media"
+                    class="campaign-ad-preview-media-wrap"
+                    tabindex="0"
                     :style="{ '--campaign-preview-gradient': creativePreviewGradient(ad.id, ad.name) }"
                   >
-                    <img v-if="ad.previewUrl" :src="ad.previewUrl" :alt="ad.name" loading="lazy" decoding="async" />
-                    <span v-else>{{ ad.format }}</span>
+                    <div class="campaign-adset-preview campaign-ad-preview-media">
+                      <img
+                        v-if="ad.previewUrl && !isCreativePreviewBroken(ad.previewUrl)"
+                        :src="creativePreviewDisplayUrl(ad.previewUrl)"
+                        :alt="ad.name"
+                        loading="lazy"
+                        decoding="async"
+                        referrerpolicy="no-referrer"
+                        @error="handleCreativePreviewError(ad.previewUrl)"
+                      />
+                      <span v-else class="campaign-ad-preview-fallback">{{ campaignAdFormatLabel(ad) }}</span>
+                      <span v-if="campaignAdShowsPlayIcon(ad)" class="campaign-ad-thumb-play" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                      </span>
+                      <em class="campaign-ad-thumb-badge">{{ campaignAdFormatLabel(ad) }}</em>
+                    </div>
+                    <div class="campaign-ad-creative-popup" role="tooltip">
+                      <div class="campaign-ad-creative-popup-media">
+                        <img
+                          v-if="ad.previewUrl && !isCreativePreviewBroken(ad.previewUrl)"
+                          :src="creativePreviewDisplayUrl(ad.previewUrl)"
+                          :alt="ad.name"
+                          referrerpolicy="no-referrer"
+                          @error="handleCreativePreviewError(ad.previewUrl)"
+                        />
+                        <span v-else class="campaign-ad-creative-popup-fallback">{{ campaignAdFormatLabel(ad) }}</span>
+                        <em class="campaign-ad-thumb-badge">{{ campaignAdFormatLabel(ad) }}</em>
+                      </div>
+                      <div v-if="ad.headline || ad.primaryText || ad.callToAction" class="campaign-ad-creative-popup-copy">
+                        <strong v-if="ad.headline">{{ ad.headline }}</strong>
+                        <p v-if="ad.primaryText">{{ ad.primaryText }}</p>
+                        <span v-if="ad.callToAction" class="campaign-ad-creative-popup-cta">{{ ad.callToAction }}</span>
+                      </div>
+                    </div>
                   </div>
                   <div class="campaign-ad-preview-body">
                     <div class="campaign-ad-preview-top">
                       <div class="campaign-ad-preview-copy">
                         <strong>{{ ad.name }}</strong>
                         <small>
-                          {{ ad.format }}
+                          {{ campaignAdFormatLabel(ad) }}
                           <template v-if="ad.groupName"> · {{ ad.groupName }}</template>
                         </small>
                       </div>
@@ -9972,7 +10845,7 @@ watch(currentView, (view) => {
             </template>
 
             <template v-else>
-              <button type="button" class="back-link" @click="openCampaignsList">
+              <button type="button" class="back-link" @click="openOverview">
                 <svg class="back-link-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
@@ -9992,61 +10865,35 @@ watch(currentView, (view) => {
                         <i class="status-dot" :class="statusTone(selectedCampaign.status)"></i>
                         {{ statusLabel(selectedCampaign.status) }}
                       </div>
-                      <button
-                        v-if="overviewCurrentRangeLabel"
-                        type="button"
-                        class="campaign-period-pill"
-                        :disabled="reportLoading"
-                        @click="toggleCustomPeriodEditor"
-                      >
-                        {{ overviewCurrentRangeLabel }}
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
+                      <div class="campaign-period-control">
+                        <button
+                          v-if="overviewCurrentRangeLabel"
+                          type="button"
+                          ref="periodPillRef"
+                          class="campaign-period-pill"
+                          :class="{ open: periodMenuOpen }"
+                          :disabled="reportLoading"
+                          @click="togglePeriodMenu"
+                        >
+                          {{ overviewCurrentRangeLabel }}
+                          <svg
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="2.5"
+                            :class="{ open: periodMenuOpen }"
+                          >
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        <p v-if="periodComparisonNote && !periodMenuOpen" class="campaign-period-compare-note">
+                          {{ periodComparisonNote }}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-              <div v-if="reportCustomEditorOpen" class="dashboard-period-shell campaign-period-shell">
-                <div class="dashboard-period-toolbar">
-                  <div class="dashboard-period-switcher" :aria-label="copy.days">
-                    <button
-                      v-for="option in reportPeriodOptions"
-                      :key="`camp-p-${option.value}`"
-                      type="button"
-                      class="dashboard-period-button"
-                      :class="{ active: reportPeriodPreset === option.value }"
-                      :disabled="reportLoading"
-                      @click="selectPeriodPreset(option.value)"
-                    >
-                      {{ option.label }}
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    class="dashboard-compare-button"
-                    :class="{ active: reportComparisonEnabled }"
-                    :disabled="reportLoading"
-                    @click="togglePeriodComparison"
-                  >
-                    {{ reportComparisonEnabled ? copy.periodCompareOn : copy.periodCompareOff }}
-                  </button>
-                </div>
-                <div class="dashboard-custom-period">
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodFrom }}</span>
-                    <input v-model="reportCustomDraft.since" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <label class="dashboard-custom-field">
-                    <span>{{ copy.periodUntil }}</span>
-                    <input v-model="reportCustomDraft.until" class="dashboard-custom-input" type="date" :disabled="reportLoading" />
-                  </label>
-                  <button type="button" class="ghost-button compact-button" :disabled="reportLoading" @click="applyCustomPeriod">
-                    {{ copy.periodApply }}
-                  </button>
-                </div>
-              </div>
               </section>
 
               <div class="metric-grid reference-metric-grid campaign-compact-metrics">

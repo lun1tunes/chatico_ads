@@ -111,8 +111,33 @@ async def test_meta_graph_api_methods_share_common_get_transport():
     assert route.calls[0].request.url.params["code"] == "oauth-code"
     assert route.calls[6].request.url.params["level"] == "account"
     assert route.calls[8].request.url.params["fields"] == "id,name,campaign_id,effective_status,targeting"
+    assert "locale" not in route.calls[8].request.url.params
     assert "object_story_spec" in route.calls[9].request.url.params["fields"]
     assert route.calls[10].request.url.params["level"] == "ad"
+    await client.aclose()
+
+
+@pytest.mark.unit
+@pytest.mark.service
+@respx.mock
+async def test_meta_graph_api_get_reach_estimate():
+    client = MetaGraphAPIClient(graph_version="v24.0")
+    route = respx.get("https://graph.facebook.com/v24.0/act_1/reachestimate").mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": {"users_lower_bound": 1000000, "users_upper_bound": 2000000}},
+        )
+    )
+
+    payload = await client.get_reach_estimate(
+        account_id="act_1",
+        access_token="token-2",
+        targeting_spec={"geo_locations": {"countries": ["KZ"]}, "age_min": 25, "age_max": 45},
+    )
+
+    assert payload == {"users_lower_bound": 1000000, "users_upper_bound": 2000000}
+    assert "targeting_spec" in route.calls[0].request.url.params
+    assert route.calls[0].request.url.params["access_token"] == "token-2"
     await client.aclose()
 
 
